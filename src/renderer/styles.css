@@ -3298,6 +3298,37 @@ input[type='range']::-webkit-slider-thumb {
   color: var(--text-2);
   vertical-align: middle;
 }
+/* Watch sessions: the stream's title under the streamer's name, cut to one line (hover for all of it). */
+.sess-cell {
+  display: flex;
+  align-items: center;
+  max-width: 260px;
+}
+.sess-cell .avatar.xs {
+  flex: none;
+}
+.sess-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.sess-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sess-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+.chart .claim-count {
+  fill: #1a1405;
+  font: 700 9px var(--font-display);
+}
 .htable tr:hover td {
   background: rgba(255, 255, 255, 0.025);
 }

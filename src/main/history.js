@@ -11,6 +11,9 @@ const COMPACT_BYTES = 25 * 1024 * 1024;
 // A watch session left without an end stops this long after the last thing heard from it
 // (credits come about every 2 minutes).
 const CUT_GRACE_MS = 5 * 60_000;
+const HOUR = 3_600_000;
+// Shorter than this (the history so far, or the range picked), the activity chart is by hour.
+const HOURLY_SPAN = 3 * 86_400_000;
 
 // Event types, grouped for filtering in the UI.
 const GROUPS = {
@@ -95,6 +98,7 @@ class History {
     return {
       totals: this.totals(scoped, sessions),
       daily: this.daily(scoped, sessions, since, now),
+      activity: this.activity(scoped, sessions, since, now),
       hourly: this.hourly(sessions),
       campaigns: this.campaigns(inRange, this.sessions(inRange, now)),
       channels: this.channels(sessions),
@@ -129,6 +133,7 @@ class History {
           slug: e.slug,
           channel: e.channel,
           avatar: e.avatar,
+          title: e.title ?? null,
           category: e.category,
           categoryId: e.categoryId,
           campaignIds: e.campaignIds ?? [],
@@ -211,6 +216,39 @@ class History {
       }
     }
     return days.map((d) => ({ ...d, watched: Math.round(d.watched) }));
+  }
+
+  /**
+   * The activity chart's bars: by day, or by hour when the range (or the history so far) is
+   * under three days, which a chart of one or two days would say nothing about.
+   */
+  activity(events, sessions, since, now) {
+    const from = Math.max(since || 0, this.events[0]?.t ?? now, now - HOURLY_SPAN);
+    if (now - Math.max(since || 0, this.events[0]?.t ?? now) > HOURLY_SPAN) return { unit: 'day', bars: this.daily(events, sessions, since, now) };
+    const start = new Date(from);
+    start.setMinutes(0, 0, 0);
+    const bars = [];
+    for (let t = start.getTime(); t <= now; t += HOUR) bars.push({ t, credited: 0, watched: 0, claims: 0 });
+    const slot = (t) => bars[Math.floor((t - start.getTime()) / HOUR)];
+    for (const e of events) {
+      const b = e.t >= start.getTime() && slot(e.t);
+      if (!b) continue;
+      if (e.type === 'credit') b.credited += e.delta ?? 0;
+      if (e.type === 'claim') b.claims += 1;
+    }
+    for (const sess of sessions) {
+      let t = Math.max(sess.start, start.getTime());
+      const end = sess.end ?? now;
+      while (t < end) {
+        const next = new Date(t);
+        next.setMinutes(60, 0, 0);
+        const part = Math.min(end, next.getTime()) - t;
+        const b = slot(t);
+        if (b) b.watched += part / 60_000;
+        t += part;
+      }
+    }
+    return { unit: 'hour', bars: bars.map((b) => ({ ...b, watched: Math.round(b.watched) })) };
   }
 
   /** Minutes watched by hour of day (0-23), for the "when you farm" heatmap. */

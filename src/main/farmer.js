@@ -1083,6 +1083,7 @@ class Farmer extends EventEmitter {
       campaigns: campaignIds.map((id) => this.ctx(id).campaign),
       manual,
       viewers: stream.viewers,
+      title: stream.title || undefined,
       text: `Watching ${stream.username} for ${cat.name}${manual ? ' (picked by you)' : ''}`,
     });
     this.stats.switches += 1;
