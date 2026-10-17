@@ -4959,3 +4959,40 @@ input[type='range']::-webkit-slider-thumb {
     gap: 4px;
   }
 }
+
+/* Streams: a short list says how often it's checked, and where else streams are live. */
+.streams-note {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px dashed var(--border-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.streams-note > .icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+}
+.streams-note b {
+  display: block;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.streams-elsewhere {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.streams-elsewhere .chip {
+  cursor: pointer;
+}
+.streams-elsewhere .chip em {
+  font-style: normal;
+  color: var(--muted);
+}

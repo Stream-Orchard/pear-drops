@@ -351,6 +351,25 @@ test('paused, the hero shows what comes next', async () => {
   await a.farming();
 });
 
+test('a short stream list says how often it is checked, and where else streams are live', async () => {
+  await a.win.click('[data-action="side-tab"][data-id="streams"]');
+  const few = await a.app.evaluate(() => global.pdDebug.farmer.model.categories.find((c) => c.enabled && c.needsWatching && c.streams.length && c.streams.length <= 3)?.id);
+  assert.ok(few, 'a stand-in category with a few live streams');
+  await a.win.click(`#side .sub-tabs [data-action="select-cat"][data-id="${few}"]`);
+  await until(a.win, () => document.querySelector('#side .streams-note'), 'the note', 10000);
+  assert.match(await a.win.textContent('#side .streams-note'), /live streams? counts? for .+ right now\.\s*Pear Drops looks for more every \d+ min/);
+  const chip = a.win.locator('#side .streams-elsewhere [data-action="select-cat"]').first();
+  const other = await chip.getAttribute('data-id');
+  await chip.click();
+  await until(a.win, (id) => document.querySelector(`#side .sub-tabs .tab.active[data-id="${id}"]`), 'the other category', 10000, other);
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+});
+
+test("the Credited card's sparkline counts this session, as its number does", async () => {
+  const [spark, earned] = await a.win.evaluate(() => [creditBuckets().reduce((n, x) => n + x, 0), farm().timeline.filter((e) => e.type === 'credit' && e.t >= farm().stats.sessionStart && e.t > Date.now() - 120 * 60_000).reduce((n, e) => n + e.delta, 0)]);
+  assert.equal(spark, earned);
+});
+
 test('the tray popover shows the current drop and controls', async () => {
   await a.demo((d) => d.openTray());
   const pop = await until(a.win, () => true, 'tray').then(async () => {
