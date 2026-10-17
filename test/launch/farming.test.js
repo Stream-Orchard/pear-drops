@@ -327,6 +327,30 @@ test('polish: the Queue badge counts its categories, watch events read as sent, 
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
 });
 
+test('the Queue ends with a plan: each live category in order, as long as its time left, with when it should be done', async () => {
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+  await until(a.win, () => document.querySelector('#side .plan .plan-seg'), 'the plan', 10000);
+  const plan = await a.win.evaluate(() => ({
+    segs: [...document.querySelectorAll('#side .plan-seg')].map((x) => x.textContent.trim()),
+    ticks: [...document.querySelectorAll('#side .plan-ticks span')].map((x) => x.textContent.trim()),
+    head: document.querySelector('#side .plan-head').textContent,
+    live: [...document.querySelectorAll('#side .queue-list .cat')].filter((c) => /\d+\+? live/.test(c.textContent)).map((c) => c.querySelector('.cat-name span').textContent),
+  }));
+  assert.deepEqual(plan.segs, plan.live, 'the live categories, in queue order');
+  assert.equal(plan.ticks.length, plan.segs.length, 'a finish time for each');
+  assert.match(plan.head, /done about .+ if streams stay live/);
+  assert.equal(await a.win.locator('#side .plan-seg.now').count(), 1, 'the one being farmed stands out');
+});
+
+test('paused, the hero shows what comes next', async () => {
+  await a.app.evaluate(() => global.pdDebug.farmer.setPaused(true));
+  await until(a.win, () => document.querySelector('#hero .hero-next-row'), 'up next', 10000);
+  assert.ok((await a.win.locator('#hero .hero-next-row').count()) >= 1);
+  assert.match(await a.win.textContent('#hero .hero-next'), /left/);
+  await a.app.evaluate(() => global.pdDebug.farmer.setPaused(false));
+  await a.farming();
+});
+
 test('the tray popover shows the current drop and controls', async () => {
   await a.demo((d) => d.openTray());
   const pop = await until(a.win, () => true, 'tray').then(async () => {
@@ -456,4 +480,15 @@ test('a frozen picture shows on the dashboard and tray within seconds, and is ch
   assert.ok(await main(() => global.pdDebug.farmer.log.some((e) => /The picture froze on .*, checking with Kick/.test(e.text))), 'checked with Kick');
   await main(() => global.pdDemo.freeze(false));
   await a.demo((d) => d.openTray());
+});
+
+test('a drop with one or two rewards gives them the room, with when each unlocks', async () => {
+  const pick = await a.app.evaluate(() => {
+    const c = global.pdDebug.farmer.model.categories.find((x) => x.name === 'Just Chatting' && x.streams.length);
+    return c && { id: c.id, slug: c.streams[0].slug };
+  });
+  assert.ok(pick, 'a stand-in category with two rewards and a live stream');
+  await a.win.evaluate((p) => window.pd.watch(p.slug, p.id), pick);
+  await until(a.win, () => document.querySelector('#hero .hero-rewards.roomy'), 'the roomy rewards', 10000);
+  assert.match(await a.win.textContent('#hero .hero-rewards'), /Unlocks .+ · /);
 });

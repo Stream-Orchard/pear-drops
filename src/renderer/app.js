@@ -180,7 +180,8 @@ function renderBanner() {
   );
 }
 
-function rewardLine(r, units) {
+/** One reward in the hero. Roomy (one or two to show) adds when it unlocks, at the current rate. */
+function rewardLine(r, units, { roomy = false, rate = 1 } = {}) {
   const pct = Math.min(1, units / r.required);
   const cls = r.claimed ? 'claimed' : r.ready ? 'ready' : '';
   const status = r.claimed
@@ -191,7 +192,8 @@ function rewardLine(r, units) {
   return `<div class="reward-line ${cls}" ${previewAttrs(r, units)}>
     <div class="reward-img">${img(r.image, '', r.name)}</div>
     <div class="rl-body"><div class="rl-top"><span class="reward-name">${esc(r.name)}</span>${status}</div>
-    <div class="mini-bar"><i style="width:${(pct * 100).toFixed(1)}%"></i></div></div>
+    <div class="mini-bar"><i style="width:${(pct * 100).toFixed(1)}%"></i></div>
+    ${roomy && !r.claimed ? `<span class="rl-eta">${r.ready ? 'Ready: claiming it now' : `Unlocks ${fmtEta((r.required - units) / Math.max(0.05, rate))}`}</span>` : ''}</div>
   </div>`;
 }
 
@@ -227,17 +229,27 @@ function renderHero() {
       waiting: [
         icon('clock'),
         'Waiting for a live stream',
-        next ? `None of the channels for ${esc(next.name)} or the other remaining drops are live right now. Checking again every refresh.` : f.status.message,
+        next ? `None of the channels for ${esc(next.name)} or the other remaining drops are live right now.` : f.status.message,
         `<button class="btn" data-action="refresh">${icon('refresh')} Check now</button>`,
       ],
       error: [icon('alert'), 'Kick is not responding', f.status.message, `<button class="btn" data-action="refresh">${icon('refresh')} Try again</button>`],
       starting: [`<div class="spinner"></div>`, 'Getting ready…', 'Fetching campaigns, progress and live streams.', ''],
     }[f.status.code] ?? [icon('clock'), f.status.message, '', ''];
+    // What comes next, so a pause or a wait still shows where things stand.
+    const upNext = f.categories.filter((c) => c.enabled && c.needsWatching).slice(0, 3);
+    const nextCheck = f.status.code === 'waiting' && f.nextTickAt ? `<span class="hero-next-check">${icon('refresh')} Checking again in ${fmtDur(Math.max(0, f.nextTickAt - Date.now()))}</span>` : '';
+    const nextList = upNext.length
+      ? `<div class="hero-next"><div class="eyebrow">Up next</div>${upNext
+          .map(
+            (c) => `<div class="hero-next-row">${img(c.image, 'hero-next-art', c.name)}<span class="hero-next-name"><b>${esc(c.name)}</b><span>${c.streamCount ? `${c.streamCount} live` : 'nothing live'}</span></span><span class="hero-next-left num">${fmtMin(categoryEta(c))}<small>left</small></span></div>`,
+          )
+          .join('')}${nextCheck}</div>`
+      : '';
     return setHTML(
       hero,
       `<div class="hero-bg" style="${next?.image ? `background-image:url('${esc(next.image)}')` : ''}"></div>
       <div class="hero-empty"><div class="orb" style="color:${f.status.code === 'done' ? 'var(--gold)' : 'var(--muted)'}">${copy[0]}</div>
-      <div style="flex:1"><div class="eyebrow" style="margin-bottom:8px">${f.paused ? 'Paused' : 'Standing by'}</div><h2>${copy[1]}</h2><p>${copy[2]}</p></div>${copy[3]}</div>
+      <div style="flex:1"><div class="eyebrow" style="margin-bottom:8px">${f.paused ? 'Paused' : 'Standing by'}</div><h2>${copy[1]}</h2><p>${copy[2]}</p>${copy[3] ? `<div class="hero-empty-action">${copy[3]}</div>` : ''}</div>${nextList}</div>
       ${noticeHTML(f)}`,
     );
   }
@@ -254,6 +266,8 @@ function renderHero() {
   const allRewards = currentCampaigns().flatMap((c) => c.rewards.filter((r) => r.tracked).map((r) => ({ r, units: c.units })));
   const ordered = [...allRewards.filter((x) => !x.r.claimed), ...allRewards.filter((x) => x.r.claimed)];
   const shown = ordered.slice(0, 3);
+  // One or two rewards get the room three would take: bigger, with when each unlocks.
+  const roomy = shown.length <= 2;
   const more = ordered.length - shown.length;
 
   setHTML(
@@ -281,8 +295,8 @@ function renderHero() {
             <button class="btn sm" data-action="skip" data-tip="Switch to another stream">${icon('skip')} Skip stream</button>
           </div>
         </div>
-        <div class="hero-rewards">
-          ${shown.map(({ r, units }) => rewardLine(r, units)).join('')}
+        <div class="hero-rewards ${roomy ? 'roomy' : ''}">
+          ${shown.map(({ r, units }) => rewardLine(r, units, { roomy, rate: fc?.rate ?? 1 })).join('')}
           ${more > 0 ? `<button class="more-rewards" data-action="side-tab" data-id="queue">+${more} more rewards</button>` : ''}
         </div>
         <div class="hero-side">
@@ -550,7 +564,45 @@ function queuePanel(f) {
   const note = smart ? '<b>Running out first.</b> Rare drops while they’re live.' : '<b>Your order.</b> Drag to rearrange.';
   const toGo = cats.flatMap(trackedRewards).filter((r) => !r.claimed).length;
   return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>${toGo ? `${toGo} reward${toGo > 1 ? 's' : ''} to go · ` : ''}click a category for its drops.</span></p></div>
-    <div class="queue-list">${rows || `<div class="empty">${icon('gift')}${f.categories.length ? 'Every drop is collected. Finished ones are in Done.' : 'No active emote or badge drops right now.'}</div>`}</div>`;
+    <div class="queue-list">${rows || `<div class="empty">${icon('gift')}${f.categories.length ? 'Every drop is collected. Finished ones are in Done.' : 'No active emote or badge drops right now.'}</div>`}</div>
+    ${planStrip(f, cats)}`;
+}
+
+/** A clock time, with the day when it isn't today ("Sat 7:32"). */
+function fmtWhen(t) {
+  const d = new Date(t);
+  return d.toDateString() === new Date().toDateString() ? fmtClock(t) : `${d.toLocaleDateString([], { weekday: 'short' })} ${fmtClock(t)}`;
+}
+
+/**
+ * The queue as a timeline: each live category in order, as long as its time left, ending at the
+ * clock time it should be done (if its streams stay live). Ones with nothing live wait below.
+ */
+function planStrip(f, cats) {
+  const todo = cats.filter((c) => c.enabled && c.needsWatching);
+  const live = todo.filter((c) => c.streamCount);
+  // Nothing live: the rows (Offline) and the hero already say so.
+  if (!live.length) return '';
+  const waiting = todo.length - live.length;
+  let t = Date.now();
+  const segs = live.map((c) => {
+    const mins = Math.max(1, categoryEta(c));
+    t += mins * MIN;
+    return { c, mins, to: t };
+  });
+  const total = segs.reduce((n, x) => n + x.mins, 0) || 1;
+  const grow = (x) => Math.max(x.mins / total, 0.12).toFixed(3);
+  const bar = segs
+    .map(
+      (x) => `<div class="plan-seg ${f.current?.categoryId === x.c.id ? 'now' : ''}" style="flex:${grow(x)}" data-tip="${esc(x.c.name)}: ${fmtMin(x.mins)} left · done ${fmtWhen(x.to)}">
+        ${img(x.c.image, 'plan-art', x.c.name)}<span>${esc(x.c.name)}</span></div>`,
+    )
+    .join('');
+  const ticks = segs.map((x) => `<span style="flex:${grow(x)}">${fmtWhen(x.to)}</span>`).join('');
+  return `<div class="plan">
+    <div class="plan-head"><span class="eyebrow">Plan</span><span class="card-sub">done about ${fmtWhen(t)} if streams stay live${waiting ? `, then ${waiting === 1 ? 'the offline one' : `the ${waiting} offline ones`} once live` : ''}</span></div>
+    <div class="plan-bar">${bar}</div><div class="plan-ticks">${ticks}</div>
+  </div>`;
 }
 
 const fmtDate = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -901,6 +953,9 @@ function toast({ title, body, kind = '', image }) {
   // Bottom right of the dashboard, clear of the docked stream (and of the charts on the left).
   const host = $('#toasts');
   host.style.right = `${Math.max(24, innerWidth - popupWall(innerHeight - 220, innerHeight) + 24)}px`;
+  // Above the Queue's plan when it's showing, in the space over it.
+  const plan = document.querySelector('#side .plan')?.getBoundingClientRect();
+  host.style.bottom = plan?.height ? `${Math.max(24, innerHeight - plan.top + 12)}px` : '';
   host.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity .3s, transform .3s';

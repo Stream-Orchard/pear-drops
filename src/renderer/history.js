@@ -109,9 +109,7 @@ function activityChart(activity, width, height) {
   const top = Math.max(hourly ? 60 : 30, ...list.map((d) => d.watched), ...list.map((d) => d.credited));
   // An hour holds 60 minutes and a day 24 hours: the scale never needs more.
   const nice = hourly ? [60, 90, 120].find((n) => n >= top) ?? top : [30, 60, 120, 180, 240, 360, 480, 600, 720, 960, 1440].find((n) => n >= top) ?? 1440;
-  // A few days sit at the left at a steady width, rather than spread across the chart.
-  const slots = hourly ? list.length : Math.max(list.length, 14);
-  const bw = w / slots;
+  const bw = w / list.length;
   const y = (v) => pad.t + h - (Math.min(v, nice) / nice) * h;
   const grid = [0, 0.5, 1]
     .map((f) => {
@@ -127,7 +125,8 @@ function activityChart(activity, width, height) {
     .map((d, i) => {
       const t = d.t ?? d.day;
       const x = pad.l + i * bw;
-      const inner = Math.max(3, Math.min(hourly ? 18 : 22, bw * 0.62));
+      // Bars spread across the chart, never wider than a bar should look.
+      const inner = Math.max(3, Math.min(hourly ? 18 : 34, bw * 0.55));
       const cx = x + bw / 2 - inner / 2;
       const current = hourly ? t === nowHour.getTime() : new Date(t).toDateString() === new Date().toDateString();
       const when = hourly ? `${fmtDay(t)} ${fmtHour(new Date(t).getHours())}` : fmtDay(t);
