@@ -2,7 +2,14 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.0 (current)
+## 0.1.1 (current)
+- A social preview image for the repo
+- Fix a flaky startup cache test on Windows
+- Reopening the tray popover no longer rings the Pause button
+- Installs no longer leave a change in package-lock.json
+- A stream ending no longer opens Kick's player in your browser
+
+## 0.1.0
 - First version: collects Kick emote and badge drops with Kick's own player and chat (muted at the window), claims each reward the moment it unlocks, and moves on between categories
 - Drop queue: drag to reorder, or let Smart order sort it, watching what runs out of time first and catching rarely live drops while they're on (Settings › Farming sets how much that counts)
 - Live dashboard with a forecast chart, live monitor, ETAs and session stats, sized to fit a maximized window
