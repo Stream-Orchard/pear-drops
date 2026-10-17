@@ -328,7 +328,8 @@ function streamPage(slug, eventSeconds, mode = 'page') {
   <script>
   const C=${chat};const hue=${c.hue};const glyph=${JSON.stringify(c.glyph)};const name=${JSON.stringify(c.username)};
   const cv=document.createElement('canvas');cv.width=960;cv.height=540;const g=cv.getContext('2d');let t=0;
-  function draw(){t+=1/30;const w=960,h=540;const gr=g.createLinearGradient(0,0,w,h);gr.addColorStop(0,'hsl('+(hue+Math.sin(t/3)*20)+',70%,32%)');gr.addColorStop(1,'hsl('+(hue+80)+',70%,10%)');g.fillStyle=gr;g.fillRect(0,0,w,h);
+  let frozen=false,ended=false;
+  function draw(){if(frozen){requestAnimationFrame(draw);return}if(ended){g.fillStyle='#0b0d10';g.fillRect(0,0,960,540);g.fillStyle='#8a929c';g.font='bold 34px -apple-system,sans-serif';g.textAlign='center';g.fillText(name+' is offline',480,280);requestAnimationFrame(draw);return}t+=1/30;const w=960,h=540;const gr=g.createLinearGradient(0,0,w,h);gr.addColorStop(0,'hsl('+(hue+Math.sin(t/3)*20)+',70%,32%)');gr.addColorStop(1,'hsl('+(hue+80)+',70%,10%)');g.fillStyle=gr;g.fillRect(0,0,w,h);
   for(let i=0;i<14;i++){const x=(i*97+t*60*(1+i%3))%(w+200)-100,y=h*0.55+Math.sin(t*1.5+i)*140;g.globalAlpha=.12;g.fillStyle='#fff';g.beginPath();g.arc(x,y,30+i*4,0,7);g.fill();}
   g.globalAlpha=1;g.font='170px serif';g.textAlign='center';g.fillText(glyph,w/2+Math.sin(t)*120,h/2+40+Math.cos(t*1.3)*30);
   g.fillStyle='rgba(0,0,0,.45)';g.fillRect(24,h-74,330,50);g.fillStyle='#fff';g.font='bold 26px -apple-system,sans-serif';g.textAlign='left';g.fillText(name+' · live',42,h-40);
@@ -341,6 +342,11 @@ function streamPage(slug, eventSeconds, mode = 'page') {
   // Kick's player reports watch time about every two minutes.
   const fire=()=>window.postMessage({__pd:true,kind:'watch-event'},location.origin);
   if(${JSON.stringify(mode)}!=='chat'){window.__demoWatchEvent=fire;setTimeout(fire,4000);setInterval(fire,${eventSeconds * 1000});}
+  // For tests and the trailer: the picture freezes (the video says it plays, but doesn't move), the
+  // stream ends (the video's ended event), or Kick's realtime socket says something about the stream.
+  window.__demoFreeze=(on)=>{frozen=on;if(on){const at=v.currentTime;Object.defineProperty(v,'currentTime',{configurable:true,get:()=>at})}else delete v.currentTime};
+  window.__demoEnd=()=>{ended=true;v.dispatchEvent(new Event('ended'))};
+  window.__demoRealtime=(event,target)=>window.postMessage({__pd:true,kind:'realtime',event,target},location.origin);
   </script></body></html>`;
 }
 
@@ -544,4 +550,4 @@ function createDemo() {
   };
 }
 
-module.exports = { createDemo, CHANNELS, CATEGORIES };
+module.exports = { createDemo, streamPage, CHANNELS, CATEGORIES };

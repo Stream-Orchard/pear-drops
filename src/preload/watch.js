@@ -1,15 +1,38 @@
 // Preload for the docked Kick channel page. It only observes: it counts the watch
-// events Kick's own client sends, reports player state, and nudges the player to
-// keep playing. It never sends anything to Kick itself.
+// events Kick's own client sends, listens for Kick saying the stream stopped or is
+// raiding, reports player state, and nudges the player to keep playing. It never sends
+// anything to Kick itself.
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 function pageHook() {
   if (window.__pdHooked) return;
   window.__pdHooked = true;
   const post = (msg) => window.postMessage({ __pd: true, ...msg }, location.origin);
+  // Kick's realtime socket (the channel page's chat and events): pass on the few events about
+  // the stream itself, never chat. Same as src/preload/chat.js.
+  const heard = new WeakSet();
+  const STREAM_EVENT = /Stop|End|Offline|Raid|Host|MoveTo|LivestreamUpdated|Categor/i;
+  const listen = (socket) => {
+    if (heard.has(socket) || !/platform\.kick\.com|pusher/.test(String(socket.url))) return;
+    heard.add(socket);
+    socket.addEventListener('message', (e) => {
+      for (const line of String(e.data).split('\n')) {
+        try {
+          const m = JSON.parse(line);
+          const event = m.push?.pub?.data?.event ?? m.event;
+          if (typeof event !== 'string' || !STREAM_EVENT.test(event) || /Message|Poll|Pinned|Reward|Gift|Subscription/i.test(event)) continue;
+          let data = m.push?.pub?.data?.data ?? m.data;
+          if (typeof data === 'string') data = JSON.parse(data);
+          const target = data?.hosted?.slug ?? data?.target?.slug ?? data?.slug;
+          post({ kind: 'realtime', event, target: typeof target === 'string' ? target : undefined });
+        } catch {}
+      }
+    });
+  };
   const send = WebSocket.prototype.send;
   WebSocket.prototype.send = function (data) {
     try {
+      listen(this);
       if (typeof data === 'string' && String(this.url).includes('websockets.kick.com')) {
         if (data.includes('tracking.user.watch.livestream')) {
           const message = JSON.parse(data)?.data?.message ?? {};
@@ -39,7 +62,8 @@ if (contextBridge.executeInMainWorld) {
 
 window.addEventListener('message', (event) => {
   if (event.source !== window || !event.data?.__pd) return;
-  ipcRenderer.send('watch:event', { kind: event.data.kind, channelId: event.data.channelId });
+  const { kind, channelId, reason, event: name, target } = event.data;
+  ipcRenderer.send('watch:event', { kind, channelId, reason, event: name, target });
 });
 
 let config = { unmutePlayer: true };
@@ -67,12 +91,23 @@ function declinePrompts() {
   }
 }
 
+// The video's own events, reported straight away rather than at the next 5 s check: one that
+// ended or failed is a sign the stream is over.
+for (const type of ['ended', 'error']) {
+  document.addEventListener(type, (e) => e.target instanceof HTMLVideoElement && ipcRenderer.send('watch:event', { kind: 'hint', reason: `video-${type}` }), true);
+}
+for (const type of ['waiting', 'playing', 'pause']) document.addEventListener(type, (e) => e.target instanceof HTMLVideoElement && report(), true);
+
 setInterval(() => {
   declinePrompts();
   // Mature-content gate: Kick shows a "Start watching" button on some channels.
   const mature = document.querySelector('[data-testid="mature"]');
   if (mature) mature.click();
+  report();
+}, 5000);
 
+/** Tells the app how the player's video is doing (and nudges a paused one to play). */
+function report() {
   const video = [...document.querySelectorAll('video')].sort((a, b) => b.clientWidth - a.clientWidth)[0];
   if (!video) {
     ipcRenderer.send('watch:event', { kind: 'video', video: null });
@@ -105,4 +140,4 @@ setInterval(() => {
       height: video.videoHeight,
     },
   });
-}, 5000);
+}

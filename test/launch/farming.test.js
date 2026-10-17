@@ -302,3 +302,54 @@ test("a stream ending sends the player to its offline screen: it moves on to the
   const opened = await main(() => global.pdOpened);
   assert.deepEqual(opened.filter((u) => /player\.kick\.com/.test(u)), [], 'the offline screen never opens in the browser');
 });
+
+for (const [how, spotted] of [
+  ['video', /spotted: the video ended/],
+  ['kick', /spotted: kick said the stream stopped/],
+]) {
+  test(`a stream that ends (${how === 'video' ? 'its video ends' : 'Kick says so'}) is shown at once, and the app moves on in seconds`, async () => {
+    const main = (fn, arg) => a.app.evaluate(fn, arg);
+    await main(() => {
+      global.pdDebug.farmer.lastQuickCheckAt = 0;
+      global.pdDebug.farmer.blacklist.clear();
+      global.pdDemo.api.offline.clear();
+    });
+    const before = await main(() => global.pdDebug.farmer.current?.slug);
+    assert.ok(before, 'watching a stream');
+    const t0 = Date.now();
+    await main((_e, h) => global.pdDemo.endStream(h), how);
+    const notice = await until(a.win, (since) => { const n = document.querySelector('#hero .hero-notice'); return Number(n?.dataset.at) >= since && n.querySelector('span').textContent; }, 'the notice on the dashboard', 5000, t0);
+    assert.match(notice, /stream went offline, now watching /);
+    assert.ok(Date.now() - t0 < 5000, `shown and moved on in ${Date.now() - t0} ms`);
+    const now = await main(() => global.pdDebug.farmer.current?.slug);
+    assert.ok(now && now !== before, `moved on from ${before} (now ${now})`);
+    const ended = await main((_e, slug) => global.pdDebug.farmer.history.events.filter((e) => e.type === 'offline' && e.slug === slug).map((e) => e.text), before);
+    assert.ok(ended.some((t) => spotted.test(t)), JSON.stringify(ended));
+  });
+}
+
+test('a frozen picture shows on the dashboard and tray within seconds, and is checked with Kick', async () => {
+  const main = (fn, arg) => a.app.evaluate(fn, arg);
+  await main(() => {
+    global.pdDebug.farmer.lastQuickCheckAt = 0;
+    global.pdDemo.api.offline.clear();
+  });
+  await until(a.win, () => document.querySelector('#stats .player-state')?.textContent === 'Playing', 'the player to play', 15000);
+  await main(() => global.pdDemo.freeze(true));
+  const chip = await until(a.win, () => document.querySelector('#hero .chip.health')?.textContent, 'the health chip', 30000);
+  assert.match(chip, /Frozen|Checking/);
+  await until(a.win, () => /Frozen|Checking/.test(document.querySelector('#stats .player-state')?.textContent ?? ''), 'the player card', 5000);
+  await a.demo((d) => d.openTray());
+  let pop;
+  for (let i = 0; i < 40 && !pop; i++) {
+    pop = a.app.windows().find((x) => x.url().endsWith('tray.html'));
+    if (!pop) await a.win.waitForTimeout(150);
+  }
+  await until(pop, () => /Frozen|Checking/.test(document.querySelector('.tray-stream .chip.health')?.textContent ?? ''), 'the tray chip', 10000);
+  assert.match(await pop.textContent('.tray-head .status-pill'), /Frozen|Checking/, 'the pill says it in a word');
+  // Asked Kick without waiting for the refresh (checks are at least 15 s apart).
+  for (let i = 0; i < 100 && !(await main(() => global.pdDebug.farmer.log.some((e) => /The picture froze on .*, checking with Kick/.test(e.text)))); i++) await a.win.waitForTimeout(250);
+  assert.ok(await main(() => global.pdDebug.farmer.log.some((e) => /The picture froze on .*, checking with Kick/.test(e.text))), 'checked with Kick');
+  await main(() => global.pdDemo.freeze(false));
+  await a.demo((d) => d.openTray());
+});

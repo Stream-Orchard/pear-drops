@@ -25,6 +25,35 @@ function fmtAgo(t) {
   return `${fmtDur(d)} ago`;
 }
 
+/**
+ * How the stream being watched is doing, for the player chips on the dashboard and tray:
+ * { state, label, tone: good | warn | bad, foot }, or null when nothing is watched.
+ */
+function streamHealth(f) {
+  const h = f?.health;
+  if (!f?.current || !h) return null;
+  const v = f.player?.video;
+  const look = {
+    playing: ['Playing', 'good', `${v?.height ? `${v.height}p · ` : ''}window muted`],
+    loading: ['Loading', 'warn', 'starting the player'],
+    buffering: ['Buffering', 'warn', 'waiting for video'],
+    paused: ['Paused', 'bad', 'will resume itself'],
+    frozen: ['Frozen', 'bad', h.text],
+    checking: ['Checking', 'warn', h.text],
+  }[h.state] ?? ['Loading', 'warn', h.text ?? ''];
+  return { state: h.state, label: look[0], tone: look[1], foot: look[2] };
+}
+
+/** What just happened to the stream (it ended, a raid, a reload), with where the app went next. */
+function streamNotice(f) {
+  const n = f?.notice;
+  if (!n) return null;
+  const moved = f.current && n.slug && f.current.slug !== n.slug;
+  const next = moved ? `, now watching ${f.current.username}` : !f.current && !f.paused ? ', looking for another stream' : '';
+  const icon = { ended: 'power', raid: 'skip', reload: 'reload', switch: 'skip' }[n.kind] ?? 'alert';
+  return { kind: n.kind, icon, text: `${n.text}${next}`, at: n.at };
+}
+
 function fmtCount(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 10_000) return `${Math.round(n / 1000)}K`;

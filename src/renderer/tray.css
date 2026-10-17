@@ -138,6 +138,50 @@ body.tray-body {
   color: var(--gold);
 }
 
+.tray-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: 11px;
+  background: rgba(251, 191, 75, 0.08);
+  border: 1px solid rgba(251, 191, 75, 0.25);
+  color: var(--amber);
+  font-size: 12px;
+  animation: notice-in 0.35s var(--ease);
+}
+.tray-notice span {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+}
+.tray-notice small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tray-notice .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.tray-notice.reload {
+  background: rgba(110, 168, 255, 0.08);
+  border-color: rgba(110, 168, 255, 0.25);
+  color: var(--blue);
+}
+/* (More specific than the .who span line under the name, which would grey it out.) */
+.tray-stream .who b .chip.health {
+  height: 18px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.tray-stream .who b .chip.health.red {
+  color: var(--red);
+}
+.tray-stream .who b .chip.health.amber {
+  color: var(--amber);
+}
 .tray-alert {
   display: flex;
   gap: 10px;

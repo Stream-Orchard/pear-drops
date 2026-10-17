@@ -1,4 +1,4 @@
-/* global previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, setHTML, img, applyFont */
+/* global previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 
@@ -12,10 +12,26 @@ function primary(f) {
   return list.sort((a, b) => (f.forecast[a.id]?.nextMinutes ?? 1e9) - (f.forecast[b.id]?.nextMinutes ?? 1e9))[0] ?? null;
 }
 
+/** The status pill: a word or two. The card under it has the whole story, so it isn't said twice. */
 function statusLine(f) {
-  if (f.conflict) return ['conflict', 'Another stream is taking your credit'];
-  const map = { farming: 'farming', paused: 'paused', waiting: 'waiting', done: 'done', error: 'error', starting: 'waiting' };
-  return [map[f.status.code] ?? 'waiting', f.status.message];
+  if (f.conflict) return ['conflict', 'Credit taken'];
+  const health = streamHealth(f);
+  if (health && f.status.code === 'farming' && health.state !== 'playing') return [health.tone === 'bad' ? 'error' : 'waiting', health.label];
+  const map = { farming: ['farming', 'Farming'], paused: ['paused', 'Paused'], waiting: ['waiting', 'Waiting'], done: ['done', 'All done'], error: ['error', 'Offline'], starting: ['waiting', 'Starting'] };
+  return map[f.status.code] ?? ['waiting', 'Waiting'];
+}
+
+/** The live dot by the streamer's name, or what's wrong with the stream right now. */
+function healthMark(f) {
+  const h = streamHealth(f);
+  if (!h || h.state === 'playing') return '<span class="live-dot"></span>';
+  return `<span class="chip ${h.tone === 'bad' ? 'red' : 'amber'} health">${h.state === 'checking' || h.state === 'loading' ? '<span class="spinner xs"></span>' : icon('alert')}${h.label}</span>`;
+}
+
+/** What just happened to the stream (it ended, a raid, a reload), for a minute. */
+function noticeLine(f) {
+  const n = streamNotice(f);
+  return n ? `<div class="tray-notice ${n.kind}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>` : '';
 }
 
 function render() {
@@ -44,7 +60,7 @@ function render() {
 
   const now = cur
     ? `<div class="tray-now">
-        <div class="tray-stream">${img(cur.avatar, 'avatar')}<div class="who"><b>${esc(cur.username)} <span class="live-dot"></span></b><span>${esc(cur.categoryName)} · ${fmtCount(cur.viewers)} watching</span></div></div>
+        <div class="tray-stream">${img(cur.avatar, 'avatar')}<div class="who"><b>${esc(cur.username)} ${healthMark(f)}</b><span>${esc(cur.categoryName)} · ${fmtCount(cur.viewers)} watching</span></div></div>
         <div class="tray-progress">
           ${progressRing(frac, { size: 96, stroke: 8, label: `${Math.floor(frac * 100)}%`, sub: p ? `${p.units}/${p.targetUnits}m` : '' })}
           <div class="tray-eta">
@@ -69,7 +85,8 @@ function render() {
   setHTML(
     root,
     `<div class="tray-head">${brandMark(24)}<b>Pear <span>Drops</span></b><span class="spacer"></span>
-      <span class="status-pill ${tone}">${tone === 'farming' ? '<span class="live-dot green"></span>' : '<span class="status-dot"></span>'}<span class="label">${esc(tone === 'farming' ? 'Farming' : text)}</span></span></div>
+      <span class="status-pill ${tone}">${tone === 'farming' ? '<span class="live-dot green"></span>' : '<span class="status-dot"></span>'}<span class="label">${esc(text)}</span></span></div>
+    ${noticeLine(f)}
     ${f.conflict ? `<div class="tray-alert">${icon('alert')}<span><b>Close other Kick streams.</b> ${f.eventsSinceCredit} watch events got no credit.</span></div>` : ''}
     ${now}
     <div class="tray-stats">

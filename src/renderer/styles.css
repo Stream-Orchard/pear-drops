@@ -768,6 +768,61 @@ button {
 .hero-head .chip {
   align-self: center;
 }
+/* What just happened to the stream (it ended, a raid, a reload): over the hero's top right
+   corner for a minute, so it doesn't move anything. */
+.hero-notice {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(520px, 55%);
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(12, 14, 17, 0.9);
+  border: 1px solid rgba(251, 191, 75, 0.35);
+  color: var(--amber);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  animation: notice-in 0.35s var(--ease);
+}
+.hero-notice span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.hero-notice small {
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.hero-notice .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.hero-notice.reload {
+  border-color: rgba(110, 168, 255, 0.35);
+  color: var(--blue);
+}
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.chip.health .spinner.xs,
+.spinner.xs {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  border-top-color: currentColor;
+}
 .hero-grid {
   display: grid;
   grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) auto;

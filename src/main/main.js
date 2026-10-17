@@ -365,6 +365,32 @@ function setupDemo() {
       while (farmer.ticking) await new Promise((r) => setTimeout(r, 50));
       await farmer.tick({ force: true });
     },
+    /**
+     * The stream being watched ends. how: 'video' (the player's video ends), 'kick' (Kick's realtime
+     * socket says so, heard by the chat), 'player' (the player goes to its offline screen) or
+     * 'quiet' (no sign at all: the next refresh finds it).
+     */
+    endStream: async (how = 'video') => {
+      const slug = farmer.current?.slug;
+      if (!slug) return null;
+      demo.api.offline.add(slug);
+      const run = (wc, js) => wc && !wc.isDestroyed() && wc.executeJavaScript(js).catch(() => {});
+      const page = watcher.mode === 'full' ? watcher.view?.webContents : watcher.chatView?.webContents;
+      if (how === 'video') run(watcher.view?.webContents, 'window.__demoEnd && window.__demoEnd()');
+      if (how === 'kick') run(page, "window.__demoRealtime && window.__demoRealtime('App\\\\Events\\\\StopStreamBroadcast')");
+      if (how === 'player') run(watcher.view?.webContents, `location.href = 'https://player.kick.com/${slug}/offline'`);
+      return slug;
+    },
+    /** The stream being watched raids another channel: the player goes there. */
+    raid: async (to) => {
+      const slug = farmer.current?.slug;
+      if (!slug) return null;
+      demo.api.offline.add(slug);
+      await watcher.view?.webContents.executeJavaScript(`location.href = 'https://player.kick.com/${to}'`).catch(() => {});
+      return slug;
+    },
+    /** The player's picture freezes (or moves again). */
+    freeze: (on = true) => watcher.view?.webContents.executeJavaScript(`window.__demoFreeze && window.__demoFreeze(${!!on})`).catch(() => {}),
     /** Take a stand-in channel offline (or back online) and re-check. */
     offline: async (slug, on = true) => {
       on ? demo.api.offline.add(slug) : demo.api.offline.delete(slug);

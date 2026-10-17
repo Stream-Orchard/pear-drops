@@ -12,7 +12,17 @@ const RARITY_WEIGHT = { off: 0, some: 0.5, strong: 1 };
 const livePct = (cat) => `live ${Math.round(cat.liveRate * 100)}%`;
 const NOMINAL_RATE = 1; // progress units (minutes) per minute watched
 const HISTORY_MS = 6 * 60 * MIN;
-const PLAYER_STUCK_MS = 3 * MIN;
+// The player's video not moving: past PLAYER_START_MS from loading, a reload after PLAYER_STUCK_MS.
+const PLAYER_START_MS = MIN;
+const PLAYER_STUCK_MS = MIN;
+// A picture that hasn't moved this long, while the video says it's playing, shows as frozen.
+const FROZEN_MS = 15_000;
+// Signs the stream may be over (the video ended, Kick said so, the picture froze) ask Kick
+// straight away instead of at the next refresh, at most this often.
+const QUICK_CHECK_MS = 15_000;
+// How long what just happened to the stream (it ended, a raid, a reload) shows on the dashboard and tray.
+const NOTICE_MS = MIN;
+const STUCK_REASON = { frozen: 'The picture froze', buffering: 'The video stopped loading', paused: 'The video paused', loading: 'The video never started' };
 const MAX_CRASHES = 3; // within 10 minutes, before switching away
 const MAX_STUCK_RELOADS = 2;
 const ELIGIBLE_RECHECK_MS = 5 * MIN;
@@ -75,6 +85,8 @@ class Farmer extends EventEmitter {
     this.lastAlertAt = null;
     this.eventsSinceCredit = 0;
     this.status = { code: 'starting', message: 'Loading drops…' };
+    this.checking = null; // what a quick check with Kick is looking into
+    this.notice = null; // { kind, text, slug, at }: what just happened to the stream
     this.samples = []; // { t, units: { [campaignId]: n } }
     this.timeline = []; // { t, type: 'sent' | 'credit' | 'switch' | 'claim', ... }
     this.log = [];
@@ -98,9 +110,13 @@ class Farmer extends EventEmitter {
       }
       this.changed();
     });
-    watcher.on('status', () => this.changed());
+    watcher.on('status', () => {
+      this.watchPlayer(Date.now());
+      this.changed();
+    });
     watcher.on('crashed', ({ reason }) => this.handleCrash(reason));
     watcher.on('left', (moved) => this.handleLeft(moved));
+    watcher.on('hint', ({ text }) => this.checkNow(text));
   }
 
   // ------------------------------------------------------------------ history
@@ -819,7 +835,11 @@ class Farmer extends EventEmitter {
       if (!reason) return;
       const quietMin = Math.round((now - cur.lastProgressAt) / MIN);
       if (reason.kind === 'stall') this.record('stall', { ...this.streamCtx(cur), minutes: quietMin, text: `${reason.text} on ${cur.username}`, action: reason.reload ? 'reload' : 'switch' });
-      if (reason.kind === 'offline') this.record('offline', { ...this.streamCtx(cur), text: `${cur.username}: ${reason.text}` });
+      if (reason.kind === 'offline') {
+        const spotted = this.checking ? ` (spotted: ${this.checking.toLowerCase()})` : '';
+        this.record('offline', { ...this.streamCtx(cur), text: `${cur.username}: ${reason.text}${spotted}` });
+        this.setNotice('ended', `${cur.username}: ${reason.text.toLowerCase()}`, cur);
+      }
       if (reason.kind === 'category' || reason.kind === 'ineligible') {
         this.record('decision', { ...this.streamCtx(cur), text: `Left ${cur.username}: ${reason.text.toLowerCase()}; skipping it for ${reason.block / MIN} min` });
       }
@@ -843,9 +863,11 @@ class Farmer extends EventEmitter {
         cur.lastProgressAt = reason.resetTo ?? now;
         this.addLog('warn', `${reason.text}, reloading ${cur.username}`);
         this.record('reload', { ...this.streamCtx(cur), reason: reason.text, text: `Reloaded ${cur.username}: ${reason.text}` });
+        this.setNotice('reload', `Reloaded ${cur.username}: ${reason.text.toLowerCase()}`, cur);
         this.watcher.reload();
         return;
       }
+      if (reason.kind !== 'offline') this.setNotice('switch', `Left ${cur.username}: ${reason.text.toLowerCase()}`, cur);
       this.addLog('switch', `${reason.text}, leaving ${cur.username}`);
       if (reason.block) this.blacklist.set(cur.slug, now + reason.block);
       this.stopWatching(reason.text);
@@ -883,7 +905,8 @@ class Farmer extends EventEmitter {
     if (info?.is_banned) return { kind: 'offline', text: 'Channel is banned', block: 6 * 60 * MIN };
     if (info) {
       const live = info.livestream?.is_live;
-      if (!live) return { kind: 'offline', text: 'Stream went offline' };
+      // Skipped a while, as after a raid: the stream list can still have it for a few minutes.
+      if (!live) return { kind: 'offline', text: 'Stream went offline', block: 10 * MIN };
       const categories = info.livestream.categories?.map((c) => c.id) ?? [];
       cur.title = info.livestream.session_title ?? cur.title;
       cur.viewers = info.livestream.viewer_count ?? cur.viewers;
@@ -941,7 +964,7 @@ class Farmer extends EventEmitter {
 
     const ws = this.watcher.status;
     const stuckSince = Math.max(ws.lastAdvanceAt ?? 0, cur.lastReloadAt ?? 0);
-    if (ws.loadedAt && now - ws.loadedAt > 2 * MIN && now - stuckSince > PLAYER_STUCK_MS) {
+    if (ws.loadedAt && now - ws.loadedAt > PLAYER_START_MS && now - stuckSince > PLAYER_STUCK_MS) {
       cur.lastReloadAt = now;
       cur.stuckReloads = (cur.stuckReloads ?? 0) + 1;
       const alternatives = (cat?.streams ?? []).some((s) => !s.blocked && s.slug !== cur.slug);
@@ -1098,6 +1121,7 @@ class Farmer extends EventEmitter {
     cur.crashes = (cur.crashes ?? []).filter((t) => now - t < 10 * MIN).concat(now);
     if (cur.crashes.length >= MAX_CRASHES) {
       this.addLog('switch', `${cur.username} failed ${cur.crashes.length} times (${reason}), switching stream`);
+      this.setNotice('switch', `${cur.username} kept failing (${reason})`, cur);
       this.blacklist.set(cur.slug, now + 30 * MIN);
       this.stopWatching(`Kept failing (${reason})`);
       this.buildModel();
@@ -1105,6 +1129,7 @@ class Farmer extends EventEmitter {
       return;
     }
     this.record('crash', { ...this.streamCtx(cur), reason, text: `Player problem on ${cur.username}: ${reason}` });
+    this.setNotice('reload', `Player problem on ${cur.username} (${reason}), reloading`, cur);
     const delay = 5000 * cur.crashes.length;
     this.addLog('warn', `Player problem on ${cur.username} (${reason}), retrying in ${delay / 1000}s`);
     clearTimeout(this.crashTimer);
@@ -1120,10 +1145,77 @@ class Farmer extends EventEmitter {
     const text = `${cur.username} ended the stream${to ? ` and sent viewers to ${to}` : ''}`;
     this.addLog('switch', `${text}, switching stream`);
     this.record('offline', { ...this.streamCtx(cur), text });
+    this.setNotice(to ? 'raid' : 'ended', to ? `${cur.username} raided ${to}` : `${cur.username} ended the stream`, cur);
     this.blacklist.set(cur.slug, Date.now() + 10 * MIN);
     this.stopWatching('Stream ended');
     this.buildModel();
     this.pickStream().finally(() => this.changed());
+  }
+
+  /** What just happened to the stream, for the dashboard and tray (and desktop notifications). */
+  setNotice(kind, text, cur = this.current) {
+    this.notice = { kind, text, slug: cur?.slug ?? null, at: Date.now() };
+    this.emit('notice', this.notice);
+    this.changed();
+  }
+
+  /**
+   * The page saw a sign the stream may be over or stuck (the video ended or failed, Kick
+   * said the stream stopped or is raiding, the picture froze): ask Kick now rather than
+   * at the next refresh. A false alarm costs one request.
+   */
+  async checkNow(why) {
+    const cur = this.current;
+    const now = Date.now();
+    if (!this.running || this.paused || !cur || this.checking) return;
+    if (now - (this.lastQuickCheckAt ?? 0) < QUICK_CHECK_MS) return;
+    this.lastQuickCheckAt = now;
+    this.checking = why;
+    if (cur.checkedFor !== why) this.addLog('info', `${why} on ${cur.username}, checking with Kick`);
+    cur.checkedFor = why;
+    this.changed();
+    // A refresh already under way decides with fresh data anyway.
+    while (this.ticking) await new Promise((r) => setTimeout(r, 100));
+    if (this.current !== cur || !this.running || this.paused) {
+      this.checking = null;
+      return;
+    }
+    this.ticking = true;
+    try {
+      await this.decide();
+    } catch (err) {
+      this.addLog('warn', `Could not check ${cur.username}: ${err.message}`);
+    } finally {
+      this.ticking = false;
+      this.checking = null;
+      this.changed();
+    }
+  }
+
+  /** On each report from the player: a video that stopped moving gets checked (and reloaded) without waiting for the refresh. */
+  watchPlayer(now) {
+    const cur = this.current;
+    const ws = this.watcher.status;
+    if (!cur || this.paused || !ws.loadedAt) return;
+    const health = this.health(now);
+    const stuckSince = Math.max(ws.lastAdvanceAt ?? 0, cur.lastReloadAt ?? 0, ws.loadedAt);
+    if (!health || health.state === 'playing' || health.state === 'checking' || now - stuckSince <= FROZEN_MS) return;
+    this.checkNow(STUCK_REASON[health.state]);
+  }
+
+  /** How the stream is doing right now, as the player chip on the dashboard and tray shows it. */
+  health(now = Date.now()) {
+    const cur = this.current;
+    if (!cur || this.paused) return null;
+    if (this.checking) return { state: 'checking', text: `${this.checking}, checking with Kick…` };
+    const ws = this.watcher.status;
+    const v = ws.video;
+    if (!ws.loadedAt || !v) return { state: 'loading', text: 'Loading the stream…' };
+    if (v.paused) return { state: 'paused', text: 'The video is paused' };
+    if (v.readyState < 3) return { state: 'buffering', text: 'The video is buffering' };
+    const movedAt = Math.max(ws.lastAdvanceAt ?? 0, ws.loadedAt);
+    if (now - movedAt > FROZEN_MS) return { state: 'frozen', text: `The picture hasn't moved for ${Math.round((now - movedAt) / 1000)}s` };
+    return { state: 'playing', text: 'Playing' };
   }
 
   /** After the computer sleeps the page and socket are usually dead. */
@@ -1231,6 +1323,12 @@ class Farmer extends EventEmitter {
         tooltip = `Pear Drops · ${primary.name} ${title}${eta ? ` · next reward in ${eta}` : ''} · watching ${cur.username}`;
       }
     }
+    // A stream in trouble (frozen, being checked) shows at once, before the app moves on.
+    const health = cur && !this.paused ? this.health() : null;
+    if (health && !conflict && ['checking', 'frozen'].includes(health.state)) {
+      tone = 'waiting';
+      tooltip = `Pear Drops · ${cur.username}: ${health.text}`;
+    }
     if (conflict) tooltip = 'Pear Drops · Another Kick stream is taking your drop credit';
     return { tone, fraction, title: conflict ? '!' : title, tooltip };
   }
@@ -1267,6 +1365,8 @@ class Farmer extends EventEmitter {
         manual: cur.manual,
       },
       player: this.watcher.status,
+      health: this.health(),
+      notice: this.notice && Date.now() - this.notice.at < NOTICE_MS ? this.notice : null,
       categories: this.model.categories.map((cat) => ({
         ...cat,
         streams: cat.streams.slice(0, 60),
