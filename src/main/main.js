@@ -1,0 +1,617 @@
+const { app, BrowserWindow, ipcMain, shell, session, Notification, powerSaveBlocker, powerMonitor, nativeImage, screen, protocol } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const { KickApi, PARTITION, KICK, assetUrl } = require('./kick-api');
+const { DropArchive, SCHEME: IMAGE_SCHEME } = require('./archive');
+const { Watcher } = require('./watcher');
+const { Farmer } = require('./farmer');
+const { Store } = require('./store');
+const { setupSecurity, guardContents } = require('./security');
+const { createDemo } = require('./demo');
+const { TrayController } = require('./tray');
+const { History } = require('./history');
+const { Updates, parseChangelog } = require('./updates');
+
+// Errors are logged, never shown as Electron's own error dialog.
+process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
+process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+
+const DEMO = !!process.env.KDF_DEMO;
+const HIDDEN = !!process.env.KDF_TEST_HIDDEN;
+const demo = DEMO ? createDemo() : null;
+
+// Dev copies and tests run against their own data folder.
+if (process.env.KDF_DEV_DATA) app.setPath('userData', process.env.KDF_DEV_DATA);
+// Renamed from Kick Drops: bring its settings, history and saved drops over once.
+else {
+  const { carryOver, OLD_NAME } = require('./rename');
+  const moved = carryOver(path.join(app.getPath('appData'), OLD_NAME), app.getPath('userData'));
+  if (moved.length) console.log(`Carried over from ${OLD_NAME}: ${moved.join(', ')}`);
+}
+
+// Keep the hidden/docked player running at full speed, and let it autoplay with
+// sound (the window itself is muted, so nothing is audible).
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// Tests: no window ever shows or takes focus, and nothing makes a sound.
+if (process.env.KDF_TEST_HIDDEN) app.commandLine.appendSwitch('mute-audio');
+// Video captures render at a fixed scale (e.g. 1440×900 at 1.3333 = 1920×1200 frames).
+if (process.env.KDF_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', process.env.KDF_SCALE);
+
+// The app's stored copies of drop images (see archive.js), shown like any web image.
+protocol.registerSchemesAsPrivileged([{ scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } }]);
+
+// Present as plain Chrome rather than "Electron/x kick-drops-client/y".
+app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|kick-drops-client|Kick Drops|Pear Drops)\/\S+/g, '');
+
+let mainWindow = null;
+let loginWindow = null;
+let store, api, watcher, farmer;
+let auth = { status: 'checking', user: null };
+let powerBlocker = null;
+let security = { encryption: 'unknown', setForget: () => {} };
+let tray = null;
+let history = null;
+let archive = null;
+let updates = null;
+let quitting = false;
+// The app's own folder (package.json, CHANGELOG.md): the source folder, or inside the installed app.
+const APP_ROOT = path.join(__dirname, '..', '..');
+
+function appState() {
+  return {
+    auth,
+    settings: store.get(),
+    security: { encryption: security.encryption },
+    farm: auth.status === 'signed-in' ? farmer.snapshot() : null,
+  };
+}
+
+/** Sends to a window's page unless it (or its page) is already gone, e.g. while quitting. */
+function sendTo(win, channel, payload) {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  win.webContents.send(channel, payload);
+}
+
+function sendState() {
+  if (quitting) return;
+  const state = appState();
+  sendTo(mainWindow, 'state', state);
+  if (tray?.window?.isVisible()) sendTo(tray.window, 'state', state);
+  updateTray();
+}
+
+function updateTray() {
+  if (!tray || quitting) return;
+  const info = auth.status === 'signed-in' ? farmer.trayInfo() : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
+  tray.update(info, { showPercent: store.get().trayPercent });
+}
+
+function showMain() {
+  if (!mainWindow) createMainWindow();
+  if (HIDDEN) return mainWindow.showInactive();
+  if (process.platform === 'darwin') app.dock.show();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function hideToTray() {
+  mainWindow?.hide();
+  if (process.platform === 'darwin') app.dock.hide();
+}
+
+function setAuth(next) {
+  auth = { ...auth, ...next };
+  sendState();
+}
+
+function notify(title, body) {
+  if (HIDDEN) return;
+  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
+}
+
+// Opens maximized the first time, then wherever the user last left it.
+function windowState() {
+  const saved = store.get().window;
+  if (!saved?.bounds) return { maximized: true, bounds: null };
+  const visible = screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    const b = saved.bounds;
+    return b.x < a.x + a.width - 100 && b.x + b.width > a.x + 100 && b.y < a.y + a.height - 100 && b.y + b.height > a.y;
+  });
+  return visible ? saved : { maximized: true, bounds: null };
+}
+
+function rememberWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized() || !mainWindow.isVisible()) return;
+  const maximized = mainWindow.isMaximized();
+  const previous = store.get().window;
+  store.set({ window: { maximized, bounds: maximized ? previous?.bounds ?? mainWindow.getNormalBounds() : mainWindow.getBounds() } });
+}
+
+function createMainWindow() {
+  const saved = windowState();
+  mainWindow = new BrowserWindow({
+    width: saved.bounds?.width ?? 1480,
+    height: saved.bounds?.height ?? 940,
+    ...(saved.bounds ? { x: saved.bounds.x, y: saved.bounds.y } : {}),
+    minWidth: 1120,
+    minHeight: 700,
+    title: 'Pear Drops',
+    icon: path.join(__dirname, '..', 'renderer', 'assets', 'icon.png'),
+    backgroundColor: '#0a0b0d',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 18, y: 20 },
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload', 'app.js'),
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  // The app's own page plays the stall alert (muted only in tests).
+  mainWindow.webContents.setAudioMuted(HIDDEN);
+  mainWindow.once('ready-to-show', () => {
+    if (HIDDEN) {
+      // Tests: painted and drivable, but invisible and never focused.
+      mainWindow.setOpacity(0);
+      mainWindow.setIgnoreMouseEvents(true);
+      mainWindow.showInactive();
+      return;
+    }
+    if (saved.maximized && !process.env.KDF_NO_MAXIMIZE) mainWindow.maximize();
+    mainWindow.show();
+  });
+  let saveTimer = null;
+  const saveSoon = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(rememberWindow, 500);
+  };
+  ['resize', 'move', 'maximize', 'unmaximize'].forEach((e) => mainWindow.on(e, saveSoon));
+  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  // With tray mode on, closing or minimizing keeps farming in the menu bar / tray.
+  mainWindow.on('close', (event) => {
+    if (quitting || !store.get().minimizeToTray) return;
+    event.preventDefault();
+    hideToTray();
+  });
+  mainWindow.on('minimize', (event) => {
+    if (!store.get().minimizeToTray) return;
+    event.preventDefault();
+    hideToTray();
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    // Hidden helper windows (API page, tray popover) would otherwise keep the app alive.
+    if (!quitting) app.quit();
+  });
+}
+
+function startFarming() {
+  farmer.start();
+  if (powerBlocker === null) powerBlocker = powerSaveBlocker.start('prevent-app-suspension');
+}
+
+function stopFarming() {
+  farmer.stop();
+  if (powerBlocker !== null) {
+    powerSaveBlocker.stop(powerBlocker);
+    powerBlocker = null;
+  }
+}
+
+async function checkAuth() {
+  // Fast path: a saved login and the last known profile show the dashboard right
+  // away; the real check below confirms it (or signs out).
+  const last = store.get().lastUser;
+  if (auth.status === 'checking' && last && (await api.hasLogin().catch(() => false))) {
+    setAuth({ status: 'signed-in', user: last });
+    startFarming();
+  }
+  try {
+    const me = await api.me();
+    if (me) {
+      if (auth.status !== 'signed-in' && auth.status !== 'checking') history?.add('login', { text: `Signed in as ${me.username}` });
+      const user = { username: me.username, avatar: me.profilepic ?? me.profile_pic ?? me.profile_picture ?? null, slug: me.streamer_channel?.slug ?? me.username };
+      store.set({ lastUser: user });
+      setAuth({ status: 'signed-in', user });
+      startFarming();
+      return true;
+    }
+  } catch (err) {
+    // Kick unreachable (offline at launch): keep a saved login and try again later.
+    console.error('Auth check failed', err);
+    if (auth.status === 'signed-in') {
+      setTimeout(checkAuth, 60_000);
+      return true;
+    }
+  }
+  if (auth.status === 'signed-in') stopFarming();
+  store.set({ lastUser: null });
+  setAuth({ status: 'signed-out', user: null });
+  return false;
+}
+
+function openLogin() {
+  if (DEMO) {
+    setAuth({ status: 'signing-in' });
+    setTimeout(() => {
+      demo.api.loggedIn = true;
+      checkAuth();
+    }, 1600);
+    return;
+  }
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.focus();
+    return;
+  }
+  setAuth({ status: 'signing-in' });
+  loginWindow = new BrowserWindow({
+    width: 520,
+    height: 780,
+    parent: mainWindow ?? undefined,
+    modal: false,
+    title: 'Sign in to Kick',
+    backgroundColor: '#0a0b0d',
+    webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true },
+  });
+  loginWindow.webContents.setAudioMuted(true);
+  // Sign-in providers (Google, Apple) open as pop-ups in the same Kick session.
+  loginWindow.webContents.setWindowOpenHandler(({ url }) =>
+    /^https:\/\//.test(url)
+      ? { action: 'allow', overrideBrowserWindowOptions: { parent: loginWindow, webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true } } }
+      : { action: 'deny' },
+  );
+  loginWindow.loadURL(`${KICK}/`);
+
+  // Answer Kick's cookie banner first (it can sit under the login dialog, where it
+  // can't be clicked), then open Kick's own login dialog for convenience.
+  loginWindow.webContents.once('did-finish-load', () => {
+    loginWindow?.webContents
+      .executeJavaScript(`(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        for (let i = 0; i < 20; i++) {
+          const reject = document.querySelector('#onetrust-reject-all-handler');
+          if (reject && reject.offsetParent !== null) { reject.click(); break; }
+          await wait(250);
+        }
+        await wait(600);
+        const b = [...document.querySelectorAll('button')].find((x) => /^log ?in$/i.test(x.textContent.trim()));
+        if (b) b.click();
+      })()`)
+      .catch(() => {});
+  });
+
+  const poll = setInterval(async () => {
+    if (!loginWindow || loginWindow.isDestroyed()) return clearInterval(poll);
+    if (!(await api.hasLogin())) return;
+    const me = await api.me().catch(() => null);
+    if (!me) return;
+    clearInterval(poll);
+    loginWindow.close();
+    await checkAuth();
+  }, 1500);
+
+  loginWindow.on('closed', () => {
+    clearInterval(poll);
+    loginWindow = null;
+    if (auth.status === 'signing-in') setAuth({ status: 'signed-out' });
+  });
+}
+
+async function signOut() {
+  history?.add('logout', { text: 'Signed out' });
+  store.set({ lastUser: null });
+  stopFarming();
+  await api.signOut();
+  setAuth({ status: 'signed-out', user: null });
+}
+
+// Demo mode: the stand-in server credits watch events, and the trailer and tests
+// drive the story through global.kdfDemo.
+function setupDemo() {
+  watcher.on('watch-event', () => farmer.current && demo.api.creditWatch(farmer.current.slug));
+  let seeded = !process.env.KDF_DEMO_SEED;
+  farmer.on('update', () => {
+    if (seeded || !farmer.current) return;
+    seeded = true;
+    demo.seedHistory(farmer, demo.api);
+  });
+  global.kdfDemo = {
+    api: demo.api,
+    farmer,
+    /** One watch event from the player, credited by the stand-in server. */
+    credit: async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const before = farmer.stats.eventsSent;
+      const wc = watcher.view?.webContents;
+      if (wc) await wc.executeJavaScript('window.__demoWatchEvent && window.__demoWatchEvent()').catch(() => {});
+      for (let i = 0; i < 40 && farmer.stats.eventsSent === before; i++) await sleep(50);
+      // Page not ready yet: credit as the server would have.
+      if (farmer.stats.eventsSent === before && farmer.current) demo.api.creditWatch(farmer.current.slug);
+      while (farmer.ticking) await sleep(50);
+      await farmer.tick();
+    },
+    /** Another session "takes" the credit: events keep going, credit stops. */
+    conflict: (on = true) => {
+      demo.api.conflict = on;
+    },
+    tick: () => farmer.tick(),
+    openTray: () => tray.toggle(),
+    /** Jump a campaign's progress (e.g. to just past a reward) and refresh. */
+    advance: async (campaignId, units) => {
+      demo.api.units[campaignId] = units;
+      while (farmer.ticking) await new Promise((r) => setTimeout(r, 50));
+      await farmer.tick();
+    },
+    /** Kick stops listing a drop (it ended or was taken down), and re-check. */
+    endDrop: async (campaignId) => {
+      demo.api.endCampaign(campaignId);
+      while (farmer.ticking) await new Promise((r) => setTimeout(r, 50));
+      await farmer.tick({ force: true });
+    },
+    /** Kick lists an ended drop again with a new end date, and re-check. */
+    relistDrop: async (campaignId, daysLeft = 2) => {
+      demo.api.relistCampaign(campaignId, daysLeft);
+      while (farmer.ticking) await new Promise((r) => setTimeout(r, 50));
+      await farmer.tick({ force: true });
+    },
+    /** Take a stand-in channel offline (or back online) and re-check. */
+    offline: async (slug, on = true) => {
+      on ? demo.api.offline.add(slug) : demo.api.offline.delete(slug);
+      farmer.streams.clear();
+      await farmer.tick({ force: true });
+    },
+  };
+}
+
+function registerIpc() {
+  ipcMain.handle('app:getState', () => appState());
+  ipcMain.handle('auth:login', () => openLogin());
+  ipcMain.handle('history:view', (_e, opts = {}) => {
+    const campaignId = typeof opts.campaignId === 'string' ? opts.campaignId : null;
+    const view = history.view({
+      since: Number(opts.since) || 0,
+      campaignId,
+      groups: Array.isArray(opts.groups) ? opts.groups.filter((g) => typeof g === 'string') : null,
+      text: typeof opts.text === 'string' ? opts.text.slice(0, 100) : '',
+      limit: Math.min(1000, Number(opts.limit) || 400),
+    });
+    // Each drop's details (and stored images) from the archive, for drops Kick no longer lists.
+    const drops = {};
+    for (const id of new Set([campaignId, ...view.campaigns.map((c) => c.campaignId)])) {
+      const info = id && farmer.dropInfo(id);
+      if (info) drops[id] = info;
+    }
+    const local = (url) => archive.img(url);
+    for (const e of view.events) if (e.rewardImage) e.rewardImage = local(e.rewardImage);
+    for (const c of view.campaigns) for (const r of c.rewards) r.image = local(r.image);
+    return { ...view, drops };
+  });
+  ipcMain.handle('auth:logout', () => signOut());
+  ipcMain.handle('farm:pause', (_e, paused) => farmer.setPaused(!!paused));
+  ipcMain.handle('farm:refresh', () => farmer.tick({ force: true }));
+  ipcMain.handle('farm:skip', () => farmer.skip());
+  ipcMain.handle('farm:reload', () => farmer.reloadPlayer());
+  ipcMain.handle('farm:watch', (_e, slug, categoryId) => farmer.watchManual(slug, categoryId));
+  ipcMain.handle('farm:claim', (_e, campaignId, rewardId) => farmer.claimOne(campaignId, rewardId));
+  ipcMain.handle('farm:follow', async (_e, slug, on) => {
+    if (typeof slug !== 'string' || !/^[a-z0-9_-]{2,40}$/i.test(slug)) return { error: 'bad' };
+    try {
+      return await farmer.setFollow(slug, !!on);
+    } catch (err) {
+      return { error: err.status === 401 || err.status === 403 ? 'login' : 'failed', status: err.status ?? 0 };
+    }
+  });
+  ipcMain.handle('settings:set', (_e, patch) => {
+    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality'];
+    const clean = Object.fromEntries(Object.entries(patch ?? {}).filter(([k]) => allowed.includes(k)));
+    if (clean.stallMinutes !== undefined) clean.stallMinutes = Math.min(120, Math.max(5, Number(clean.stallMinutes) || 20));
+    if (clean.refreshSeconds !== undefined) clean.refreshSeconds = Math.min(300, Math.max(30, Number(clean.refreshSeconds) || 60));
+    const clamp = (key, min, max, fallback) => {
+      if (clean[key] !== undefined) clean[key] = Math.min(max, Math.max(min, Number(clean[key]) || fallback));
+    };
+    clamp('campaignsMinutes', 2, 60, 10);
+    clamp('streamsMinutes', 1, 15, 3);
+    clamp('followedMinutes', 5, 60, 15);
+    if (clean.alertRepeatSeconds !== undefined && ![15, 30, 60].includes(Number(clean.alertRepeatSeconds))) delete clean.alertRepeatSeconds;
+    else if (clean.alertRepeatSeconds !== undefined) clean.alertRepeatSeconds = Number(clean.alertRepeatSeconds);
+    if (clean.playerMode !== undefined && !['light', 'full'].includes(clean.playerMode)) delete clean.playerMode;
+    if (clean.playerQuality === 'auto') clean.playerQuality = null;
+    if (clean.playerQuality !== undefined && clean.playerQuality !== null) clean.playerQuality = Number(clean.playerQuality);
+    if (clean.playerQuality !== undefined && clean.playerQuality !== null && ![160, 360, 480, 720, 1080].includes(clean.playerQuality)) delete clean.playerQuality;
+    store.set(clean);
+    if ('forgetOnQuit' in clean) security.setForget(clean.forgetOnQuit);
+    if ('playerMode' in clean || 'showChat' in clean || 'playerQuality' in clean) watcher.applySettings();
+    if (clean.queueMode !== undefined && !['manual', 'smart'].includes(clean.queueMode)) delete clean.queueMode;
+    if ('includeGameDrops' in clean || 'categoryOrder' in clean || 'disabledCategories' in clean || 'queueMode' in clean) {
+      farmer.buildModel();
+      farmer.tick();
+    }
+    sendState();
+  });
+  ipcMain.handle('player:bounds', (_e, rect) => watcher.setBounds(rect));
+  ipcMain.handle('player:suspend', (_e, value) => watcher.setSuspended(!!value));
+  ipcMain.handle('player:devtools', () => watcher.openDevTools());
+  ipcMain.handle('open:external', (_e, url) => {
+    if (/^https:\/\/(www\.)?kick\.com\//.test(url)) shell.openExternal(url);
+    // Links in release notes, and the release page.
+    else if (/^https:\/\/github\.com\//.test(url)) shell.openExternal(url);
+  });
+
+  ipcMain.handle('update:status', () => updates.status());
+  ipcMain.handle('update:check', () => updates.check());
+  ipcMain.handle('update:install', () => updates.install());
+  ipcMain.handle('update:restart', () => updates.restart());
+  ipcMain.handle('update:settings', (_e, patch) => updates.settings(patch && typeof patch === 'object' ? patch : {}));
+  ipcMain.handle('update:use-dmg', () => updates.useDmg());
+  ipcMain.handle('update:open-page', () => shell.openExternal(updates.status().page || `https://github.com/${updates.status().repo}/releases/latest`));
+  // Mac: System Settings > Privacy & Security > App Management, where the app may update itself.
+  ipcMain.handle('update:privacy-settings', () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles'));
+  ipcMain.handle('update:seen', () => updates.dismissJustUpdated());
+  // Links in release notes (already limited to https by the page).
+  ipcMain.handle('update:open-link', (_e, url) => /^https:\/\//.test(String(url)) && shell.openExternal(String(url)));
+  ipcMain.handle('update:changelog', () => {
+    try {
+      return parseChangelog(fs.readFileSync(path.join(APP_ROOT, 'CHANGELOG.md'), 'utf8'));
+    } catch {
+      return [];
+    }
+  });
+}
+
+function setupUpdates() {
+  const { execFile, spawn } = require('child_process');
+  const { net } = require('electron');
+  let pkgRepo = '';
+  try {
+    pkgRepo = String(require(path.join(APP_ROOT, 'package.json')).updateRepo || '');
+  } catch {}
+  // Tests point the updater at a stand-in GitHub and a copy of the app folder.
+  const appRoot = process.env.KDF_UPDATE_APP_ROOT || APP_ROOT;
+  updates = new Updates({
+    version: app.getVersion(),
+    installed: app.isPackaged,
+    platform: process.platform,
+    appRoot,
+    dataDir: app.getPath('userData'),
+    tempDir: app.getPath('temp'),
+    downloadsDir: app.getPath('downloads'),
+    execPath: process.execPath,
+    pid: process.pid,
+    pkgRepo,
+    // A git checkout or a dev copy only checks: installing would overwrite the work in progress.
+    devCopy: !app.isPackaged && !process.env.KDF_UPDATE_APP_ROOT && (fs.existsSync(path.join(APP_ROOT, '.git')) || !!process.env.KDF_DEV_DATA),
+    fetch: (url, opts) => net.fetch(url, opts),
+    runTool: (cmd, args) => new Promise((res, rej) => execFile(cmd, args, { maxBuffer: 1 << 20 }, (e, out, err) => (e ? rej(e) : res(`${out}\n${err}`)))),
+    spawn: (cmd, args) => spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref(),
+    openExternal: (url) => shell.openExternal(url),
+    openPath: (file) => shell.openPath(file),
+    quit: () => app.quit(),
+    relaunch: () => {
+      app.relaunch();
+      app.exit(0);
+    },
+  }).load();
+  updates.on('status', (status) => sendTo(mainWindow, 'update:status', status));
+  if (!HIDDEN || process.env.KDF_UPDATE_API) updates.start();
+}
+
+app.whenReady().then(async () => {
+  session.fromPartition(PARTITION).setUserAgent(app.userAgentFallback);
+  if (HIDDEN && process.platform === 'darwin') app.dock.hide();
+  if (process.platform === 'darwin' && !HIDDEN) {
+    const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'assets', 'icon.png'));
+    if (!icon.isEmpty()) app.dock.setIcon(icon);
+  }
+
+  // Every Kick page the app opens is muted at the window level.
+  // Kick's pages (player, login, API page) are always muted. The app's own pages
+  // aren't: the dashboard plays the alert chime.
+  const kickSession = session.fromPartition(PARTITION);
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.session === kickSession || HIDDEN) contents.setAudioMuted(true);
+    guardContents(contents);
+  });
+
+  store = new Store();
+  security = await setupSecurity(() => store.get().forgetOnQuit);
+  api = DEMO ? demo.api : new KickApi();
+  if (DEMO) demo.installStage(session.fromPartition(PARTITION), { eventSeconds: Number(process.env.KDF_DEMO_EVENT_SECONDS) || 120 });
+  createMainWindow();
+  watcher = new Watcher(() => mainWindow, () => store.get());
+  history = new History(app.getPath('userData')).load();
+  archive = new DropArchive(app.getPath('userData'), {
+    resolveUrl: assetUrl,
+    // Downloaded in the Kick session, as the site itself would load them.
+    fetchImage: async (url) => {
+      const res = await session.fromPartition(PARTITION).fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length > 5 * 1024 * 1024) throw new Error('too large');
+      return { buffer, type: res.headers.get('content-type') };
+    },
+  }).load();
+  if (DEMO) demo.seedArchive(archive);
+  // Drops from before the archive existed, rebuilt from what the history recorded.
+  archive.backfill(history.events);
+  protocol.handle(IMAGE_SCHEME, async (request) => {
+    const file = archive.fileFor(request.url);
+    if (!file) return new Response(null, { status: 404 });
+    try {
+      return new Response(await fs.promises.readFile(file.path), { headers: { 'content-type': file.type, 'cache-control': 'max-age=31536000, immutable' } });
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  });
+  if (DEMO && process.env.KDF_DEMO_SEED && !history.events.length) demo.seedHistoryLog(history);
+  farmer = new Farmer({ api, watcher, store, notify, history, archive, cacheFile: path.join(app.getPath('userData'), 'cache.json') });
+  farmer.seedFromHistory();
+  farmer.loadCache();
+  let historyTimer = null;
+  history.onAdd(() => {
+    if (historyTimer) return;
+    historyTimer = setTimeout(() => {
+      historyTimer = null;
+      sendTo(mainWindow, 'history:changed');
+    }, 1000);
+  });
+  farmer.on('update', sendState);
+  // Stored images replace Kick's links as they arrive.
+  archive.on('images', () => {
+    farmer.buildModel();
+    farmer.changed();
+  });
+  // Dev copies and tests (own data folder) can reach the engine from Playwright.
+  if (process.env.KDF_DEV_DATA) global.kdfDebug = { api, farmer, watcher, store };
+  tray = new TrayController({
+    preload: path.join(__dirname, '..', 'preload', 'app.js'),
+    onShowMain: showMain,
+    onQuit: () => app.quit(),
+    onAction: (name) => {
+      if (name === 'pause') farmer.setPaused(true);
+      else if (name === 'resume') farmer.setPaused(false);
+      else if (name === 'skip') farmer.skip();
+      else if (name === 'refresh') farmer.tick({ force: true });
+    },
+  });
+  tray.create();
+  setInterval(updateTray, 15_000);
+  if (DEMO) setupDemo();
+  powerMonitor.on('resume', () => auth.status === 'signed-in' && !farmer.paused && farmer.handleResume());
+  farmer.on('auth-lost', () => {
+    stopFarming();
+    setAuth({ status: 'signed-out', user: null });
+    notify('Signed out of Kick', 'Your Kick login expired. Sign in again to keep collecting drops.');
+    showMain();
+  });
+  farmer.on('stall-alert', ({ minutes, events }) => {
+    notify('Another Kick stream is taking your drop credit', `${events} watch events got no credit. Kick credits only one stream per account, so close any other streams to continue progressing drops.`);
+    sendTo(mainWindow, 'alert', { kind: 'stall', minutes, events });
+    if (process.platform === 'darwin' && !HIDDEN && mainWindow && !mainWindow.isFocused()) app.dock.bounce('informational');
+  });
+  registerIpc();
+  setupUpdates();
+
+  mainWindow.webContents.once('did-finish-load', () => sendState());
+  await checkAuth();
+
+  app.on('activate', () => showMain());
+});
+
+app.on('before-quit', () => {
+  quitting = true;
+  archive?.flush();
+  updates?.stop();
+});
+
+app.on('window-all-closed', () => {
+  stopFarming();
+  app.quit();
+});

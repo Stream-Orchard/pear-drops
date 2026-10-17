@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' kdf-img: https: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <title>Pear Drops</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="welcome" class="welcome" hidden></div>
+
+    <div id="app" class="app" hidden>
+      <header class="titlebar">
+        <div class="brand">
+          <span class="brand-mark" id="brand-mark"></span>
+          <span class="brand-name">Pear <b>Drops</b></span>
+        </div>
+        <nav id="nav" class="nav"></nav>
+        <div id="status-pill"></div>
+        <div class="titlebar-spacer"></div>
+        <div id="titlebar-actions" class="titlebar-actions"></div>
+      </header>
+
+      <main class="layout">
+        <section class="content" id="content">
+          <div id="banner"></div>
+          <div id="hero" class="card hero appear"></div>
+          <div id="stats" class="stats appear"></div>
+          <div class="board">
+            <div id="chart" class="card appear"></div>
+            <div id="side" class="card appear"></div>
+          </div>
+        </section>
+        <section class="content history-view" id="history" hidden></section>
+
+        <aside class="player" id="player">
+          <div class="player-head" id="player-head"></div>
+          <div class="player-slot" id="player-slot"><div id="player-empty"></div><img id="player-mirror" alt="" hidden /></div>
+          <div class="player-foot" id="player-foot"></div>
+        </aside>
+      </main>
+    </div>
+
+    <div id="modal-root"></div>
+    <div id="toasts" class="toasts"></div>
+
+    <script src="icons.js"></script>
+    <script src="charts.js"></script>
+    <script src="format.js"></script>
+    <script src="history.js"></script>
+    <script src="updates.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

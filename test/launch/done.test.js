@@ -1,0 +1,72 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { launchApp, until } = require('./app');
+
+let a;
+test.before(async () => {
+  a = await launchApp({ size: { width: 1512, height: 944 } });
+  await until(a.win, () => document.querySelector('#hero .hero-title'), 'farming to start', 20000);
+});
+test.after(async () => {
+  assert.deepEqual(a.errors, []);
+  await a.close();
+});
+
+const pastNames = () => a.win.evaluate(() => [...document.querySelectorAll('.past')].map((p) => [p.querySelector('.cat-name span').textContent, p.className.includes('completed') ? 'completed' : 'missed']));
+const historyTypes = () =>
+  fs
+    .readFileSync(path.join(a.data, 'history.jsonl'), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+
+test('the Done tab lists finished and missed drops, with stored images', async () => {
+  await a.win.click('[data-action="side-tab"][data-id="done"]');
+  await until(a.win, () => document.querySelectorAll('.past').length >= 4, 'the past drops');
+  const names = Object.fromEntries(await pastNames());
+  assert.equal(names[Object.keys(names).find((n) => /Kart/.test(n))], 'completed', 'a finished drop still on Kick');
+  assert.equal(names['Frostbite Rally Weekend'], 'completed');
+  assert.equal(names['Retro Arcade Week'], 'missed');
+  assert.equal(names['Meltdown Mini-Event'], 'missed');
+  assert.match(await a.win.locator('.past', { hasText: 'Retro Arcade Week' }).textContent(), /1\/3 claimed/);
+  assert.match(await a.win.locator('.past', { hasText: 'Meltdown' }).textContent(), /Taken down/);
+
+  // Images come from the app's own copies and actually load.
+  await until(a.win, () => [...document.querySelectorAll('.past img')].every((i) => i.src.startsWith('kdf-img://drop/') && i.complete && i.naturalWidth > 0), 'stored images to load');
+  const files = fs.readdirSync(path.join(a.data, 'drop-images'));
+  assert.ok(files.length >= 10, `${files.length} images stored`);
+
+  // Filters
+  await a.win.click('[data-action="past-filter"][data-id="missed"]');
+  await until(a.win, () => [...document.querySelectorAll('.past')].every((p) => p.classList.contains('missed')), 'only missed drops');
+  await a.win.click('[data-action="past-filter"][data-id="all"]');
+});
+
+test('a drop Kick stops listing moves to Done, and comes back to the queue if Kick relists it', async () => {
+  await a.demo((d) => d.endDrop('c-cozy'));
+  await a.win.click('[data-action="side-tab"][data-id="done"]');
+  await until(a.win, () => [...document.querySelectorAll('.past.missed')].some((p) => /Cozy/.test(p.textContent)), 'the ended drop in Done');
+  assert.match(await a.win.locator('.past', { hasText: 'Cozy' }).textContent(), /1\/2 claimed/);
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+  assert.equal(await a.win.locator('.cat[data-cat-id]', { hasText: 'Just Chatting' }).count(), 0);
+
+  await a.demo((d) => d.relistDrop('c-cozy', 2));
+  await until(a.win, () => [...document.querySelectorAll('.cat[data-cat-id]')].some((r) => /Just Chatting/.test(r.textContent)), 'the drop back in the queue');
+  await a.win.click('[data-action="side-tab"][data-id="done"]');
+  assert.equal(await a.win.locator('.past', { hasText: 'Cozy' }).count(), 0);
+
+  const events = historyTypes().filter((e) => e.campaignId === 'c-cozy');
+  assert.ok(events.some((e) => e.type === 'campaign-ended' && /missed 1 of 2/.test(e.text)), 'the end is recorded');
+  assert.ok(events.some((e) => e.type === 'campaign-back'), 'the return is recorded');
+});
+
+test('History keeps a removed drop’s details and artwork', async () => {
+  await a.win.click('[data-action="side-tab"][data-id="done"]');
+  await a.win.locator('.past', { hasText: 'Retro Arcade Week' }).locator('[data-action="hist-campaign"]').click();
+  await until(a.win, () => /Retro Arcade Week/.test(document.querySelector('.hist-title h2')?.textContent), 'the drop’s history');
+  const art = await a.win.locator('.hist-title img').getAttribute('src');
+  assert.match(art, /^kdf-img:\/\/drop\//);
+  assert.match(await a.win.textContent('.hist-title'), /Retro Arcade/);
+});

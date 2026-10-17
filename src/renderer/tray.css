@@ -1,0 +1,239 @@
+/* Tray / menu bar popover. Sits on the system's popover vibrancy on macOS. */
+html,
+body.tray-body {
+  background: transparent;
+  overflow: hidden;
+}
+body.tray-body::before,
+body.tray-body::after {
+  display: none;
+}
+
+.tray {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(20, 23, 27, 0.82), rgba(12, 14, 17, 0.9));
+  border: 1px solid var(--border-2);
+}
+body.tray-body {
+  margin: 0;
+}
+.tray-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: 650 14px var(--font-display);
+  letter-spacing: -0.015em;
+}
+.tray-head b {
+  font-weight: 760;
+}
+.tray-head b span {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.tray-head .status-pill {
+  height: 26px;
+  font-size: 11.5px;
+  max-width: 190px;
+}
+.spacer {
+  flex: 1;
+}
+
+.tray-now {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+}
+.tray-stream {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tray-stream .who {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.tray-stream .who b {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+}
+.tray-stream .who span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.tray-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.tray-progress .ring-label {
+  font-size: 20px;
+}
+.tray-progress .ring-sub {
+  font-size: 10px;
+}
+.tray-eta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tray-camp {
+  font-weight: 700;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-eta .eta {
+  gap: 3px 10px;
+  font-size: 11.5px;
+}
+.tray-rewards {
+  display: flex;
+  gap: 8px;
+}
+.tray-reward {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.tray-reward img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+.tray-reward .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--green);
+}
+.tray-reward.claimed {
+  border-color: rgba(83, 252, 24, 0.25);
+}
+.tray-reward.ready {
+  border-color: rgba(255, 211, 106, 0.4);
+  color: var(--gold);
+}
+
+.tray-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 93, 110, 0.12);
+  border: 1px solid rgba(255, 93, 110, 0.35);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.tray-alert .icon {
+  color: var(--red);
+  margin-top: 1px;
+}
+.tray-alert b {
+  color: var(--text);
+}
+
+.tray-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.tray-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+}
+.tray-stats b {
+  font: 740 16px var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.tray-stats span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tray-next {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tray-cat {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.tray-cat-art {
+  width: 28px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--solid-2);
+}
+.tray-cat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.tray-cat-info b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-cat > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tray-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+.tray-empty .icon {
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+}
+
+.tray-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}

@@ -1,0 +1,93 @@
+{
+  "name": "kick-drops-client",
+  "productName": "Pear Drops",
+  "version": "0.1.0",
+  "description": "Desktop farmer for Kick emote and badge drops",
+  "main": "src/main/main.js",
+  "updateRepo": "Stream-Orchard/pear-drops",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/harden.js && electron .",
+    "dev": "node scripts/dev.js",
+    "demo": "node scripts/dev.js --demo",
+    "harden": "node scripts/harden.js",
+    "test": "node --test --test-force-exit --test-timeout=60000 \"test/unit/**/*.test.js\"",
+    "test:launch": "node --test --test-force-exit --test-concurrency=1 --test-timeout=120000 \"test/launch/**/*.test.js\"",
+    "test:all": "npm test && npm run test:launch",
+    "test:coverage": "node scripts/coverage.js",
+    "test:setup": "npm install --no-save playwright@1.56.1",
+    "icon": "electron scripts/make-icon/main.js",
+    "dist:mac": "npx --yes electron-builder@25.1.8 --mac --publish never",
+    "dist:win": "npx --yes electron-builder@25.1.8 --win --publish never",
+    "test:launch:visible": "KDF_TEST_VISIBLE=1 node --test --test-force-exit --test-concurrency=1 --test-timeout=120000 \"test/launch/**/*.test.js\"",
+    "worktree": "node scripts/worktree.js",
+    "signing-cert": "node scripts/mac-signing-cert.js"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.1.3",
+    "electron": "^44.8.0"
+  },
+  "build": {
+    "appId": "com.streamorchard.peardrops",
+    "productName": "Pear Drops",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "CHANGELOG.md",
+      "!src/**/*.md"
+    ],
+    "afterPack": "build/after-pack.js",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "Pear-Drops-${version}-mac.${ext}",
+      "icon": "build/icon.png",
+      "category": "public.app-category.entertainment",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "afterSign": "build/after-sign.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pear Drops",
+      "runAfterFinish": true,
+      "artifactName": "Pear-Drops-Setup-${version}.${ext}"
+    },
+    "publish": null
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

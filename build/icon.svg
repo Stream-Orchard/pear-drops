@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2216"/>
+      <stop offset="1" stop-color="#07090a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#53fc18" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#53fc18" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="drop" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#b6ff8f"/>
+      <stop offset="0.45" stop-color="#53fc18"/>
+      <stop offset="1" stop-color="#1fae06"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <!-- macOS icon grid: 824px squircle inside the 1024 canvas -->
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#glow)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <!-- orbit -->
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#53fc18" stroke-opacity="0.16" stroke-width="6" stroke-dasharray="4 22" stroke-linecap="round"/>
+  <!-- the pear -->
+  <path d="M 512.0 252.0 C 447.0 252.0 413.2 306.6 413.2 371.6 C 413.2 426.2 382.0 457.4 343.0 504.2 C 298.8 556.2 267.6 608.2 267.6 670.6 C 267.6 795.4 374.2 870.8 512.0 870.8 C 649.8 870.8 756.4 795.4 756.4 670.6 C 756.4 608.2 725.2 556.2 681.0 504.2 C 642.0 457.4 610.8 426.2 610.8 371.6 C 610.8 306.6 577.0 252.0 512.0 252.0 Z" fill="#53fc18" opacity="0.55" filter="url(#soft)"/>
+  <path d="M 512.0 252.0 C 447.0 252.0 413.2 306.6 413.2 371.6 C 413.2 426.2 382.0 457.4 343.0 504.2 C 298.8 556.2 267.6 608.2 267.6 670.6 C 267.6 795.4 374.2 870.8 512.0 870.8 C 649.8 870.8 756.4 795.4 756.4 670.6 C 756.4 608.2 725.2 556.2 681.0 504.2 C 642.0 457.4 610.8 426.2 610.8 371.6 C 610.8 306.6 577.0 252.0 512.0 252.0 Z" fill="url(#drop)"/>
+  <path d="M 512.0 262.4 C 512.0 220.8 525.0 184.4 548.4 158.4" stroke="#6b4a2b" stroke-width="42" stroke-linecap="round" fill="none"/>
+  <path d="M 553.6 200.0 C 579.6 140.2 652.4 122.0 709.6 140.2 C 691.4 200.0 623.8 231.2 553.6 200.0 Z" fill="#2fd10a"/>
+  <path d="M 392.4 564.0 C 358.6 603.0 340.4 642.0 337.8 683.6" stroke="#ffffff" stroke-opacity="0.5" stroke-width="36" stroke-linecap="round" fill="none"/>
+  <!-- K, in Kick's stepped style -->
+  <path d="M382.0 540.6L468.8 540.6L468.8 627.4L512.3 627.4L512.3 584.0L555.7 584.0L555.7 540.6L642.5 540.6L642.5 584.0L599.1 584.0L599.1 627.4L555.7 627.4L555.7 714.3L599.1 714.3L599.1 757.7L642.5 757.7L642.5 801.1L555.7 801.1L555.7 757.7L512.3 757.7L512.3 714.3L468.8 714.3L468.8 801.1L382.0 801.1Z" fill="#0a1406"/>
+</svg>
