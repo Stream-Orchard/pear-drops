@@ -5,6 +5,7 @@
   "src/main/farmer.js": 90,
   "src/main/history.js": 97,
   "src/main/kick-api.js": 52,
+  "src/main/notifier.js": 100,
   "src/main/updater.js": 95,
   "src/main/updates.js": 86,
   "src/main/watcher.js": 43

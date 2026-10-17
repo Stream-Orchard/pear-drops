@@ -5,6 +5,7 @@ const { KickApi, PARTITION, KICK, assetUrl } = require('./kick-api');
 const { DropArchive, SCHEME: IMAGE_SCHEME } = require('./archive');
 const { Watcher } = require('./watcher');
 const { Farmer } = require('./farmer');
+const { Notifier, cleanNotify, systemSettingsUrl } = require('./notifier');
 const { Store } = require('./store');
 const { setupSecurity, guardContents } = require('./security');
 const { createDemo } = require('./demo');
@@ -109,9 +110,38 @@ function setAuth(next) {
   sendState();
 }
 
-function notify(title, body) {
-  if (HIDDEN) return;
-  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
+// Desktop notifications (Settings › Notifications). Demo mode and tests record them in
+// global.pdNotes instead of showing them.
+let notifier = null;
+function createNotifier() {
+  if (DEMO || HIDDEN) global.pdNotes = [];
+  notifier = new Notifier({
+    Notification,
+    getSettings: () => store.get(),
+    inFront: () => BrowserWindow.getAllWindows().some((w) => w.isFocused() && w.isVisible()),
+    onClick: (view) => {
+      showMain();
+      if (view) sendTo(mainWindow, 'show-view', view);
+    },
+    icon: process.platform === 'darwin' ? undefined : path.join(__dirname, '..', 'renderer', 'assets', 'icon.png'),
+    record: DEMO || HIDDEN ? (note) => global.pdNotes.push({ ...note, t: Date.now() }) : null,
+  });
+}
+
+/** What the farmer and the app tell the user, as desktop notifications of each kind. */
+function notifyFarming() {
+  const send = (kind, title, body, view) => notifier.send(kind, { title, body, view });
+  farmer.on('claimed', ({ reward, campaign }) => send('claimed', 'Drop claimed', `${reward} · ${campaign}`));
+  farmer.on('ready', (list) => send('ready', list.length > 1 ? `${list.length} drops ready to claim` : 'Drop ready to claim', list.map((x) => `${x.reward} · ${x.campaign}`).join('\n')));
+  farmer.on('notice', (n) => {
+    if (n.kind === 'ended' || n.kind === 'raid') send('ended', n.kind === 'raid' ? 'Stream raided' : 'Stream ended', `${n.text}. Finding the next one.`, 'history');
+    else send('trouble', 'Stream problem', n.text, 'history');
+  });
+  farmer.on('status-change', ({ code, was, message }) => {
+    if (code === 'done' && was !== 'starting') send('done', 'All drops collected', message);
+    if (code === 'waiting' && was === 'farming') send('done', 'Nothing to watch right now', 'No live streams for the remaining drops. Pear Drops keeps checking.');
+  });
+  farmer.on('new-drops', (list) => send('newDrops', list.length > 1 ? `${list.length} new drops on Kick` : 'New drop on Kick', list.map((c) => `${c.name}${c.category ? ` · ${c.category}` : ''}`).join('\n')));
 }
 
 // Opens maximized the first time, then wherever the user last left it.
@@ -439,7 +469,7 @@ function registerIpc() {
     }
   });
   ipcMain.handle('settings:set', (_e, patch) => {
-    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes'];
+    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes', 'notify', 'notifyAway'];
     const clean = Object.fromEntries(Object.entries(patch ?? {}).filter(([k]) => allowed.includes(k)));
     if (clean.stallMinutes !== undefined) clean.stallMinutes = Math.min(120, Math.max(5, Number(clean.stallMinutes) || 20));
     if (clean.refreshSeconds !== undefined) clean.refreshSeconds = Math.min(300, Math.max(30, Number(clean.refreshSeconds) || 60));
@@ -456,18 +486,26 @@ function registerIpc() {
     if (clean.smartRarity !== undefined && !['off', 'some', 'strong'].includes(clean.smartRarity)) delete clean.smartRarity;
     if (clean.smartHopMinutes !== undefined && ![15, 30, 60, 120].includes(Number(clean.smartHopMinutes))) delete clean.smartHopMinutes;
     else if (clean.smartHopMinutes !== undefined) clean.smartHopMinutes = Number(clean.smartHopMinutes);
+    if (clean.notify !== undefined) clean.notify = cleanNotify(clean.notify);
+    if (clean.notifyAway !== undefined) clean.notifyAway = clean.notifyAway === true;
+    if (clean.queueMode !== undefined && !['manual', 'smart'].includes(clean.queueMode)) delete clean.queueMode;
     if (clean.playerQuality === 'auto') clean.playerQuality = null;
     if (clean.playerQuality !== undefined && clean.playerQuality !== null) clean.playerQuality = Number(clean.playerQuality);
     if (clean.playerQuality !== undefined && clean.playerQuality !== null && ![160, 360, 480, 720, 1080].includes(clean.playerQuality)) delete clean.playerQuality;
     store.set(clean);
     if ('forgetOnQuit' in clean) security.setForget(clean.forgetOnQuit);
     if ('playerMode' in clean || 'showChat' in clean || 'playerQuality' in clean) watcher.applySettings();
-    if (clean.queueMode !== undefined && !['manual', 'smart'].includes(clean.queueMode)) delete clean.queueMode;
     if (['includeGameDrops', 'categoryOrder', 'disabledCategories', 'queueMode', 'smartRarity', 'smartHopMinutes'].some((k) => k in clean)) {
       farmer.buildModel();
       farmer.tick();
     }
     sendState();
+  });
+  ipcMain.handle('notify:test', () => notifier.test());
+  ipcMain.handle('notify:system-settings', () => {
+    const url = systemSettingsUrl();
+    if (url && !DEMO) shell.openExternal(url);
+    return !!url;
   });
   ipcMain.handle('player:bounds', (_e, rect) => watcher.setBounds(rect));
   ipcMain.handle('player:suspend', (_e, value) => watcher.setSuspended(!!value));
@@ -537,6 +575,15 @@ function setupUpdates() {
   if (!HIDDEN || process.env.PD_UPDATE_API) updates.start();
 }
 
+// Windows only shows desktop notifications for an app with an ID, the installer's appId.
+if (process.platform === 'win32') {
+  let appId = 'com.streamorchard.peardrops';
+  try {
+    appId = require(path.join(APP_ROOT, 'package.json')).build?.appId || appId;
+  } catch {}
+  app.setAppUserModelId(app.isPackaged ? appId : process.execPath);
+}
+
 app.whenReady().then(async () => {
   session.fromPartition(PARTITION).setUserAgent(app.userAgentFallback);
   if (HIDDEN && process.platform === 'darwin') app.dock.hide();
@@ -585,7 +632,9 @@ app.whenReady().then(async () => {
     }
   });
   if (DEMO && process.env.PD_DEMO_SEED && !history.events.length) demo.seedHistoryLog(history);
-  farmer = new Farmer({ api, watcher, store, notify, history, archive, cacheFile: path.join(app.getPath('userData'), 'cache.json') });
+  createNotifier();
+  farmer = new Farmer({ api, watcher, store, history, archive, cacheFile: path.join(app.getPath('userData'), 'cache.json') });
+  notifyFarming();
   farmer.seedFromHistory();
   farmer.loadCache();
   let historyTimer = null;
@@ -622,11 +671,11 @@ app.whenReady().then(async () => {
   farmer.on('auth-lost', () => {
     stopFarming();
     setAuth({ status: 'signed-out', user: null });
-    notify('Signed out of Kick', 'Your Kick login expired. Sign in again to keep collecting drops.');
+    notifier.send('signedOut', { title: 'Signed out of Kick', body: 'Your Kick login expired. Sign in again to keep collecting drops.' });
     showMain();
   });
   farmer.on('stall-alert', ({ minutes, events }) => {
-    notify('Another Kick stream is taking your drop credit', `${events} watch events got no credit. Kick credits only one stream per account, so close any other streams to continue progressing drops.`);
+    notifier.send('conflict', { title: 'Another Kick stream is taking your drop credit', body: `${events} watch events got no credit. Kick credits only one stream per account, so close any other streams to continue progressing drops.` });
     sendTo(mainWindow, 'alert', { kind: 'stall', minutes, events });
     if (process.platform === 'darwin' && !HIDDEN && mainWindow && !mainWindow.isFocused()) app.dock.bounce('informational');
   });

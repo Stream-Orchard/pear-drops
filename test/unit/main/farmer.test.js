@@ -221,6 +221,36 @@ test('ready rewards are claimed, and a finished category moves on to the next', 
   for (const t of ['unlock', 'claim', 'campaign-complete', 'category-complete']) assert.ok(types.includes(t), t);
 });
 
+test('for notifications: a claim, a reward ready to claim by hand, a new drop on Kick, and status changes are announced', async () => {
+  const first = campaign('a', { category: { id: 1, name: 'First' }, endsIn: 1 });
+  const { farmer, api, watcher } = setup({ campaigns: [first], streams: { 1: [live('one', 1)], 2: [live('two', 2)] }, units: { a: 50 } });
+  const heard = { claimed: [], ready: [], 'new-drops': [], 'status-change': [] };
+  for (const name of Object.keys(heard)) farmer.on(name, (x) => heard[name].push(x));
+  await farmer.tick();
+  assert.equal(watcher.watching, 'one');
+  assert.deepEqual(heard['new-drops'], [], 'the first look only learns what is there');
+  assert.ok(heard['status-change'].some((x) => x.code === 'farming'));
+
+  api.units.a = 60;
+  await farmer.tick();
+  assert.deepEqual(heard.claimed.map((x) => [x.reward, x.campaign]), [['Hype Emote', 'Campaign a']]);
+  assert.deepEqual(heard.ready, [], 'claimed automatically: nothing to tell');
+  assert.ok(heard['status-change'].some((x) => x.code === 'done' && x.was === 'farming'), 'all collected');
+
+  // Kick lists a new drop, and with auto-claim off its first reward becomes ready.
+  farmer.store.set({ autoClaim: false });
+  api.list.push(campaign('b', { category: { id: 2, name: 'Second' }, rewards: [{ id: 'b-r1', name: 'Neon Badge', required_units: 30, image_url: 'x' }] }));
+  api.units.b = 0;
+  farmer.campaignsAt = 0;
+  await farmer.tick();
+  assert.deepEqual(heard['new-drops'], [[{ id: 'b', name: 'Campaign b', category: 'Second' }]]);
+  api.units.b = 30;
+  await farmer.tick();
+  assert.deepEqual(heard.ready, [[{ reward: 'Neon Badge', campaign: 'Campaign b', campaignId: 'b' }]]);
+  await farmer.tick();
+  assert.equal(heard.ready.length, 1, 'told once');
+});
+
 test('the user order of categories wins over end dates', async () => {
   const first = campaign('a', { category: { id: 1, name: 'First' }, endsIn: 1 });
   const second = campaign('b', { category: { id: 2, name: 'Second' }, endsIn: 5 });

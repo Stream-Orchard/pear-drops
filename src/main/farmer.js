@@ -47,7 +47,7 @@ function fmtSpan(ms) {
 }
 
 class Farmer extends EventEmitter {
-  constructor({ api, watcher, store, notify, history, archive = null, cacheFile = null }) {
+  constructor({ api, watcher, store, history, archive = null, cacheFile = null }) {
     super();
     this.api = api;
     this.archive = archive; // local copies of campaigns and their images (archive.js)
@@ -59,7 +59,6 @@ class Farmer extends EventEmitter {
     this.failedTicks = 0; // refreshes failed in a row, for the retry backoff
     this.watcher = watcher;
     this.store = store;
-    this.notify = notify;
     this.running = false;
     this.paused = false;
     this.timer = null;
@@ -249,7 +248,18 @@ class Farmer extends EventEmitter {
     this.buildModel();
     await this.refreshStreams({ force });
     this.buildModel();
+    this.announce();
     this.saveCache();
+  }
+
+  /** For desktop notifications: drops Kick just started listing. The first look only learns what's there. */
+  announce() {
+    const ids = this.model.campaigns.map((c) => c.id);
+    if (this.seenDrops) {
+      const fresh = this.model.campaigns.filter((c) => !this.seenDrops.has(c.id) && c.needsWatching);
+      if (fresh.length) this.emit('new-drops', fresh.map((c) => ({ id: c.id, name: c.name, category: this.model.categories.find((x) => x.id === c.categoryId)?.name })));
+    }
+    this.seenDrops = new Set([...(this.seenDrops ?? []), ...ids]);
   }
 
   // ------------------------------------------------------------------ startup cache
@@ -654,11 +664,15 @@ class Farmer extends EventEmitter {
       this.seenComplete = new Set(done);
       return;
     }
+    const unlocked = [];
     for (const [c, r] of ready) {
       if (this.seenReady.has(r.id)) continue;
       this.seenReady.add(r.id);
       this.record('unlock', { ...this.ctx(c.id), rewardId: r.id, reward: r.name, rewardImage: r.image, required: r.required, units: c.units, text: `${r.name} unlocked at ${r.required} min` });
+      if (r.ready) unlocked.push({ reward: r.name, campaign: c.name, campaignId: c.id });
     }
+    // For desktop notifications: with auto-claim off, these wait for a claim by hand.
+    if (unlocked.length && !this.store.get().autoClaim) this.emit('ready', unlocked);
     for (const key of done) {
       if (this.seenComplete.has(key)) continue;
       this.seenComplete.add(key);
@@ -795,7 +809,7 @@ class Farmer extends EventEmitter {
         this.pushTimeline({ t: Date.now(), type: 'claim', name: r.name });
         this.addLog('claim', `Claimed ${r.name} (${c.name}), confirmed by Kick`);
         this.record('claim', { ...this.ctx(c.id), rewardId: r.id, reward: r.name, rewardImage: r.image, required: r.required, confirmed: true, text: `Claimed ${r.name} (confirmed by Kick)` });
-        this.notify?.('Drop claimed', `${r.name} · ${c.name}`, r.image);
+        this.emit('claimed', { reward: r.name, campaign: c.name, image: r.image });
       } else {
         this.claimBackoff.set(r.id, Date.now() + 2 * MIN);
         this.addLog('warn', `Kick hasn't confirmed the claim for ${r.name} yet, retrying in 2 min`);
@@ -1290,7 +1304,9 @@ class Farmer extends EventEmitter {
   }
 
   setStatus(code, message) {
+    const was = this.status?.code;
     this.status = { code, message };
+    if (was !== code) this.emit('status-change', { code, was, message });
   }
 
   changed() {

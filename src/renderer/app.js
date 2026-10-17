@@ -740,9 +740,27 @@ function syncPlayerBounds() {
 
 // ------------------------------------------------------------------ settings modal
 
+// Settings › Notifications: one switch per kind (src/main/notifier.js), all off to start with.
+const NOTIFY_KINDS = [
+  ['claimed', 'A drop is claimed', 'Each emote or badge, once Kick confirms it.'],
+  ['ready', 'A drop is ready to claim', 'When automatic claiming is off, so you can claim it yourself.'],
+  ['ended', 'A stream ends or raids', 'The streamer went offline or sent viewers elsewhere, and the app moves on.'],
+  ['trouble', 'A stream has a problem', 'The player froze, failed or kept failing, and was reloaded or swapped.'],
+  ['conflict', 'Credit goes to another stream', 'Kick credits one stream per account: another one is taking it.'],
+  ['signedOut', 'You need to sign in again', 'Your Kick login expired, so farming stopped.'],
+  ['done', 'Everything is collected, or nothing is live', 'All drops are claimed, or none of the remaining ones has a stream on.'],
+  ['newDrops', 'New drops on Kick', 'A campaign with emotes or badges starts.'],
+];
+const NOTIFY_TEST = {
+  sending: 'Sending…',
+  shown: 'Shown. Desktop notifications work.',
+  unsupported: 'This computer doesn’t support desktop notifications.',
+};
+
 const SETTINGS_TABS = [
   ['farming', 'target', 'Farming'],
   ['recovery', 'reload', 'Recovery & alerts'],
+  ['notifications', 'bell', 'Notifications'],
   ['refresh', 'refresh', 'Refresh rates'],
   ['app', 'panel', 'App'],
   ['privacy', 'lock', 'Privacy'],
@@ -778,6 +796,19 @@ function renderModal() {
       ${row('Recover a stalled stream after', 'With no progress for this long, reload the stream, then switch to another.', range('stallMinutes', 5, 60, 1, 'min'))}
       ${row('Alert when credit goes elsewhere', 'Kick credits one stream per account. Plays a sound when this one stops being credited because another is playing.', `<button class="btn sm" data-action="test-sound">${icon('bell')} Test</button>${toggle('alertOnStall', s.alertOnStall)}`)}
       ${s.alertOnStall ? row('Repeat the alarm', 'Keeps chiming until you press Stop alarm on the banner, or credit comes back.', `${s.repeatAlert ? seg('setting-value', String(s.alertRepeatSeconds ?? 30), [['15', '15s'], ['30', '30s'], ['60', '1 min']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="alertRepeatSeconds"') : ''}${toggle('repeatAlert', s.repeatAlert)}`) : ''}`,
+    notifications: (() => {
+      const where = mac ? 'System Settings › Notifications' : navigator.platform.startsWith('Win') ? 'Settings › System › Notifications' : 'your system’s notification settings';
+      const result =
+        { failed: `Your computer blocked it. Allow notifications for Pear Drops in ${where}.`, sent: `Sent. If you didn’t see it, allow notifications for Pear Drops in ${where}.` }[ui.notifyTest] ??
+        NOTIFY_TEST[ui.notifyTest] ??
+        'If your computer blocks them, nothing shows. Send a test to check.';
+      const on = s.notify ?? {};
+      const system = mac || navigator.platform.startsWith('Win') ? `<button class="btn sm" data-action="notify-system">${icon('settings')} System settings</button>` : '';
+      return `<p class="pane-note">Your computer’s own notifications, also while Pear Drops is in the background or in the ${tray}. Choose which ones you want.</p>
+      ${row('Check they work', `<span class="notify-result ${ui.notifyTest ?? ''}">${result}</span>`, `<button class="btn sm" data-action="notify-test" ${ui.notifyTest === 'sending' ? 'disabled' : ''}>${icon('bell')} Send a test</button>${system}`)}
+      ${NOTIFY_KINDS.map(([kind, title, sub]) => row(title, sub, `<button class="switch ${on[kind] ? 'on' : ''}" data-action="notify-toggle" data-kind="${kind}"></button>`)).join('')}
+      ${row('Only when Pear Drops isn’t in front', 'Skip them while you’re looking at the app.', toggle('notifyAway', s.notifyAway))}`;
+    })(),
     refresh: `
       <p class="pane-note">How often the app checks Kick. Shorter is more responsive; longer makes fewer requests.</p>
       ${row('Progress and claims', 'Your drop progress, auto-claims, and whether the current stream is still live.', range('refreshSeconds', 30, 300, 15, 's'))}
@@ -1042,6 +1073,18 @@ const actions = {
     }
   },
   'setting-value': (el) => window.pd.setSettings({ [el.dataset.key]: el.dataset.id }),
+  'notify-toggle': (el) => {
+    const notify = { ...(state.settings.notify ?? {}) };
+    notify[el.dataset.kind] = !notify[el.dataset.kind];
+    window.pd.setSettings({ notify });
+  },
+  'notify-test': async () => {
+    ui.notifyTest = 'sending';
+    render();
+    ui.notifyTest = await window.pd.notifyTest().catch(() => 'failed');
+    render();
+  },
+  'notify-system': () => window.pd.notifySystemSettings(),
   'setting-toggle': (el) => {
     const key = el.dataset.key;
     const current = key === 'showChat' ? state.settings.showChat !== false : state.settings[key];
@@ -1226,6 +1269,13 @@ setHTML($('#brand-mark'), brandMark(32));
 initUpdates();
 window.pd.onState((next) => {
   state = next;
+  render();
+});
+// A desktop notification was clicked: the app came forward, on the view it's about.
+window.pd.onShowView((view) => {
+  if (!['dashboard', 'history'].includes(view) || ui.view === view) return;
+  ui.view = view;
+  if (view === 'history') loadHistory();
   render();
 });
 window.pd.onAlert((alert) => {
