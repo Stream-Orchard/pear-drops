@@ -141,6 +141,31 @@ function makeCampaigns() {
       channels: ['driftwood', 'solarflair'].map((s) => ({ id: ch(s).id, slug: s, user: { username: ch(s).username, profile_picture: ch(s).avatar } })),
       rewards: [reward('r-market-1', 'Bull Run Emote', 60, '🐂', 120), reward('r-market-2', 'Diamond Hands Badge', 240, '💎', 190, 'badge')],
     },
+    // Announced, not started yet (Kick lists these as "upcoming"): the Coming soon card.
+    {
+      id: 'c-kart-night',
+      name: 'Pixel Kart Night Cup',
+      status: 'upcoming',
+      starts_at: days(0.3),
+      ends_at: days(7),
+      category: CATEGORIES.kart,
+      organization: KICK_ORG,
+      connect_url: '',
+      channels: [],
+      rewards: [reward('r-night-1', 'Midnight Lap Emote', 90, '🌙', 230), reward('r-night-2', 'Night Cup Badge', 240, '🏆', 50, 'badge')],
+    },
+    {
+      id: 'c-sky-s4',
+      name: 'Skyforge Season 4',
+      status: 'upcoming',
+      starts_at: days(4.2),
+      ends_at: days(18),
+      category: CATEGORIES.sky,
+      organization: KICK_ORG,
+      connect_url: '',
+      channels: [],
+      rewards: [reward('r-s4-1', 'Anvil Emote', 60, '🔨', 25), reward('r-s4-2', 'Forge Spark Emote', 180, '✨', 45), reward('r-s4-3', 'Season 4 Badge', 360, '🛡️', 200, 'badge')],
+    },
   ];
 }
 
@@ -168,7 +193,7 @@ class DemoApi {
   constructor() {
     this.loggedIn = !!process.env.PD_DEMO_SIGNED_IN;
     this.rawCampaigns = makeCampaigns();
-    this.units = { 'c-neon': 148, 'c-cozy': 34, 'c-sky': 12, 'c-kart': 92, 'c-market': 0 };
+    this.units = { 'c-neon': 148, 'c-cozy': 34, 'c-sky': 12, 'c-kart': 92, 'c-market': 0, 'c-kart-night': 0, 'c-sky-s4': 0 };
     this.claimed = new Set(['r-neon-1', 'r-cozy-1', 'r-kart-1']);
     this.pending = 0; // credit units waiting for the next progress read
     this.watching = null;
@@ -286,6 +311,8 @@ class DemoApi {
     if (!c || !live) return;
     for (const camp of this.rawCampaigns) {
       if (camp.category.id !== Number(live[0])) continue;
+      // Announced drops (Coming soon) don't count until they start.
+      if (new Date(camp.starts_at).getTime() > Date.now()) continue;
       if (camp.channels.length && !camp.channels.some((x) => x.id === c.id)) continue;
       this.units[camp.id] += amount;
     }

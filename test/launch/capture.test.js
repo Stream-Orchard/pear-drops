@@ -16,6 +16,8 @@ test.after(async () => {
 
 test('Light mode shows the mirrored player at 16:9 with its chat below, filling the panel', async () => {
   await until(a.win, () => ['#player-mirror', '#chat-mirror'].every((s) => { const el = document.querySelector(s); return el && !el.hidden && el.complete && el.naturalWidth; }), 'both mirrored pages', 30000);
+  // Measured once the panel's layout has settled (its width animates when the window is sized).
+  await until(a.win, () => !document.getAnimations().some((x) => x.playState === 'running' && x.effect?.target?.closest?.('.layout, #player')), 'the layout to settle', 5000);
   const box = await a.win.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
     const [slot, player, chat] = ['#player-slot', '#player-mirror', '#chat-mirror'].map(r);

@@ -251,6 +251,29 @@ test('for notifications: a claim, a reward ready to claim by hand, a new drop on
   assert.equal(heard.ready.length, 1, 'told once');
 });
 
+test('drops Kick has announced (upcoming) are listed soonest first for Coming soon, kept out of the queue, and told once each', async () => {
+  const later = (days) => new Date(Date.now() + days * 86_400_000).toISOString();
+  const soon = (id, days, extra = {}) => ({ ...campaign(id, { category: { id: 9, name: 'Pixel Kart' }, ...extra }), status: 'upcoming', starts_at: later(days), ends_at: later(days + 7) });
+  const { farmer, api } = setup({ campaigns: [campaign('a'), soon('late', 4), soon('early', 0.5), soon('game', 1, { org: 'Riot Games', connect: 'https://riot', rewards: [{ id: 'g1', name: 'Skin', required_units: 30 }] })], streams: { 1: [live('s', 1)], 9: [live('k', 9)] } });
+  const heard = [];
+  farmer.on('new-drops', (x) => heard.push(x));
+  await farmer.tick();
+  assert.deepEqual(farmer.snapshot().upcoming.map((c) => c.id), ['early', 'late'], 'soonest first; game drops only when farmed');
+  assert.equal(farmer.snapshot().upcoming[0].watchMinutes, 60);
+  assert.ok(!farmer.model.campaigns.some((c) => c.id === 'early'), 'not in the queue until it starts');
+  assert.deepEqual(heard, [], 'the first look only learns what is there');
+
+  api.list.push(soon('new', 2));
+  farmer.campaignsAt = 0;
+  await farmer.tick();
+  assert.equal(heard.length, 1);
+  assert.equal(heard[0][0].id, 'new');
+  assert.ok(heard[0][0].startsAt, 'told as coming, with when it starts');
+  farmer.campaignsAt = 0;
+  await farmer.tick();
+  assert.equal(heard.length, 1, 'told once');
+});
+
 test('the user order of categories wins over end dates', async () => {
   const first = campaign('a', { category: { id: 1, name: 'First' }, endsIn: 1 });
   const second = campaign('b', { category: { id: 2, name: 'Second' }, endsIn: 5 });

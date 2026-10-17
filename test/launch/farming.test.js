@@ -327,19 +327,27 @@ test('polish: the Queue badge counts its categories, watch events read as sent, 
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
 });
 
-test('the Queue ends with a plan: each live category in order, as long as its time left, with when it should be done', async () => {
+test('the Queue ends with Coming soon: the drops Kick has announced, soonest first, one at a time, the next every 30 s or by its dots', async () => {
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
-  await until(a.win, () => document.querySelector('#side .plan .plan-seg'), 'the plan', 10000);
-  const plan = await a.win.evaluate(() => ({
-    segs: [...document.querySelectorAll('#side .plan-seg')].map((x) => x.textContent.trim()),
-    ticks: [...document.querySelectorAll('#side .plan-ticks span')].map((x) => x.textContent.trim()),
-    head: document.querySelector('#side .plan-head').textContent,
-    live: [...document.querySelectorAll('#side .queue-list .cat')].filter((c) => /\d+\+? live/.test(c.textContent)).map((c) => c.querySelector('.cat-name span').textContent),
-  }));
-  assert.deepEqual(plan.segs, plan.live, 'the live categories, in queue order');
-  assert.equal(plan.ticks.length, plan.segs.length, 'a finish time for each');
-  assert.match(plan.head, /done about .+ if streams stay live/);
-  assert.equal(await a.win.locator('#side .plan-seg.now').count(), 1, 'the one being farmed stands out');
+  await until(a.win, () => document.querySelector('#side .coming'), 'Coming soon', 10000);
+  const shown = () => a.win.evaluate(() => document.querySelector('#side .coming-info b').textContent);
+  assert.equal(await shown(), 'Pixel Kart Night Cup', 'the soonest first');
+  assert.match(await a.win.textContent('#side .coming'), /Pixel Kart · starts .+ · in \d+h/);
+  assert.equal(await a.win.locator('#side .coming .mini-reward').count(), 2);
+  assert.equal(await a.win.locator('#side .coming-dot').count(), 2);
+  // On its own after 30 seconds…
+  await a.win.evaluate(() => { ui.comingHover = false; ui.comingAt -= 31_000; render(); });
+  await until(a.win, () => document.querySelector('#side .coming-info b')?.textContent === 'Skyforge Season 4', 'the next one', 5000);
+  // …and straight away from its dots.
+  await a.win.click('#side .coming-dot >> nth=0');
+  await until(a.win, () => document.querySelector('#side .coming-info b')?.textContent === 'Pixel Kart Night Cup', 'the picked one', 5000);
+  // Not while the pointer is on it.
+  await a.win.hover('#side .coming');
+  await a.win.evaluate(() => { ui.comingAt -= 31_000; render(); });
+  await a.win.waitForTimeout(300);
+  assert.equal(await shown(), 'Pixel Kart Night Cup', 'stays put under the pointer');
+  await a.win.mouse.move(5, 500);
+  assert.ok(!(await a.win.textContent('#side .queue-list')).includes('Night Cup'), 'announced drops are not in the queue itself');
 });
 
 test('paused, the hero shows what comes next', async () => {

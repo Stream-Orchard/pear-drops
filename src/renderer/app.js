@@ -568,43 +568,43 @@ function queuePanel(f) {
   const toGo = cats.flatMap(trackedRewards).filter((r) => !r.claimed).length;
   return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>${toGo ? `${toGo} reward${toGo > 1 ? 's' : ''} to go · ` : ''}click a category for its drops.</span></p></div>
     <div class="queue-list">${rows || `<div class="empty">${icon('gift')}${f.categories.length ? 'Every drop is collected. Finished ones are in Done.' : 'No active emote or badge drops right now.'}</div>`}</div>
-    ${planStrip(f, cats)}`;
+    ${comingCard(f)}`;
 }
 
-/** A clock time, with the day when it isn't today ("Sat 7:32"). */
-function fmtWhen(t) {
-  const d = new Date(t);
-  return d.toDateString() === new Date().toDateString() ? fmtClock(t) : `${d.toLocaleDateString([], { weekday: 'short' })} ${fmtClock(t)}`;
-}
+// Coming soon: how long each announced drop shows before the next, unless one was picked.
+const COMING_EVERY_MS = 30_000;
 
 /**
- * The queue as a timeline: each live category in order, as long as its time left, ending at the
- * clock time it should be done (if its streams stay live). Ones with nothing live wait below.
+ * Drops Kick has announced but not started, at the foot of the Queue: one at a time, the next
+ * every 30 seconds (not while the pointer is on it), with dots to pick one.
  */
-function planStrip(f, cats) {
-  const todo = cats.filter((c) => c.enabled && c.needsWatching);
-  const live = todo.filter((c) => c.streamCount);
-  // Nothing live: the rows (Offline) and the hero already say so.
-  if (!live.length) return '';
-  const waiting = todo.length - live.length;
-  let t = Date.now();
-  const segs = live.map((c) => {
-    const mins = Math.max(1, categoryEta(c));
-    t += mins * MIN;
-    return { c, mins, to: t };
-  });
-  const total = segs.reduce((n, x) => n + x.mins, 0) || 1;
-  const grow = (x) => Math.max(x.mins / total, 0.12).toFixed(3);
-  const bar = segs
-    .map(
-      (x) => `<div class="plan-seg ${f.current?.categoryId === x.c.id ? 'now' : ''}" style="flex:${grow(x)}" data-tip="${esc(x.c.name)}: ${fmtMin(x.mins)} left · done ${fmtWhen(x.to)}">
-        ${img(x.c.image, 'plan-art', x.c.name)}<span>${esc(x.c.name)}</span></div>`,
-    )
-    .join('');
-  const ticks = segs.map((x) => `<span style="flex:${grow(x)}">${fmtWhen(x.to)}</span>`).join('');
-  return `<div class="plan">
-    <div class="plan-head"><span class="eyebrow">Plan</span><span class="card-sub">done about ${fmtWhen(t)} if streams stay live${waiting ? `, then ${waiting === 1 ? 'the offline one' : `the ${waiting} offline ones`} once live` : ''}</span></div>
-    <div class="plan-bar">${bar}</div><div class="plan-ticks">${ticks}</div>
+function comingCard(f) {
+  const list = f.upcoming ?? [];
+  if (!list.length) return '';
+  const now = Date.now();
+  if (ui.comingIdx === undefined || ui.comingIdx >= list.length) ui.comingIdx = 0;
+  if (!ui.comingHover && list.length > 1 && now - (ui.comingAt ?? now) >= COMING_EVERY_MS) ui.comingIdx = (ui.comingIdx + 1) % list.length;
+  if (ui.comingAt === undefined || ui.comingShown !== ui.comingIdx) {
+    ui.comingAt = now;
+    ui.comingShown = ui.comingIdx;
+  }
+  const c = list[ui.comingIdx];
+  const starts = new Date(c.startsAt).getTime();
+  const when = new Date(starts).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const dots =
+    list.length > 1
+      ? `<span class="coming-dots">${list.map((x, i) => `<button class="coming-dot ${i === ui.comingIdx ? 'on' : ''}" data-action="coming-pick" data-id="${i}" data-tip="${esc(x.name)}"></button>`).join('')}</span>`
+      : '';
+  return `<div class="coming" data-key="coming-${esc(c.id)}">
+    <div class="coming-head"><span class="eyebrow">Coming soon</span>${list.length > 1 ? `<span class="card-sub">${ui.comingIdx + 1} of ${list.length}</span>` : ''}<span class="spacer"></span>${dots}</div>
+    <div class="coming-body">
+      ${img(c.image, 'coming-art', c.category)}
+      <div class="coming-info">
+        <b>${esc(c.name)}</b>
+        <span class="coming-when">${esc(c.category)} · starts ${when} · in ${fmtDur(starts - now)}</span>
+        <div class="coming-rewards">${c.rewards.map((r) => `<span class="mini-reward" ${previewAttrs(r, 0)}>${img(r.image)}${esc(r.name)} <em>${r.required}m</em></span>`).join('')}</div>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -964,8 +964,8 @@ function toast({ title, body, kind = '', image }) {
   // Bottom right of the dashboard, clear of the docked stream (and of the charts on the left).
   const host = $('#toasts');
   host.style.right = `${Math.max(24, innerWidth - popupWall(innerHeight - 220, innerHeight) + 24)}px`;
-  // Above the Queue's plan when it's showing, in the space over it.
-  const plan = document.querySelector('#side .plan')?.getBoundingClientRect();
+  // Above the Queue's Coming soon card when it's showing, in the space over it.
+  const plan = document.querySelector('#side .coming')?.getBoundingClientRect();
   host.style.bottom = plan?.height ? `${Math.max(24, innerHeight - plan.top + 12)}px` : '';
   host.appendChild(el);
   setTimeout(() => {
@@ -1168,6 +1168,11 @@ const actions = {
     }
   },
   'setting-value': (el) => window.pd.setSettings({ [el.dataset.key]: el.dataset.id }),
+  'coming-pick': (el) => {
+    ui.comingIdx = Number(el.dataset.id);
+    ui.comingAt = Date.now();
+    render();
+  },
   'notify-toggle': (el) => {
     const notify = { ...(state.settings.notify ?? {}) };
     notify[el.dataset.kind] = !notify[el.dataset.kind];
@@ -1366,6 +1371,10 @@ window.pd.onState((next) => {
   state = next;
   render();
 });
+// Coming soon doesn't move on while the pointer is on it.
+document.addEventListener('pointerover', (e) => (ui.comingHover = !!e.target.closest?.('.coming')));
+document.documentElement.addEventListener('pointerleave', () => (ui.comingHover = false));
+
 // A desktop notification was clicked: the app came forward, on the view it's about.
 window.pd.onShowView((view) => {
   if (!['dashboard', 'history'].includes(view) || ui.view === view) return;

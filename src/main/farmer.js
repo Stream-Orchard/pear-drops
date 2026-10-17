@@ -262,14 +262,47 @@ class Farmer extends EventEmitter {
     this.saveCache();
   }
 
+  /**
+   * Drops Kick has announced that haven't started (status "upcoming"), soonest first, for the
+   * Coming soon card. Like the queue, only ones with emotes or badges (or game drops, if farmed).
+   */
+  upcomingDrops(settings, now) {
+    return this.rawCampaigns
+      .filter((c) => c.category?.id && c.status !== 'expired' && new Date(c.starts_at).getTime() > now)
+      .map((c) => {
+        const rewards = this.modelRewards(c, null, settings).filter((r) => r.tracked);
+        if (!rewards.length) return null;
+        return {
+          id: c.id,
+          name: c.name,
+          category: c.category.name,
+          categoryId: c.category.id,
+          image: this.img(c.category.image_url || c.category.banner_image_url || null),
+          org: c.organization?.name,
+          startsAt: c.starts_at,
+          endsAt: c.ends_at,
+          channels: c.channels?.length ?? 0,
+          rewards,
+          watchMinutes: Math.max(...rewards.map((r) => r.required)),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+  }
+
   /** For desktop notifications: drops Kick just started listing. The first look only learns what's there. */
   announce() {
     const ids = this.model.campaigns.map((c) => c.id);
+    const soon = this.model.upcoming ?? [];
     if (this.seenDrops) {
       const fresh = this.model.campaigns.filter((c) => !this.seenDrops.has(c.id) && c.needsWatching);
       if (fresh.length) this.emit('new-drops', fresh.map((c) => ({ id: c.id, name: c.name, category: this.model.categories.find((x) => x.id === c.categoryId)?.name })));
+      // Announced ones too ("starts …"); each is told again when it starts.
+      const announced = soon.filter((c) => !this.seenUpcoming.has(c.id));
+      if (announced.length) this.emit('new-drops', announced.map((c) => ({ id: c.id, name: c.name, category: c.category, startsAt: c.startsAt })));
     }
     this.seenDrops = new Set([...(this.seenDrops ?? []), ...ids]);
+    this.seenUpcoming = new Set([...(this.seenUpcoming ?? []), ...soon.map((c) => c.id)]);
   }
 
   // ------------------------------------------------------------------ startup cache
@@ -628,7 +661,7 @@ class Farmer extends EventEmitter {
       return a.soonestEnd - b.soonestEnd;
     });
 
-    this.model = { categories, campaigns, past: this.pastDrops(campaigns, settings, now) };
+    this.model = { categories, campaigns, past: this.pastDrops(campaigns, settings, now), upcoming: this.upcomingDrops(settings, now) };
     this.recordMilestones();
     this.recordUrgency();
   }
@@ -1403,6 +1436,7 @@ class Farmer extends EventEmitter {
         campaigns: cat.campaigns.map((c) => ({ ...c, channelIds: undefined, watching: watchedCampaigns.has(c.id) })),
       })),
       past: this.model.past ?? [],
+      upcoming: this.model.upcoming ?? [],
       forecast: this.forecast(),
       stats: { ...this.stats, followedCount: this.followed.size },
       samples: this.samples.slice(-360),
