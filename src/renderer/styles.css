@@ -373,6 +373,22 @@ button {
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--green);
 }
 
+/* In place of an image that's missing or didn't load (format.js img()): the image's own box,
+   in its own shape, with a faint picture. */
+.img-missing {
+  display: inline-block;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='.22' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='3'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='m21 16-5-5-9 9'/%3E%3C/svg%3E")
+      center / min(42%, 26px) no-repeat,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+    var(--solid-2);
+  vertical-align: middle;
+}
+.img-missing.fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .switch {
   -webkit-app-region: no-drag;
   position: relative;
@@ -1794,6 +1810,30 @@ button {
 }
 .sub-tabs {
   align-self: flex-start;
+  /* Every category in view: they wrap onto another row rather than squeeze or scroll. */
+  flex-wrap: wrap;
+}
+.sub-tabs .tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A long name is cut; its count always shows. */
+.tab .tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab em {
+  flex: none;
+}
+/* A thumbnail's placeholder keeps its picture clear of the viewer count in the corner. */
+.thumb .img-missing {
+  background-position:
+    right 14px center,
+    center,
+    center;
 }
 
 /* =========================================================================
