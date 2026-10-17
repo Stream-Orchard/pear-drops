@@ -953,6 +953,9 @@ function toast({ title, body, kind = '', image }) {
   // Bottom right of the dashboard, clear of the docked stream (and of the charts on the left).
   const host = $('#toasts');
   host.style.right = `${Math.max(24, innerWidth - popupWall(innerHeight - 220, innerHeight) + 24)}px`;
+  // Above the Queue's plan when it's showing, in the space over it.
+  const plan = document.querySelector('#side .plan')?.getBoundingClientRect();
+  host.style.bottom = plan?.height ? `${Math.max(24, innerHeight - plan.top + 12)}px` : '';
   host.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity .3s, transform .3s';
