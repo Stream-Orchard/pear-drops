@@ -39,6 +39,9 @@ test('panels stay still while the dashboard ticks: no layout shifts, images kept
         total: document.querySelectorAll('img').length,
       };
     });
+  // The panels rise into place when the page opens: measure once that has finished (a slow
+  // machine can still be running it). Spinners and pulses repeat forever, so they're left out.
+  await a.win.evaluate(() => Promise.all(document.getAnimations().filter((an) => an.effect?.getTiming().iterations !== Infinity).map((an) => an.finished.catch(() => {}))));
   const first = await snap();
   await a.win.waitForTimeout(4500);
   const later = await snap();

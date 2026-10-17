@@ -1274,6 +1274,9 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* With the live dot first, the box would sit on the dot's bottom edge and make the line
+     (and so the whole stats row) taller as soon as the player starts. */
+  vertical-align: top;
 }
 .player-state.good {
   color: var(--green);
