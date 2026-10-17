@@ -27,15 +27,11 @@
   <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#bg)"/>
   <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#glow)"/>
   <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
-  <!-- orbit -->
   <circle cx="512" cy="512" r="300" fill="none" stroke="#53fc18" stroke-opacity="0.16" stroke-width="6" stroke-dasharray="4 22" stroke-linecap="round"/>
-  <!-- the pear -->
-  <path d="M 512.0 252.0 C 447.0 252.0 413.2 306.6 413.2 371.6 C 413.2 426.2 382.0 457.4 343.0 504.2 C 298.8 556.2 267.6 608.2 267.6 670.6 C 267.6 795.4 374.2 870.8 512.0 870.8 C 649.8 870.8 756.4 795.4 756.4 670.6 C 756.4 608.2 725.2 556.2 681.0 504.2 C 642.0 457.4 610.8 426.2 610.8 371.6 C 610.8 306.6 577.0 252.0 512.0 252.0 Z" fill="#53fc18" opacity="0.55" filter="url(#soft)"/>
-  <path d="M 512.0 252.0 C 447.0 252.0 413.2 306.6 413.2 371.6 C 413.2 426.2 382.0 457.4 343.0 504.2 C 298.8 556.2 267.6 608.2 267.6 670.6 C 267.6 795.4 374.2 870.8 512.0 870.8 C 649.8 870.8 756.4 795.4 756.4 670.6 C 756.4 608.2 725.2 556.2 681.0 504.2 C 642.0 457.4 610.8 426.2 610.8 371.6 C 610.8 306.6 577.0 252.0 512.0 252.0 Z" fill="url(#drop)"/>
-  <path d="M 512.0 262.4 C 512.0 220.8 525.0 184.4 548.4 158.4" stroke="#6b4a2b" stroke-width="42" stroke-linecap="round" fill="none"/>
-  <path d="M 553.6 200.0 C 579.6 140.2 652.4 122.0 709.6 140.2 C 691.4 200.0 623.8 231.2 553.6 200.0 Z" fill="#2fd10a"/>
-  <path d="M 392.4 564.0 C 358.6 603.0 340.4 642.0 337.8 683.6" stroke="#ffffff" stroke-opacity="0.5" stroke-width="36" stroke-linecap="round" fill="none"/>
-  <!-- a drop, cut out of the pear -->
-  <path d="M512 528C566 596 604 640 604 700a92 92 0 0 1-184 0C420 640 458 596 512 528Z" fill="#0a1406"/>
-  <path d="M478 664c-10 14-15 28-15 44" stroke="#53fc18" stroke-opacity=".55" stroke-width="16" stroke-linecap="round" fill="none"/>
+  <!-- the drop -->
+  <path d="M512 176C602 292 770 462 770 640a258 258 0 0 1-516 0C254 462 422 292 512 176Z" fill="url(#drop)" opacity=".5" filter="url(#soft)"/>
+  <path d="M512 176C602 292 770 462 770 640a258 258 0 0 1-516 0C254 462 422 292 512 176Z" fill="url(#drop)"/>
+  <!-- a pear inside it -->
+  <g transform="translate(512 646) scale(0.5) translate(-512 -520)"><path d="M 512.0 252.0 C 447.0 252.0 413.2 306.6 413.2 371.6 C 413.2 426.2 382.0 457.4 343.0 504.2 C 298.8 556.2 267.6 608.2 267.6 670.6 C 267.6 795.4 374.2 870.8 512.0 870.8 C 649.8 870.8 756.4 795.4 756.4 670.6 C 756.4 608.2 725.2 556.2 681.0 504.2 C 642.0 457.4 610.8 426.2 610.8 371.6 C 610.8 306.6 577.0 252.0 512.0 252.0 Z" fill="#0a1406"/><path d="M 512.0 262.4 C 512.0 220.8 525.0 184.4 548.4 158.4" stroke="#0a1406" stroke-width="46" stroke-linecap="round" fill="none"/><path d="M 553.6 200.0 C 579.6 140.2 652.4 122.0 709.6 140.2 C 691.4 200.0 623.8 231.2 553.6 200.0 Z" fill="#0a1406"/></g>
+  <path d="M352 560c-26 40-38 82-36 124" stroke="#ffffff" stroke-opacity=".5" stroke-width="30" stroke-linecap="round" fill="none"/>
 </svg>
