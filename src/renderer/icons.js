@@ -45,8 +45,8 @@ function icon(name, cls = '') {
   return `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 }
 
-// The app's mark: a Kick-green pear (pear drops are the boiled sweets) with a stepped
-// black K, in Kick's blocky style. Plain fills, no gradient ids, so every copy draws
+// The app's mark: a green pear (pear drops are the boiled sweets) with a drop cut out of
+// it. Plain fills, no gradient ids, so every copy draws
 // (ids repeat across copies, and a gradient inside a hidden copy paints nowhere).
 function brandMark(size = 28) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true">
@@ -54,6 +54,6 @@ function brandMark(size = 28) {
     <path d="M16 6.6C16 5 16.5 3.6 17.4 2.6" stroke="#6b4a2b" stroke-width="1.6" stroke-linecap="round" fill="none"/>
     <path d="M17.6 4.2C18.6 1.9 21.4 1.2 23.6 1.9C22.9 4.2 20.3 5.4 17.6 4.2Z" fill="#2fd10a"/>
     <path d="M11.4 18.2c-1.3 1.5-2 3-2.1 4.6" stroke="#fff" stroke-opacity=".45" stroke-width="1.4" stroke-linecap="round" fill="none"/>
-    <path d="M11 17.3h3.34v3.34h1.67v-1.67h1.67v-1.67h3.34v1.67h-1.67v1.67h-1.67v3.34h1.67v1.67h1.67v1.67h-3.34v-1.67h-1.67v-1.67h-1.67v3.34H11z" fill="#0a1406"/>
+    <path d="M16 16.8C18.1 19.4 19.5 21.1 19.5 23.4a3.54 3.54 0 0 1-7.08 0C12.5 21.1 13.9 19.4 16 16.8Z" fill="#0a1406"/>
   </svg>`;
 }

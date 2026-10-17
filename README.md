@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/assets/hero.jpg" alt="Pear Drops: collects your Kick emote and badge drops with Kick's own player" width="100%"></p>
+
 # Pear Drops
 
 A desktop app that collects Kick **emote and badge drops** for you. Sign in once and it:
@@ -7,10 +9,6 @@ A desktop app that collects Kick **emote and badge drops** for you. Sign in once
 - moves on to the next category when one is done
 
 Game drops that need a linked game account are skipped unless you turn them on.
-
-![Pear Drops dashboard](docs/dashboard.png)
-
-![History view](docs/history.png)
 
 ## Features
 
@@ -96,6 +94,7 @@ test/unit/       node --test unit tests
 test/launch/     Playwright launch tests against the real app
 scripts/         dev, coverage, hardening, icon and release tools
 build/           installer hooks and icon source
+.github/assets/  the README's hero image (hero.jpg) and the page it's drawn from (hero.html)
 ```
 
 The app's own pages never use system pop-ups such as `alert`, native message boxes or date pickers. `test/unit/no-system-popups.test.js` checks for them.

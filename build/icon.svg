@@ -35,6 +35,7 @@
   <path d="M 512.0 262.4 C 512.0 220.8 525.0 184.4 548.4 158.4" stroke="#6b4a2b" stroke-width="42" stroke-linecap="round" fill="none"/>
   <path d="M 553.6 200.0 C 579.6 140.2 652.4 122.0 709.6 140.2 C 691.4 200.0 623.8 231.2 553.6 200.0 Z" fill="#2fd10a"/>
   <path d="M 392.4 564.0 C 358.6 603.0 340.4 642.0 337.8 683.6" stroke="#ffffff" stroke-opacity="0.5" stroke-width="36" stroke-linecap="round" fill="none"/>
-  <!-- K, in Kick's stepped style -->
-  <path d="M382.0 540.6L468.8 540.6L468.8 627.4L512.3 627.4L512.3 584.0L555.7 584.0L555.7 540.6L642.5 540.6L642.5 584.0L599.1 584.0L599.1 627.4L555.7 627.4L555.7 714.3L599.1 714.3L599.1 757.7L642.5 757.7L642.5 801.1L555.7 801.1L555.7 757.7L512.3 757.7L512.3 714.3L468.8 714.3L468.8 801.1L382.0 801.1Z" fill="#0a1406"/>
+  <!-- a drop, cut out of the pear -->
+  <path d="M512 528C566 596 604 640 604 700a92 92 0 0 1-184 0C420 640 458 596 512 528Z" fill="#0a1406"/>
+  <path d="M478 664c-10 14-15 28-15 44" stroke="#53fc18" stroke-opacity=".55" stroke-width="16" stroke-linecap="round" fill="none"/>
 </svg>
