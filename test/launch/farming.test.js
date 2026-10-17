@@ -434,6 +434,9 @@ test('a frozen picture shows on the dashboard and tray within seconds, and is ch
   await main(() => {
     global.pdDebug.farmer.lastQuickCheckAt = 0;
     global.pdDemo.api.offline.clear();
+    // Earlier tests switch streams quickly, and each new page sends a watch event before any
+    // credit lands: start from no conflict, so the pill shows the frozen picture, not that.
+    global.pdDebug.farmer.eventsSinceCredit = 0;
   });
   await until(a.win, () => document.querySelector('#stats .player-state')?.textContent === 'Playing', 'the player to play', 15000);
   await main(() => global.pdDemo.freeze(true));
