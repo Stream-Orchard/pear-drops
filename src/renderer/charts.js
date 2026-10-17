@@ -43,6 +43,9 @@ function pill(x, y, text, { cls = '', anchor = 'middle', minX = 0, maxX = 1e9 } 
     <text x="${left + w / 2}" y="${y + 4}" text-anchor="middle">${escapeHtml(text)}</text></g>`;
 }
 
+// The longest forecast the progress chart draws (two weeks), in minutes.
+const MAX_FORECAST_MIN = 14 * 1440;
+
 /**
  * Progress over time for one campaign: credited history, a forecast band and
  * projection, and each upcoming reward marked (with its picture) where it unlocks.
@@ -59,9 +62,12 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
   const remaining = Math.max(0, (target || 0) - units);
   const doneMin = r ? remaining / r : Infinity;
 
-  const t0 = Math.min(pts[0][0], now - 45 * CHART_MIN);
-  const futureSpan = Number.isFinite(doneMin) && remaining > 0 ? Math.min(doneMin, 12 * 60) * 1.1 : 30;
-  const t1 = showForecast ? now + Math.max(20, futureSpan) * CHART_MIN : now + (now - t0) * 0.02;
+  // The forecast runs all the way to the campaign being done (up to two weeks), and the past
+  // keeps at least a sixth of the width so the "now" label and the region names fit beside it.
+  const futureSpan = Number.isFinite(doneMin) && remaining > 0 ? Math.min(doneMin, MAX_FORECAST_MIN) * 1.1 : 30;
+  const future = Math.max(20, futureSpan) * CHART_MIN;
+  const t0 = Math.min(pts[0][0], now - 45 * CHART_MIN, showForecast ? now - future * 0.2 : Infinity);
+  const t1 = showForecast ? now + future : now + (now - t0) * 0.02;
   const yTop = Math.max(target || 0, units) * 1.08 || 10;
   const yMin = Math.max(0, Math.min(...pts.map((p) => p[1])) - yTop * 0.08);
   const x = (t) => pad.l + ((t - t0) / (t1 - t0)) * w;
@@ -119,6 +125,8 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
       <path d="M${xNow},${yNow} L${x(tEnd)},${y(uAt(tEnd, 1))}" class="projection" stroke="url(#${id}-proj)"/>`;
   }
 
+  const uAt = (t) => Math.min(target, units + ((t - now) / CHART_MIN) * r);
+
   // ---- rewards: reached ones on the history line, upcoming ones on the projection
   const markers = [];
   const labels = [];
@@ -136,7 +144,11 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
     }
     if (!r || !showForecast) return;
     const tHit = now + ((rw.required - units) / r) * CHART_MIN;
-    if (tHit > t1) return;
+    if (tHit > t1) {
+      // Done further out than the chart reaches: say when, at its edge.
+      if (rw === last) labels.push(pill(pad.l + w, y(uAt(t1)) - 22, `Done in ${durLabel((tHit - now) / CHART_MIN)}`, { cls: 'p-final', anchor: 'end', ...bounds }));
+      return;
+    }
     const xx = x(tHit);
     const clip = `${id}-c${markers.length}`;
     const final = rw === last;
@@ -169,7 +181,7 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
     </defs>
     ${showForecast ? `<rect x="${xNow}" y="${pad.t - 14}" width="${Math.max(0, pad.l + w - xNow)}" height="${h + 14}" rx="10" fill="url(#${id}-future)"/>
     <text x="${xNow + 12}" y="${pad.t - 1}" class="region">FORECAST</text>` : ''}
-    <text x="${pad.l + 4}" y="${pad.t - 1}" class="region">CREDITED</text>
+    ${xNow - pad.l > 90 ? `<text x="${pad.l + 4}" y="${pad.t - 1}" class="region">CREDITED</text>` : ''}
     ${grid.join('')}
     <path d="${area}" fill="url(#${id}-area)"/>
     ${forecast}
