@@ -264,13 +264,17 @@ class Farmer extends EventEmitter {
     return true;
   }
 
+  /** Saves a moment later, so a burst of changes writes once. Resolves once it's on disk (or the write failed). */
   saveCache() {
-    if (!this.cacheFile || this.cacheTimer) return;
-    this.cacheTimer = setTimeout(() => {
-      this.cacheTimer = null;
-      const data = { savedAt: Date.now(), campaigns: this.rawCampaigns, progress: this.progress, followed: [...this.followed], streams: [...this.streams], availability: this.availability };
-      require('fs').promises.writeFile(this.cacheFile, JSON.stringify(data)).catch(() => {});
-    }, 2000);
+    if (!this.cacheFile || this.cacheTimer) return this.cacheSaved;
+    this.cacheSaved = new Promise((resolve) => {
+      this.cacheTimer = setTimeout(() => {
+        this.cacheTimer = null;
+        const data = { savedAt: Date.now(), campaigns: this.rawCampaigns, progress: this.progress, followed: [...this.followed], streams: [...this.streams], availability: this.availability };
+        resolve(require('fs').promises.writeFile(this.cacheFile, JSON.stringify(data)).catch(() => {}));
+      }, 2000);
+    });
+    return this.cacheSaved;
   }
 
   /** Rebuilds the chart and live monitor's recent past from the saved history. */

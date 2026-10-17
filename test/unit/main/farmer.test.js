@@ -454,10 +454,9 @@ test('the startup cache shows the last known drops at once, and history rebuilds
   const first = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 20 } });
   first.farmer.cacheFile = file;
   await first.farmer.tick();
-  clearTimeout(first.farmer.cacheTimer);
-  first.farmer.cacheTimer = null;
-  first.farmer.saveCache();
-  await new Promise((r) => setTimeout(r, 2200));
+  // The refresh's save, awaited rather than slept on: a slow CI runner can fire the timer late.
+  assert.ok(first.farmer.cacheTimer);
+  await first.farmer.saveCache();
 
   const second = setup({ campaigns: [], streams: {} });
   second.farmer.cacheFile = file;
