@@ -36,7 +36,9 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
     ...(scale ? { KDF_SCALE: String(scale) } : {}),
     ...extraEnv,
   };
-  const app = await playwright()._electron.launch({ args: [ROOT], cwd: ROOT, env });
+  // --no-sandbox: Ubuntu (GitHub's Linux runners) blocks the user namespaces Electron's sandbox needs, so it
+  // wouldn't start there. The app's own pages keep their per-page sandbox.
+  const app = await playwright()._electron.launch({ args: ['--no-sandbox', ROOT], cwd: ROOT, env });
   const errors = [];
   const win = await app.firstWindow();
   win.on('pageerror', (err) => errors.push(String(err)));

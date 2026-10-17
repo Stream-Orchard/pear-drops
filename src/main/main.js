@@ -469,12 +469,13 @@ function registerIpc() {
 function setupUpdates() {
   const { execFile, spawn } = require('child_process');
   const { net } = require('electron');
-  let pkgRepo = '';
-  try {
-    pkgRepo = String(require(path.join(APP_ROOT, 'package.json')).updateRepo || '');
-  } catch {}
   // Tests point the updater at a stand-in GitHub and a copy of the app folder.
   const appRoot = process.env.KDF_UPDATE_APP_ROOT || APP_ROOT;
+  // The repository comes from the folder being updated, so a test's stand-in folder brings its own.
+  let pkgRepo = '';
+  try {
+    pkgRepo = String(require(path.join(appRoot, 'package.json')).updateRepo || '');
+  } catch {}
   updates = new Updates({
     version: app.getVersion(),
     installed: app.isPackaged,
