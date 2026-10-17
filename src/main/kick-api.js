@@ -185,6 +185,28 @@ class KickApi {
     return out;
   }
 
+  /**
+   * The live streams of a Kick event (a campaign's url can be kick.com/events/<slug>), in the
+   * shape livestreams() returns. The event's own list finds a campaign's channels however small,
+   * which a category's top streams can miss. The streams don't say their category.
+   */
+  async eventStreams(event, { maxPages = 3 } = {}) {
+    const out = [];
+    let cursor;
+    const seen = new Set();
+    for (let page = 0; page < maxPages; page++) {
+      const res = await this.request(`${WEB}/api/v1/events/${encodeURIComponent(event)}/streams`, { auth: false, query: { cursor } });
+      for (const s of res?.data?.streams ?? []) {
+        if (!s?.channel?.id || seen.has(s.channel.id)) continue;
+        seen.add(s.channel.id);
+        out.push(eventStream(s));
+      }
+      cursor = res?.data?.next_cursor;
+      if (!cursor) break;
+    }
+    return out;
+  }
+
   async channelInfo(slug) {
     return this.request(`${KICK}/api/v2/channels/${encodeURIComponent(slug)}/info`, { auth: false });
   }
@@ -223,4 +245,23 @@ function followsFrom(data) {
 
 const assetUrl = (path) => (!path ? null : /^(https?|data):/.test(path) ? path : ASSETS + path.replace(/^\//, ''));
 
-module.exports = { KickApi, ApiError, PARTITION, KICK, assetUrl, followsFrom, FOLLOW_APIS };
+/** The event a campaign belongs to, from its url (kick.com/events/<slug or id>), or null. */
+function eventOf(url) {
+  const m = /^https:\/\/(?:www\.)?kick\.com\/events\/([\w-]+)\/?(?:[?#].*)?$/.exec(String(url ?? ''));
+  return m ? m[1] : null;
+}
+
+/** An event's stream, as livestreams() has them. */
+function eventStream(s) {
+  return {
+    title: s.livestream?.title ?? '',
+    viewer_count: s.livestream?.view_count ?? 0,
+    thumbnail: { src: s.livestream?.thumbnail?.src ?? null },
+    language: s.livestream?.language,
+    is_mature: !!s.livestream?.is_mature,
+    channel: { id: s.channel.id, slug: s.channel.slug, username: s.user?.username ?? s.channel.slug, profile_pic: s.user?.profile_picture_url ?? null },
+    fromEvent: true,
+  };
+}
+
+module.exports = { KickApi, ApiError, PARTITION, KICK, assetUrl, followsFrom, FOLLOW_APIS, eventOf, eventStream };

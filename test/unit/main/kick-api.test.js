@@ -54,3 +54,24 @@ test('followedSlugs passes a signed-out error up instead of guessing', async () 
   const { api } = fakeApi(() => Object.assign(new Error('HTTP 401'), { status: 401 }));
   await assert.rejects(api.followedSlugs(), /401/);
 });
+
+test("eventOf reads the event from a campaign's url, and only kick.com event pages count", () => {
+  const { eventOf } = require('../../../src/main/kick-api');
+  assert.equal(eventOf('https://kick.com/events/safe-zone'), 'safe-zone');
+  assert.equal(eventOf('https://kick.com/events/01a0a3d9-602d-7db9-84f4-f740827ec04f/'), '01a0a3d9-602d-7db9-84f4-f740827ec04f');
+  assert.equal(eventOf('https://www.kick.com/events/x?ref=drops'), 'x');
+  assert.equal(eventOf('https://kick.com/category/fortnite'), null);
+  assert.equal(eventOf('https://www.lolesports.com'), null);
+  assert.equal(eventOf('https://evil.example/kick.com/events/x'), null);
+  assert.equal(eventOf(undefined), null);
+});
+
+test("eventStreams pages an event's live streams by cursor, as the category list has them, each channel once", async () => {
+  const stream = (id, viewers) => ({ channel: { id, slug: `ch${id}`, verified: true }, livestream: { id: `ls${id}`, title: `Stream ${id}`, view_count: viewers, language: 'en', is_mature: false, thumbnail: { src: `https://t/${id}.jpg` } }, user: { id: id + 1000, username: `Ch${id}`, profile_picture_url: `https://p/${id}.png` } });
+  const pages = { undefined: { data: { streams: [stream(1, 500), stream(2, 40)], next_cursor: 'p2' } }, p2: { data: { streams: [stream(2, 40), stream(3, 7)], next_cursor: null } } };
+  const { api, calls } = fakeApi((url, q) => (url.includes('/events/safe-zone/streams') ? pages[q.cursor] : new Error('unused')));
+  const list = await api.eventStreams('safe-zone');
+  assert.equal(calls.length, 2, 'until there is no next page');
+  assert.deepEqual(list.map((s) => s.channel.id), [1, 2, 3], 'each channel once');
+  assert.deepEqual(list[0], { title: 'Stream 1', viewer_count: 500, thumbnail: { src: 'https://t/1.jpg' }, language: 'en', is_mature: false, channel: { id: 1, slug: 'ch1', username: 'Ch1', profile_pic: 'https://p/1.png' }, fromEvent: true });
+});
