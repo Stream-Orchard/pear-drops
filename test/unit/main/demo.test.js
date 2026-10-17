@@ -86,3 +86,16 @@ test('the stand-in Kick follows and unfollows channels for a signed-in account',
   api.loggedIn = false;
   await assert.rejects(api.follow('kitekat'), (err) => err.status === 401);
 });
+
+test("the stand-in stream page: the player sends watch events, and tests can freeze it, end it or send Kick's realtime events", () => {
+  const { streamPage, CHANNELS } = require('../../../src/main/demo');
+  const slug = CHANNELS[0][0] ?? CHANNELS[0].slug;
+  const player = streamPage(slug, 120, 'player');
+  assert.match(player, /class="m-player"|m-player/);
+  assert.match(player, /window\.__demoWatchEvent=fire/);
+  assert.match(player, /setInterval\(fire,120000\)/);
+  for (const hook of ['__demoFreeze', '__demoEnd', '__demoRealtime']) assert.ok(player.includes(`window.${hook}=`), hook);
+  assert.match(player, /is offline/, 'an ended stream shows as offline');
+  const chat = streamPage(slug, 120, 'chat');
+  assert.ok(chat.includes("if(\"chat\"!=='chat')"), 'the chat sends no watch events');
+});

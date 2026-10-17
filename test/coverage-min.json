@@ -1,11 +1,11 @@
 {
   "src/main/archive.js": 98,
   "src/main/availability.js": 100,
-  "src/main/demo.js": 80,
+  "src/main/demo.js": 86,
   "src/main/farmer.js": 90,
   "src/main/history.js": 97,
   "src/main/kick-api.js": 52,
   "src/main/updater.js": 95,
   "src/main/updates.js": 86,
-  "src/main/watcher.js": 38
+  "src/main/watcher.js": 43
 }

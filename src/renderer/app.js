@@ -1,4 +1,4 @@
-/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, setHTML, widthOf, img, applyFont */
+/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -107,6 +107,9 @@ function statusInfo() {
   const f = farm();
   if (!f) return { cls: 'waiting', text: 'Loading drops…' };
   if (f.conflict) return { cls: 'conflict', text: 'Another stream is taking your credit' };
+  // A stream in trouble shows here at once, before the app has moved on.
+  const health = streamHealth(f);
+  if (health && f.status.code === 'farming' && ['checking', 'frozen'].includes(health.state)) return { cls: health.tone === 'bad' ? 'error' : 'waiting', text: f.health.text };
   const code = f.status.code;
   const map = { farming: 'farming', paused: 'paused', waiting: 'waiting', done: 'done', error: 'error', starting: 'waiting' };
   return { cls: map[code] ?? 'waiting', text: f.status.message };
@@ -192,6 +195,21 @@ function rewardLine(r, units) {
   </div>`;
 }
 
+/** The LIVE chip by the streamer's name, or what's wrong with the stream right now. */
+function healthChip(f) {
+  const h = streamHealth(f);
+  if (!h || h.state === 'playing') return '<span class="chip red"><span class="live-dot"></span>LIVE</span>';
+  const spin = h.state === 'checking' || h.state === 'loading' ? '<span class="spinner xs"></span>' : icon('alert');
+  return `<span class="chip ${h.tone === 'bad' ? 'red' : 'amber'} health" data-tip="${esc(f.health.text)}">${spin}${h.label}</span>`;
+}
+
+/** What just happened to the stream, over the hero's corner for a minute (it doesn't move the layout). */
+function noticeHTML(f) {
+  const n = streamNotice(f);
+  if (!n) return '';
+  return `<div class="hero-notice ${n.kind}" data-at="${n.at}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>`;
+}
+
 function renderHero() {
   const f = farm();
   const hero = $('#hero');
@@ -219,7 +237,8 @@ function renderHero() {
       hero,
       `<div class="hero-bg" style="${next?.image ? `background-image:url('${esc(next.image)}')` : ''}"></div>
       <div class="hero-empty"><div class="orb" style="color:${f.status.code === 'done' ? 'var(--gold)' : 'var(--muted)'}">${copy[0]}</div>
-      <div style="flex:1"><div class="eyebrow" style="margin-bottom:8px">${f.paused ? 'Paused' : 'Standing by'}</div><h2>${copy[1]}</h2><p>${copy[2]}</p></div>${copy[3]}</div>`,
+      <div style="flex:1"><div class="eyebrow" style="margin-bottom:8px">${f.paused ? 'Paused' : 'Standing by'}</div><h2>${copy[1]}</h2><p>${copy[2]}</p></div>${copy[3]}</div>
+      ${noticeHTML(f)}`,
     );
   }
 
@@ -253,7 +272,7 @@ function renderHero() {
             ${img(cur.avatar, 'avatar lg ring-live')}
             <div class="who">
               <div class="name">${esc(cur.username)} ${cur.followed ? icon('heart') : ''}</div>
-              <div class="hs-meta"><span class="chip red"><span class="live-dot"></span>LIVE</span><span class="chip flat num">${icon('eye')} ${fmtCount(cur.viewers)}</span></div>
+              <div class="hs-meta">${healthChip(f)}<span class="chip flat num">${icon('eye')} ${fmtCount(cur.viewers)}</span></div>
             </div>
           </div>
           <div class="title">${esc(cur.title ?? '')}</div>
@@ -277,6 +296,7 @@ function renderHero() {
         </div>
       </div>
     </div>
+    ${noticeHTML(f)}
     <div class="hero-stall">
       <span>Last credit <b>${fmtAgo(cur.lastProgressAt)}</b></span>
       <div class="stall-track"><i style="width:${(stallFrac * 100).toFixed(1)}%;background:${stallColor}"></i></div>
@@ -299,9 +319,8 @@ function renderStats() {
   const claimedAll = tracked.filter((r) => r.claimed).length;
   const credits = f.timeline.filter((e) => e.type === 'credit').length;
   const p = f.player ?? {};
-  const v = p.video;
-  const playing = v && !v.paused && v.readyState >= 3;
-  const player = !f.current ? ['Idle', '', 'nothing playing'] : !v ? ['Loading', 'warn', 'starting the player'] : playing ? ['Playing', 'good', `${v.height ? `${v.height}p · ` : ''}window muted`] : v.paused ? ['Paused', 'bad', 'will resume itself'] : ['Buffering', 'warn', 'waiting for video'];
+  const health = streamHealth(f);
+  const player = health ? [health.label, health.tone, health.foot] : ['Idle', '', 'nothing playing'];
   const nextEvent = p.lastEventAt ? p.lastEventAt + 120_000 - Date.now() : null;
   const conflictTone = f.eventsSinceCredit >= 3 ? 'bad' : f.eventsSinceCredit >= 2 ? 'warn' : '';
 

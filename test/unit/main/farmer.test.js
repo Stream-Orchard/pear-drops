@@ -267,6 +267,88 @@ test('a raid or the end of a stream (Kick moving the player on) switches to the 
   assert.ok(watcher.watching && watcher.watching !== first, `moved on from ${first} to ${watcher.watching}`);
   const ended = history.events.find((e) => e.type === 'offline');
   assert.match(ended.text, /ended the stream and sent viewers to pixelpete/);
+  assert.equal(farmer.notice.kind, 'raid');
+  assert.match(farmer.notice.text, new RegExp(`raided pixelpete`));
+  assert.equal(farmer.notice.slug, first, 'the notice says which stream it was about');
+});
+
+test('a sign from the page (the video ended, Kick said it stopped) checks with Kick at once, and an offline stream is left and skipped', async () => {
+  const { farmer, watcher, api, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('first', 1, 500), live('second', 2, 100)] } });
+  await farmer.tick();
+  assert.equal(watcher.watching, 'first');
+  const notices = [];
+  farmer.on('notice', (n) => notices.push(n));
+  api.offline.add('first'); // the stream list still has it: only the channel check knows
+  watcher.emit('hint', { text: 'The video ended' });
+  assert.equal(farmer.health().state, 'checking', 'shows as being checked straight away');
+  assert.match(farmer.health().text, /The video ended, checking with Kick/);
+  await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 20 && farmer.checking; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(watcher.watching, 'second', 'moved on without waiting for the refresh');
+  const ended = history.events.find((e) => e.type === 'offline' && e.slug === 'first');
+  assert.match(ended.text, /first: Stream went offline \(spotted: the video ended\)/);
+  assert.ok(farmer.blacklist.get('first') > Date.now(), 'skipped a while: the stream list can still have it');
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].kind, 'ended');
+  assert.equal(farmer.snapshot().notice.slug, 'first');
+  farmer.notice.at -= 61_000;
+  assert.equal(farmer.snapshot().notice, null, 'the notice shows for a minute');
+});
+
+test('quick checks are spaced out, and a check that finds the stream fine changes nothing', async () => {
+  const { farmer, watcher, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('first', 1, 500), live('second', 2, 100)] } });
+  await farmer.tick();
+  await farmer.checkNow('Kick said the stream stopped');
+  assert.equal(watcher.watching, 'first', 'still live: stays');
+  assert.equal(farmer.checking, null);
+  const before = farmer.lastQuickCheckAt;
+  await farmer.checkNow('The video ended');
+  assert.equal(farmer.lastQuickCheckAt, before, 'a second sign within 15 s waits for the next one');
+  assert.ok(!history.events.some((e) => e.type === 'offline'));
+  farmer.paused = true;
+  farmer.lastQuickCheckAt = 0;
+  await farmer.checkNow('The video ended');
+  assert.equal(farmer.lastQuickCheckAt, 0, 'not while paused');
+});
+
+test('the stream health: loading, playing, buffering, paused, frozen; a frozen picture is checked, then reloaded after a minute', async () => {
+  const { farmer, watcher, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('first', 1, 500), live('second', 2, 100)] } });
+  assert.equal(farmer.health(), null, 'nothing watched');
+  await farmer.tick();
+  const now = Date.now();
+  const ws = watcher.status;
+  assert.equal(farmer.health(now).state, 'loading');
+  ws.video = { paused: false, readyState: 4, currentTime: 10 };
+  assert.equal(farmer.health(now).state, 'playing');
+  ws.video = { paused: false, readyState: 2, currentTime: 10 };
+  assert.equal(farmer.health(now).state, 'buffering');
+  ws.video = { paused: true, readyState: 4, currentTime: 10 };
+  assert.equal(farmer.health(now).state, 'paused');
+  ws.video = { paused: false, readyState: 4, currentTime: 10 };
+  assert.equal(farmer.health(now + 16_000).state, 'frozen', 'says it plays, but the picture has not moved for 15 s');
+  assert.match(farmer.health(now + 16_000).text, /hasn't moved for 16s/);
+
+  // The player's reports: a picture stuck past 15 s asks Kick (still live: stays), then a minute in it reloads.
+  ws.loadedAt = ws.lastAdvanceAt = now - 70_000;
+  farmer.current.lastReloadAt = null;
+  watcher.emit('status');
+  for (let i = 0; i < 20 && farmer.checking !== null; i++) await new Promise((r) => setTimeout(r, 5));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(watcher.reloads, 1, 'reloaded without waiting for the refresh');
+  assert.ok(history.events.some((e) => e.type === 'reload' && /Player is not playing/.test(e.text)));
+  assert.equal(farmer.notice.kind, 'reload');
+  assert.equal(watcher.watching, 'first');
+});
+
+test('the tray icon shows a stream being checked or frozen at once', async () => {
+  const { farmer, watcher } = setup({ campaigns: [campaign('a')], streams: { 1: [live('first', 1, 500)] } }, {}, {});
+  await farmer.tick();
+  watcher.status.video = { paused: false, readyState: 4, currentTime: 1 };
+  assert.equal(farmer.trayInfo().tone, 'farming');
+  farmer.checking = 'The video ended';
+  assert.equal(farmer.trayInfo().tone, 'waiting');
+  assert.match(farmer.trayInfo().tooltip, /first: The video ended, checking with Kick/);
+  farmer.checking = null;
 });
 
 /** Common (category 1, ends in a day) always has a stream on; Rare (2, ends in 3 days) one hour in ten. */

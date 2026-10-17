@@ -120,3 +120,36 @@ test('progressChart: a forecast many hours out reaches the target, with the past
   ctx.farther = { ...ctx.far, rate: 0.021 };
   assert.match(run('progressChart(farther)'), /Done in \d+d/);
 });
+
+test('the stream health chip: what is wrong with the stream, in a word, with its colour', () => {
+  const f = (state, text, extra = {}) => ({ current: { slug: 'arcadia', username: 'Arcadia' }, health: { state, text }, player: { video: { height: 720 } }, ...extra });
+  assert.equal(run('streamHealth(null)'), null);
+  ctx.f = { current: null, health: null };
+  assert.equal(run('streamHealth(f)'), null, 'nothing watched');
+  const look = (state, text) => {
+    ctx.f = f(state, text);
+    return run('streamHealth(f)');
+  };
+  assert.deepEqual({ ...look('playing', 'Playing') }, { state: 'playing', label: 'Playing', tone: 'good', foot: '720p · window muted' });
+  assert.equal(look('frozen', "The picture hasn't moved for 20s").tone, 'bad');
+  assert.equal(look('frozen', "The picture hasn't moved for 20s").foot, "The picture hasn't moved for 20s");
+  assert.equal(look('checking', 'The video ended, checking with Kick…').label, 'Checking');
+  assert.equal(look('buffering', '').tone, 'warn');
+  assert.equal(look('paused', '').tone, 'bad');
+  assert.equal(look('loading', '').label, 'Loading');
+  assert.equal(look('mystery', 'x').label, 'Loading', 'an unknown state reads as loading');
+});
+
+test('the stream notice says what happened and where the app went next', () => {
+  const at = Date.now();
+  ctx.f = { notice: { kind: 'raid', text: 'Arcadia raided pixelpete', slug: 'arcadia', at }, current: { slug: 'emberfox', username: 'EmberFox' } };
+  assert.equal(run('streamNotice(f)').text, 'Arcadia raided pixelpete, now watching EmberFox');
+  assert.equal(run('streamNotice(f)').icon, 'skip');
+  ctx.f = { notice: { kind: 'ended', text: 'Arcadia ended the stream', slug: 'arcadia', at }, current: null, paused: false };
+  assert.equal(run('streamNotice(f)').text, 'Arcadia ended the stream, looking for another stream');
+  ctx.f = { notice: { kind: 'reload', text: 'Reloaded Arcadia', slug: 'arcadia', at }, current: { slug: 'arcadia', username: 'Arcadia' } };
+  assert.equal(run('streamNotice(f)').text, 'Reloaded Arcadia', 'same stream: nothing to add');
+  assert.equal(run('streamNotice(f)').icon, 'reload');
+  ctx.f = { notice: null };
+  assert.equal(run('streamNotice(f)'), null);
+});

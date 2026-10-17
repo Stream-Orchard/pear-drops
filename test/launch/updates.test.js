@@ -57,7 +57,7 @@ test('the first start of a new version shows what’s new, once', async () => {
   await a.win.click('.modal.whatsnew [data-action="close-whatsnew"].btn');
   await until(a.win, () => !document.querySelector('.modal.whatsnew'), 'the card to close');
   const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'updates.json'), 'utf8'));
-  assert.equal(saved.seenVersion, '0.1.0');
+  assert.equal(saved.seenVersion, require('../../package.json').version, 'the version that is running');
 });
 
 test('Settings › Updates: saving a repository finds the new version and its notes, safely', async () => {

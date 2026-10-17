@@ -55,6 +55,19 @@ function isPlayer(url) {
   }
 }
 
+/**
+ * What one of Kick's realtime events (on the chat's or channel page's socket) says about the
+ * stream, or null. Kick doesn't document these, so a match only makes the app check with Kick
+ * straight away; the check decides.
+ */
+function realtimeHint({ event, target } = {}) {
+  const name = String(event ?? '').split('\\').pop();
+  if (/StopStream|StreamEnd|LivestreamEnd|Offline/i.test(name)) return { kind: 'ended', text: 'Kick said the stream stopped' };
+  if (/Raid|Host|MoveTo/i.test(name)) return { kind: 'raid', text: target ? `Kick said the stream is raiding ${target}` : 'Kick said the stream is raiding' };
+  if (/LivestreamUpdated|Categor/i.test(name)) return { kind: 'changed', text: 'Kick said the stream changed' };
+  return null;
+}
+
 /** Whether two addresses are the same page, ignoring the query, hash and a trailing slash. */
 function samePage(a, b) {
   try {
@@ -98,8 +111,10 @@ class Watcher extends EventEmitter {
     this.reset(null);
 
     ipcMain.on('watch:event', (event, msg) => {
-      if (!this.view || event.sender !== this.view.webContents) return;
-      this.handlePageMessage(msg);
+      const fromPlayer = this.view && event.sender === this.view.webContents;
+      // The popout chat only reports Kick's realtime events (it hears the channel's, the player doesn't).
+      const fromChat = this.chatView && event.sender === this.chatView.webContents && msg?.kind === 'realtime';
+      if (fromPlayer || fromChat) this.handlePageMessage(msg);
     });
     // The player page asks for the quality to start at before Kick's code runs.
     ipcMain.on('watch:quality', (event) => {
@@ -269,6 +284,14 @@ class Watcher extends EventEmitter {
       this.emit('watch-event', { t: now, channelId: msg.channelId });
     } else if (msg.kind === 'handshake') {
       this.status.handshakes += 1;
+    } else if (msg.kind === 'hint') {
+      // The video itself ended or failed.
+      const text = { 'video-ended': 'The video ended', 'video-error': 'The video failed' }[msg.reason];
+      if (text) this.emit('hint', { text });
+    } else if (msg.kind === 'realtime') {
+      const hint = realtimeHint(msg);
+      if (hint && this.slug) this.emit('hint', hint);
+      return;
     } else if (msg.kind === 'video') {
       const prev = this.status.video;
       if (msg.video && (!prev || msg.video.currentTime !== prev.currentTime) && !msg.video.paused) {
@@ -362,4 +385,4 @@ class Watcher extends EventEmitter {
   }
 }
 
-module.exports = { Watcher, URLS, samePage, streamChannel, playerOffline, isPlayer };
+module.exports = { Watcher, URLS, samePage, streamChannel, playerOffline, isPlayer, realtimeHint };
