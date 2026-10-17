@@ -40,7 +40,12 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
   // wouldn't start there. The app's own pages keep their per-page sandbox.
   const app = await playwright()._electron.launch({ args: ['--no-sandbox', ROOT], cwd: ROOT, env });
   const errors = [];
-  const win = await app.firstWindow();
+  // The dashboard, not just the first window: the hidden kick.com page for API calls can open first.
+  let win = null;
+  for (const end = Date.now() + 30000; !win; await new Promise((r) => setTimeout(r, 100))) {
+    win = app.windows().find((w) => w.url().endsWith('/renderer/index.html')) ?? null;
+    if (!win && Date.now() > end) throw new Error(`No dashboard window (open: ${app.windows().map((w) => w.url()).join(', ') || 'none'})`);
+  }
   win.on('pageerror', (err) => errors.push(String(err)));
   await win.waitForLoadState('domcontentloaded');
   if (size) {
