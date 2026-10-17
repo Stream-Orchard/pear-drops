@@ -62,6 +62,16 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
     data,
     /** Runs fn(pdDemo) in the main process. */
     demo: (fn, arg) => app.evaluate(new Function('electron', 'arg', `return (${fn.toString()})(global.pdDemo, arg)`), arg),
+    /** Waits for the dashboard to show a drop being farmed; if it doesn't, says what the app logged. */
+    async farming(timeout = 20000) {
+      try {
+        await until(win, () => document.querySelector('#hero .hero-title'), 'farming to start', timeout);
+      } catch (err) {
+        const log = await app.evaluate(() => global.pdDebug?.farmer.log.slice(-12).map((e) => `${e.level}: ${e.text}`)).catch(() => null);
+        err.message += `. The app's last log lines:\n  ${(log ?? ['(none)']).join('\n  ')}`;
+        throw err;
+      }
+    },
     async close() {
       await app.close().catch(() => {});
       fs.rmSync(data, { recursive: true, force: true });

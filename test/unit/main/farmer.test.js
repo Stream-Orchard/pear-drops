@@ -240,6 +240,22 @@ test('a 401 from Kick signs out instead of retrying forever', async () => {
   assert.ok(lost);
 });
 
+test('a failed refresh retries soon, backing off up to the normal refresh, and resets once Kick answers', async () => {
+  const { farmer, api } = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] } }, { refreshSeconds: 30 });
+  const waits = [];
+  farmer.schedule = (ms) => waits.push(ms);
+  api.progressError = new Error('offline');
+  for (let i = 0; i < 4; i++) await farmer.tick();
+  assert.deepEqual(waits, [5_000, 10_000, 20_000, 30_000], 'never longer than the 30s refresh');
+  assert.match(farmer.status.message, /retrying in 30s/);
+  api.progressError = null;
+  await farmer.tick();
+  assert.equal(waits.at(-1), 30_000, 'back to the normal refresh');
+  api.progressError = new Error('offline again');
+  await farmer.tick();
+  assert.equal(waits.at(-1), 5_000, 'the backoff starts over');
+});
+
 test('trayInfo shows the current drop as a fraction and percentage', async () => {
   const { farmer } = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 30 } });
   await farmer.tick();

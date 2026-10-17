@@ -2,6 +2,8 @@ const { EventEmitter } = require('events');
 const { assetUrl } = require('./kick-api');
 
 const MIN = 60_000;
+// After a failed refresh, the first retry (then doubling, up to the normal refresh).
+const RETRY_MS = 5_000;
 const NOMINAL_RATE = 1; // progress units (minutes) per minute watched
 const HISTORY_MS = 6 * 60 * MIN;
 const PLAYER_STUCK_MS = 3 * MIN;
@@ -38,6 +40,7 @@ class Farmer extends EventEmitter {
     this.seenReady = null; // reward ids already unlocked (null until the first load)
     this.seenComplete = null; // campaign / category ids already complete
     this.lastErrorRecordAt = 0;
+    this.failedTicks = 0; // refreshes failed in a row, for the retry backoff
     this.watcher = watcher;
     this.store = store;
     this.notify = notify;
@@ -157,10 +160,12 @@ class Farmer extends EventEmitter {
   async tick({ force = false } = {}) {
     if (!this.running || this.ticking) return;
     this.ticking = true;
+    let retryIn = null;
     try {
       await this.refresh({ force });
       if (this.store.get().autoClaim) await this.claimReady();
       if (!this.paused) await this.decide();
+      this.failedTicks = 0;
     } catch (err) {
       if (err.status === 401 || err.status === 403) {
         // The Kick login expired or was signed out elsewhere.
@@ -169,8 +174,11 @@ class Farmer extends EventEmitter {
         this.emit('auth-lost');
         return;
       }
+      // Try again soon (5s, 10s, 20s, 40s…), never later than the normal refresh.
+      this.failedTicks += 1;
+      retryIn = Math.min(this.store.get().refreshSeconds * 1000, RETRY_MS * 2 ** (this.failedTicks - 1));
       this.addLog('error', `Refresh failed: ${err.message}`);
-      this.setStatus('error', 'Could not reach Kick, retrying shortly');
+      this.setStatus('error', `Could not reach Kick, retrying in ${Math.round(retryIn / 1000)}s`);
       if (Date.now() - this.lastErrorRecordAt > 10 * MIN) {
         this.lastErrorRecordAt = Date.now();
         this.record('error', { text: `Could not reach Kick: ${err.message}` });
@@ -178,7 +186,7 @@ class Farmer extends EventEmitter {
     } finally {
       this.ticking = false;
       this.accumulateWatchTime();
-      this.schedule(this.store.get().refreshSeconds * 1000);
+      this.schedule(retryIn ?? this.store.get().refreshSeconds * 1000);
       this.changed();
     }
   }

@@ -5,7 +5,7 @@ const { launchApp, until } = require('./app');
 let a;
 test.before(async () => {
   a = await launchApp({ size: { width: 1512, height: 944 } });
-  await until(a.win, () => document.querySelector('#hero .hero-title'), 'farming to start', 20000);
+  await a.farming();
   await a.win.click('[data-action="view"][data-id="history"]');
   await until(a.win, () => document.querySelector('.hist-kpis .stat'), 'the history view');
 });

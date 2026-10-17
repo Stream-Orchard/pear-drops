@@ -41,7 +41,7 @@ test.before(async () => {
     files: { 'updates.json': { seenVersion: '0.0.9', auto: false } },
     env: { PD_UPDATE_API: gh.url, PD_UPDATE_APP_ROOT: appRoot },
   });
-  await until(a.win, () => document.querySelector('#hero .hero-title'), 'farming to start', 20000);
+  await a.farming();
 });
 test.after(async () => {
   assert.deepEqual(a.errors, []);

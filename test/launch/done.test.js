@@ -7,7 +7,7 @@ const { launchApp, until } = require('./app');
 let a;
 test.before(async () => {
   a = await launchApp({ size: { width: 1512, height: 944 } });
-  await until(a.win, () => document.querySelector('#hero .hero-title'), 'farming to start', 20000);
+  await a.farming();
 });
 test.after(async () => {
   assert.deepEqual(a.errors, []);
