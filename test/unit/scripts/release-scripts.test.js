@@ -20,10 +20,10 @@ Intro text.
 `;
 
 function project({ changelog = CHANGELOG, version = '0.2.10' } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-rel-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-rel-'));
   fs.mkdirSync(path.join(dir, 'scripts'));
   for (const f of ['prepare-release.js']) fs.copyFileSync(path.join(ROOT, 'scripts', f), path.join(dir, 'scripts', f));
-  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'kick-drops-client', version }, null, 2) + '\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'pear-drops', version }, null, 2) + '\n');
   fs.writeFileSync(path.join(dir, 'CHANGELOG.md'), changelog);
   return dir;
 }
@@ -35,14 +35,14 @@ function prepare(dir, tag, notes) {
 const read = (dir, f) => fs.readFileSync(path.join(dir, f), 'utf8');
 
 const GENERATED = `## What's Changed
-* Use CHANGELOG.md instead of CHANGELOG.txt by @pearfarmer in https://github.com/pearfarmer/kick-drops/pull/2
-* Add a test suite by @Tron in https://github.com/pearfarmer/kick-drops/pull/3
-* Bump something by @dependabot[bot] in https://github.com/pearfarmer/kick-drops/pull/4
+* Use CHANGELOG.md instead of CHANGELOG.txt by @pearfarmer in https://github.com/pearfarmer/pear-drops/pull/2
+* Add a test suite by @Tron in https://github.com/pearfarmer/pear-drops/pull/3
+* Bump something by @dependabot[bot] in https://github.com/pearfarmer/pear-drops/pull/4
 
 ## New Contributors
-* @Tron made their first contribution in https://github.com/pearfarmer/kick-drops/pull/3
+* @Tron made their first contribution in https://github.com/pearfarmer/pear-drops/pull/3
 
-**Full Changelog**: https://github.com/pearfarmer/kick-drops/compare/v0.2.10...v0.2.11
+**Full Changelog**: https://github.com/pearfarmer/pear-drops/compare/v0.2.10...v0.2.11
 `;
 
 test('prepare-release turns GitHub\'s generated notes into a new changelog section', () => {

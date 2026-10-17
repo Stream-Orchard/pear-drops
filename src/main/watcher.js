@@ -5,7 +5,7 @@ const { PARTITION, KICK } = require('./kick-api');
 
 // Capture mode (trailer, screenshots): the player renders offscreen and its frames
 // are mirrored into the main window, so a recording of that window includes it.
-const MIRROR = !!process.env.KDF_MIRROR_PLAYER;
+const MIRROR = !!process.env.PD_MIRROR_PLAYER;
 
 // Two ways to show the stream in the docked panel. Both run Kick's own player code,
 // which sends the watch-time events that earn drops:

@@ -34,7 +34,7 @@ test('the Done tab lists finished and missed drops, with stored images', async (
   assert.match(await a.win.locator('.past', { hasText: 'Meltdown' }).textContent(), /Taken down/);
 
   // Images come from the app's own copies and actually load.
-  await until(a.win, () => [...document.querySelectorAll('.past img')].every((i) => i.src.startsWith('kdf-img://drop/') && i.complete && i.naturalWidth > 0), 'stored images to load');
+  await until(a.win, () => [...document.querySelectorAll('.past img')].every((i) => i.src.startsWith('pd-img://drop/') && i.complete && i.naturalWidth > 0), 'stored images to load');
   const files = fs.readdirSync(path.join(a.data, 'drop-images'));
   assert.ok(files.length >= 10, `${files.length} images stored`);
 
@@ -67,6 +67,6 @@ test('History keeps a removed drop’s details and artwork', async () => {
   await a.win.locator('.past', { hasText: 'Retro Arcade Week' }).locator('[data-action="hist-campaign"]').click();
   await until(a.win, () => /Retro Arcade Week/.test(document.querySelector('.hist-title h2')?.textContent), 'the drop’s history');
   const art = await a.win.locator('.hist-title img').getAttribute('src');
-  assert.match(art, /^kdf-img:\/\/drop\//);
+  assert.match(art, /^pd-img:\/\/drop\//);
   assert.match(await a.win.textContent('.hist-title'), /Retro Arcade/);
 });

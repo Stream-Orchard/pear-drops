@@ -23,7 +23,7 @@ function camp(id, { ends = 2, image = `https://files.example/${id}.png` } = {}) 
 }
 
 function fresh(fetchImage = async () => ({ buffer: PNG, type: 'image/png' })) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-arch-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-arch-'));
   const fetched = [];
   const archive = new DropArchive(dir, {
     fetchImage: async (url) => {
@@ -56,12 +56,12 @@ test('images are stored once and then served from the app, surviving a reload', 
   await archive.pump();
   assert.deepEqual(fetched.sort(), ['https://files.example/a.png', 'https://files.example/cat.png']);
   const local = archive.img('https://files.example/a.png');
-  assert.match(local, /^kdf-img:\/\/drop\/[a-f0-9]{24}\.png$/);
+  assert.match(local, /^pd-img:\/\/drop\/[a-f0-9]{24}\.png$/);
   const file = archive.fileFor(local);
   assert.equal(file.type, 'image/png');
   assert.deepEqual(fs.readFileSync(file.path), PNG);
   // Unknown or odd URLs never map to a file.
-  for (const bad of ['kdf-img://drop/../drops.json', 'kdf-img://other/abc.png', 'https://x/y.png', 'kdf-img://drop/zz.exe']) assert.equal(archive.fileFor(bad), null, bad);
+  for (const bad of ['pd-img://drop/../drops.json', 'pd-img://other/abc.png', 'https://x/y.png', 'pd-img://drop/zz.exe']) assert.equal(archive.fileFor(bad), null, bad);
 
   archive.update([camp('a')], [], Date.now());
   await archive.pump();
@@ -152,7 +152,7 @@ test('drops only the history knows about are rebuilt from it, and become real on
   const events = [
     { t, type: 'watch-start', campaignIds: ['gone', 'a'], campaigns: ['Brand Risk', 'Campaign a'], categoryId: 7, category: 'Special Events' },
     { t: t + 60_000, type: 'credit', campaignId: 'gone', campaign: 'Brand Risk', categoryId: 7, category: 'Special Events', units: 4, delta: 2 },
-    { t: t + 120_000, type: 'claim', campaignId: 'gone', campaign: 'Brand Risk', categoryId: 7, rewardId: 'r1', reward: 'Risky Emote', rewardImage: 'kdf-img://drop/aaaaaaaaaaaaaaaaaaaaaaaa.png', required: 2 },
+    { t: t + 120_000, type: 'claim', campaignId: 'gone', campaign: 'Brand Risk', categoryId: 7, rewardId: 'r1', reward: 'Risky Emote', rewardImage: 'pd-img://drop/aaaaaaaaaaaaaaaaaaaaaaaa.png', required: 2 },
     { t, type: 'start' },
   ];
   archive.update([camp('a')], [], t);
@@ -163,7 +163,7 @@ test('drops only the history knows about are rebuilt from it, and become real on
   assert.equal(e.raw.category.name, 'Special Events');
   assert.equal(e.progress.units, 4);
   assert.deepEqual(e.raw.rewards.map((r) => r.name), ['Risky Emote']);
-  assert.equal(archive.img(e.raw.rewards[0].image_url), 'kdf-img://drop/aaaaaaaaaaaaaaaaaaaaaaaa.png', 'stored copies pass straight through');
+  assert.equal(archive.img(e.raw.rewards[0].image_url), 'pd-img://drop/aaaaaaaaaaaaaaaaaaaaaaaa.png', 'stored copies pass straight through');
   assert.ok(archive.involved(e));
   assert.ok(archive.over(e));
   assert.equal(archive.backfill(events), 0, 'only once');

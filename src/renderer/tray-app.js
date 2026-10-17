@@ -101,15 +101,15 @@ function render() {
 }
 
 function fit() {
-  window.kdf.tray.resize(Math.ceil($('#tray').getBoundingClientRect().height) + 2);
+  window.pd.tray.resize(Math.ceil($('#tray').getBoundingClientRect().height) + 2);
 }
 
 const actions = {
-  show: () => window.kdf.tray.showMain(),
-  quit: () => window.kdf.tray.quit(),
-  pause: () => window.kdf.tray.action('pause'),
-  resume: () => window.kdf.tray.action('resume'),
-  skip: () => window.kdf.tray.action('skip'),
+  show: () => window.pd.tray.showMain(),
+  quit: () => window.pd.tray.quit(),
+  pause: () => window.pd.tray.action('pause'),
+  resume: () => window.pd.tray.action('resume'),
+  skip: () => window.pd.tray.action('skip'),
 };
 
 document.addEventListener('click', (event) => {
@@ -118,11 +118,11 @@ document.addEventListener('click', (event) => {
 });
 
 async function refresh() {
-  state = await window.kdf.getState();
+  state = await window.pd.getState();
   render();
 }
 
-window.kdf.onState((next) => {
+window.pd.onState((next) => {
   state = next;
   render();
 });

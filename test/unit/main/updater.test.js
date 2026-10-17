@@ -48,7 +48,7 @@ test('reads the app bundle and its signature requirement, and when it can replac
 const unix = process.platform !== 'win32';
 
 test('canWriteInside says whether the app may change its own files, and leaves nothing behind', { skip: !unix || process.getuid?.() === 0 }, () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-write-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-write-'));
   assert.equal(u.canWriteInside(dir), true);
   assert.deepEqual(fs.readdirSync(dir), []);
   fs.chmodSync(dir, 0o555);
@@ -60,7 +60,7 @@ test('canWriteInside says whether the app may change its own files, and leaves n
 });
 
 function swapSetup() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-swap-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-swap-'));
   const app = path.join(dir, 'Applications', 'Pear Drops.app');
   const stage = path.join(dir, 'stage', 'Pear Drops.app');
   for (const [d, v] of [
@@ -106,7 +106,7 @@ test('if the new app can’t be moved in, the swap script puts the old one back 
 });
 
 test('unpackMacApp checks the new app against this app’s signature requirement (stand-in tools)', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-unpack-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-unpack-'));
   const calls = [];
   const run = async (cmd, args) => {
     calls.push([cmd, ...args]);
@@ -129,8 +129,8 @@ function fakeFetch(routes) {
 
 test('latestInfo reads the newest release, its notes and installers', async () => {
   const info = await u.latestInfo(
-    'me/kick-drops',
-    fakeFetch([['/releases/latest', reply(200, { tag_name: 'v0.2.0', name: 'Shiny', body: '- Done tab', body_html: '<ul><li>Done tab</li></ul>', published_at: '2026-10-01T00:00:00Z', html_url: 'https://github.com/me/kick-drops/releases/tag/v0.2.0', assets: [{ name: 'a.dmg', browser_download_url: 'https://x/a.dmg', size: 3 }, { name: 'bad', browser_download_url: 'ftp://x' }] })]]),
+    'me/pear-drops',
+    fakeFetch([['/releases/latest', reply(200, { tag_name: 'v0.2.0', name: 'Shiny', body: '- Done tab', body_html: '<ul><li>Done tab</li></ul>', published_at: '2026-10-01T00:00:00Z', html_url: 'https://github.com/me/pear-drops/releases/tag/v0.2.0', assets: [{ name: 'a.dmg', browser_download_url: 'https://x/a.dmg', size: 3 }, { name: 'bad', browser_download_url: 'ftp://x' }] })]]),
   );
   assert.equal(info.version, '0.2.0');
   assert.equal(info.name, 'Shiny');
@@ -140,7 +140,7 @@ test('latestInfo reads the newest release, its notes and installers', async () =
 });
 
 test('latestInfo falls back to package.json on the main branch, and reports missing repositories', async () => {
-  const info = await u.latestInfo('me/kick-drops', fakeFetch([['/repos/me/kick-drops/releases', reply(404, {})], ['/package.json', reply(200, { version: '0.1.5' })], ['/repos/me/kick-drops', reply(200, { default_branch: 'main' })]]));
+  const info = await u.latestInfo('me/pear-drops', fakeFetch([['/repos/me/pear-drops/releases', reply(404, {})], ['/package.json', reply(200, { version: '0.1.5' })], ['/repos/me/pear-drops', reply(200, { default_branch: 'main' })]]));
   assert.equal(info.version, '0.1.5');
   assert.equal(info.source, 'branch');
   await assert.rejects(u.latestInfo('me/nope', fakeFetch([])), /notfound/);
@@ -165,9 +165,9 @@ test('appFiles strips GitHub’s top folder, repo-only folders and unsafe paths,
 
 // ---- replacing a source copy's files
 
-const PKG = { name: 'kick-drops-client', version: '0.1.0', main: 'src/main/main.js', devDependencies: { electron: '^44.8.0' } };
+const PKG = { name: 'pear-drops', version: '0.1.0', main: 'src/main/main.js', devDependencies: { electron: '^44.8.0' } };
 function appDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-upd-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-upd-'));
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(PKG));
   fs.mkdirSync(path.join(dir, 'src', 'main'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'src', 'renderer'), { recursive: true });
@@ -219,18 +219,18 @@ test('applyUpdate removes files the last update installed that the new version d
   fs.writeFileSync(path.join(dir, 'node_modules', 'electron', 'index.js'), 'engine');
   const outside = path.join(path.dirname(dir), `${path.basename(dir)}-outside.txt`);
   fs.writeFileSync(outside, 'not the app’s');
-  fs.writeFileSync(path.join(dir, '.kdf-files.json'), JSON.stringify(['package.json', 'old/gone.js', `../${path.basename(outside)}`, outside, 'node_modules/electron/index.js', 42, null]));
+  fs.writeFileSync(path.join(dir, '.pd-files.json'), JSON.stringify(['package.json', 'old/gone.js', `../${path.basename(outside)}`, outside, 'node_modules/electron/index.js', 42, null]));
   u.applyUpdate(dir, newFiles({ ...PKG, version: '0.2.0' }), bk);
   assert.equal(fs.existsSync(path.join(dir, 'old')), false, 'the dropped file and its empty folder went');
   assert.equal(fs.readFileSync(path.join(bk, 'old', 'gone.js'), 'utf8'), 'dropped', 'kept in the backup');
   assert.ok(fs.existsSync(outside), 'nothing outside the app folder');
   assert.ok(fs.existsSync(path.join(dir, 'node_modules', 'electron', 'index.js')), 'the app engine stays');
   assert.ok(fs.existsSync(path.join(dir, 'keep.txt')));
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, '.kdf-files.json'), 'utf8')).sort(), ['package.json', 'src/main/main.js', 'src/renderer/index.html']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, '.pd-files.json'), 'utf8')).sort(), ['package.json', 'src/main/main.js', 'src/renderer/index.html']);
 });
 
 test('downloadTo saves a download with progress', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-dl-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-dl-'));
   const chunks = [Buffer.from('abc'), Buffer.from('defg')];
   const fetchFn = async () => ({
     ok: true,

@@ -357,7 +357,7 @@ test('the startup cache shows the last known drops at once, and history rebuilds
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-cache-')), 'cache.json');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cache-')), 'cache.json');
   const first = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 20 } });
   first.farmer.cacheFile = file;
   await first.farmer.tick();
@@ -440,7 +440,7 @@ test('an unconfirmed claim does not hold the stream: it moves on and keeps retry
 });
 
 test('finished and missed drops are listed apart from the queue, and kept after Kick removes them', async () => {
-  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'kdf-farm-arch-'));
+  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'pd-farm-arch-'));
   const archive = new DropArchive(dir, { fetchImage: async () => ({ buffer: Buffer.from('GIF89a'), type: 'image/gif' }) });
   const done = campaign('done', { category: { id: 1, name: 'First', image_url: 'https://x/first.png' } });
   const gone = campaign('gone', { category: { id: 2, name: 'Second' }, rewards: [{ id: 'g1', name: 'A Emote', required_units: 30 }, { id: 'g2', name: 'B Badge', required_units: 90 }] });
@@ -476,7 +476,7 @@ test('finished and missed drops are listed apart from the queue, and kept after 
   // Images switch to the stored copies once downloaded.
   await archive.pump();
   farmer.buildModel();
-  assert.match(farmer.model.past.find((p) => p.id === 'done').image, /^kdf-img:\/\/drop\//);
+  assert.match(farmer.model.past.find((p) => p.id === 'done').image, /^pd-img:\/\/drop\//);
 
   // Relisted with a new end date: back in the queue, out of the past list.
   api.list = [done, campaign('gone', { category: { id: 2, name: 'Second' }, endsIn: 4, rewards: gone.rewards })];
@@ -507,7 +507,7 @@ test('following a channel on Kick puts its streams first, and is recorded', asyn
 });
 
 test('a drop rebuilt from history shows as missed, with what was credited', async () => {
-  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'kdf-farm-hist-'));
+  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'pd-farm-hist-'));
   const archive = new DropArchive(dir, {});
   const { farmer } = setup({ campaigns: [campaign('a')], streams: {}, units: {} }, {}, { archive });
   archive.backfill([{ t: Date.now() - 3600_000, type: 'watch-start', campaignIds: ['gone'], campaigns: ['Brand Risk'], categoryId: 9, category: 'Special Events' }]);

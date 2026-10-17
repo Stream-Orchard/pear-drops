@@ -16,18 +16,12 @@ const { Updates, parseChangelog } = require('./updates');
 process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 
-const DEMO = !!process.env.KDF_DEMO;
-const HIDDEN = !!process.env.KDF_TEST_HIDDEN;
+const DEMO = !!process.env.PD_DEMO;
+const HIDDEN = !!process.env.PD_TEST_HIDDEN;
 const demo = DEMO ? createDemo() : null;
 
 // Dev copies and tests run against their own data folder.
-if (process.env.KDF_DEV_DATA) app.setPath('userData', process.env.KDF_DEV_DATA);
-// Renamed from Kick Drops: bring its settings, history and saved drops over once.
-else {
-  const { carryOver, OLD_NAME } = require('./rename');
-  const moved = carryOver(path.join(app.getPath('appData'), OLD_NAME), app.getPath('userData'));
-  if (moved.length) console.log(`Carried over from ${OLD_NAME}: ${moved.join(', ')}`);
-}
+if (process.env.PD_DEV_DATA) app.setPath('userData', process.env.PD_DEV_DATA);
 
 // Keep the hidden/docked player running at full speed, and let it autoplay with
 // sound (the window itself is muted, so nothing is audible).
@@ -36,15 +30,15 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // Tests: no window ever shows or takes focus, and nothing makes a sound.
-if (process.env.KDF_TEST_HIDDEN) app.commandLine.appendSwitch('mute-audio');
+if (process.env.PD_TEST_HIDDEN) app.commandLine.appendSwitch('mute-audio');
 // Video captures render at a fixed scale (e.g. 1440×900 at 1.3333 = 1920×1200 frames).
-if (process.env.KDF_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', process.env.KDF_SCALE);
+if (process.env.PD_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', process.env.PD_SCALE);
 
 // The app's stored copies of drop images (see archive.js), shown like any web image.
 protocol.registerSchemesAsPrivileged([{ scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } }]);
 
-// Present as plain Chrome rather than "Electron/x kick-drops-client/y".
-app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|kick-drops-client|Kick Drops|Pear Drops)\/\S+/g, '');
+// Present as plain Chrome rather than "Electron/x pear-drops/y".
+app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|pear-drops|Pear Drops)\/\S+/g, '');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -161,7 +155,7 @@ function createMainWindow() {
       mainWindow.showInactive();
       return;
     }
-    if (saved.maximized && !process.env.KDF_NO_MAXIMIZE) mainWindow.maximize();
+    if (saved.maximized && !process.env.PD_NO_MAXIMIZE) mainWindow.maximize();
     mainWindow.show();
   });
   let saveTimer = null;
@@ -314,16 +308,16 @@ async function signOut() {
 }
 
 // Demo mode: the stand-in server credits watch events, and the trailer and tests
-// drive the story through global.kdfDemo.
+// drive the story through global.pdDemo.
 function setupDemo() {
   watcher.on('watch-event', () => farmer.current && demo.api.creditWatch(farmer.current.slug));
-  let seeded = !process.env.KDF_DEMO_SEED;
+  let seeded = !process.env.PD_DEMO_SEED;
   farmer.on('update', () => {
     if (seeded || !farmer.current) return;
     seeded = true;
     demo.seedHistory(farmer, demo.api);
   });
-  global.kdfDemo = {
+  global.pdDemo = {
     api: demo.api,
     farmer,
     /** One watch event from the player, credited by the stand-in server. */
@@ -470,7 +464,7 @@ function setupUpdates() {
   const { execFile, spawn } = require('child_process');
   const { net } = require('electron');
   // Tests point the updater at a stand-in GitHub and a copy of the app folder.
-  const appRoot = process.env.KDF_UPDATE_APP_ROOT || APP_ROOT;
+  const appRoot = process.env.PD_UPDATE_APP_ROOT || APP_ROOT;
   // The repository comes from the folder being updated, so a test's stand-in folder brings its own.
   let pkgRepo = '';
   try {
@@ -488,7 +482,7 @@ function setupUpdates() {
     pid: process.pid,
     pkgRepo,
     // A git checkout or a dev copy only checks: installing would overwrite the work in progress.
-    devCopy: !app.isPackaged && !process.env.KDF_UPDATE_APP_ROOT && (fs.existsSync(path.join(APP_ROOT, '.git')) || !!process.env.KDF_DEV_DATA),
+    devCopy: !app.isPackaged && !process.env.PD_UPDATE_APP_ROOT && (fs.existsSync(path.join(APP_ROOT, '.git')) || !!process.env.PD_DEV_DATA),
     fetch: (url, opts) => net.fetch(url, opts),
     runTool: (cmd, args) => new Promise((res, rej) => execFile(cmd, args, { maxBuffer: 1 << 20 }, (e, out, err) => (e ? rej(e) : res(`${out}\n${err}`)))),
     spawn: (cmd, args) => spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref(),
@@ -501,7 +495,7 @@ function setupUpdates() {
     },
   }).load();
   updates.on('status', (status) => sendTo(mainWindow, 'update:status', status));
-  if (!HIDDEN || process.env.KDF_UPDATE_API) updates.start();
+  if (!HIDDEN || process.env.PD_UPDATE_API) updates.start();
 }
 
 app.whenReady().then(async () => {
@@ -524,7 +518,7 @@ app.whenReady().then(async () => {
   store = new Store();
   security = await setupSecurity(() => store.get().forgetOnQuit);
   api = DEMO ? demo.api : new KickApi();
-  if (DEMO) demo.installStage(session.fromPartition(PARTITION), { eventSeconds: Number(process.env.KDF_DEMO_EVENT_SECONDS) || 120 });
+  if (DEMO) demo.installStage(session.fromPartition(PARTITION), { eventSeconds: Number(process.env.PD_DEMO_EVENT_SECONDS) || 120 });
   createMainWindow();
   watcher = new Watcher(() => mainWindow, () => store.get());
   history = new History(app.getPath('userData')).load();
@@ -551,7 +545,7 @@ app.whenReady().then(async () => {
       return new Response(null, { status: 404 });
     }
   });
-  if (DEMO && process.env.KDF_DEMO_SEED && !history.events.length) demo.seedHistoryLog(history);
+  if (DEMO && process.env.PD_DEMO_SEED && !history.events.length) demo.seedHistoryLog(history);
   farmer = new Farmer({ api, watcher, store, notify, history, archive, cacheFile: path.join(app.getPath('userData'), 'cache.json') });
   farmer.seedFromHistory();
   farmer.loadCache();
@@ -570,7 +564,7 @@ app.whenReady().then(async () => {
     farmer.changed();
   });
   // Dev copies and tests (own data folder) can reach the engine from Playwright.
-  if (process.env.KDF_DEV_DATA) global.kdfDebug = { api, farmer, watcher, store };
+  if (process.env.PD_DEV_DATA) global.pdDebug = { api, farmer, watcher, store };
   tray = new TrayController({
     preload: path.join(__dirname, '..', 'preload', 'app.js'),
     onShowMain: showMain,

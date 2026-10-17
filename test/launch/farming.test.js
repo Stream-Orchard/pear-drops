@@ -56,7 +56,7 @@ test('a watch event from the player is credited and shows up everywhere', async 
 });
 
 test('watch events without credit raise the conflict banner; a repeating alarm can be stopped', async () => {
-  await a.win.evaluate(() => window.kdf.setSettings({ repeatAlert: true }));
+  await a.win.evaluate(() => window.pd.setSettings({ repeatAlert: true }));
   await a.demo((d) => d.conflict(true));
   for (let i = 0; i < 3; i++) await a.demo((d) => d.credit());
   await until(a.win, () => document.querySelector('#banner .banner'), 'the conflict banner', 10000);
@@ -65,7 +65,7 @@ test('watch events without credit raise the conflict banner; a repeating alarm c
   await until(a.win, () => document.querySelector('#banner [data-action="stop-alarm"]'), 'Stop alarm while it repeats');
   await a.win.click('#banner [data-action="stop-alarm"]');
   await until(a.win, () => !document.querySelector('#banner [data-action="stop-alarm"]'), 'the button to go once stopped');
-  await a.win.evaluate(() => window.kdf.setSettings({ repeatAlert: false }));
+  await a.win.evaluate(() => window.pd.setSettings({ repeatAlert: false }));
   await a.demo((d) => d.conflict(false));
   await a.demo((d) => d.credit());
   await until(a.win, () => !document.querySelector('#banner .banner'), 'the banner to clear once credit returns', 10000);
@@ -133,7 +133,7 @@ test('the queue can switch to smart order, which locks dragging and is saved', a
   assert.equal(await smartRow.locator('.cat-stats').evaluate((el) => getComputedStyle(el).opacity), '1', 'the time left stays visible');
   const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
   assert.equal(saved.queueMode, 'smart');
-  await a.win.screenshot({ path: require('node:os').tmpdir() + '/kdf-smart-queue.png' });
+  await a.win.screenshot({ path: require('node:os').tmpdir() + '/pd-smart-queue.png' });
   // Trying to drag in Smart mode: a nudge pops up, and its button switches to Manual.
   const box = await smartRow.boundingBox();
   await a.win.mouse.move(box.x + 60, box.y + 20);
@@ -141,7 +141,7 @@ test('the queue can switch to smart order, which locks dragging and is saved', a
   await a.win.mouse.move(box.x + 60, box.y + 80, { steps: 5 });
   await a.win.mouse.up();
   await until(a.win, () => document.querySelector('#nudge.on'), 'the smart-order nudge');
-  await a.win.screenshot({ path: require('node:os').tmpdir() + '/kdf-nudge.png' });
+  await a.win.screenshot({ path: require('node:os').tmpdir() + '/pd-nudge.png' });
   await a.win.click('#nudge [data-action="queue-mode"][data-id="manual"]');
   await until(a.win, () => document.querySelector('.cat[draggable="true"]'), 'manual rows');
 });

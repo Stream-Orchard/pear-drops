@@ -4,9 +4,9 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 function pageHook() {
-  if (window.__kdfHooked) return;
-  window.__kdfHooked = true;
-  const post = (msg) => window.postMessage({ __kdf: true, ...msg }, location.origin);
+  if (window.__pdHooked) return;
+  window.__pdHooked = true;
+  const post = (msg) => window.postMessage({ __pd: true, ...msg }, location.origin);
   const send = WebSocket.prototype.send;
   WebSocket.prototype.send = function (data) {
     try {
@@ -38,7 +38,7 @@ if (contextBridge.executeInMainWorld) {
 }
 
 window.addEventListener('message', (event) => {
-  if (event.source !== window || !event.data?.__kdf) return;
+  if (event.source !== window || !event.data?.__pd) return;
   ipcRenderer.send('watch:event', { kind: event.data.kind, channelId: event.data.channelId });
 });
 

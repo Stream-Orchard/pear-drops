@@ -6,13 +6,13 @@ const { spawnSync } = require('child_process');
 const { launchApp } = require('../../../test/launch/app');
 
 const outDir = () => {
-  const dir = path.join(os.tmpdir(), 'kick-drops-captures');
+  const dir = path.join(os.tmpdir(), 'pear-drops-captures');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 };
 
 async function launch({ size = [1512, 944], visible = false, mirror = true, signedIn = true, seed = true } = {}) {
-  if (visible) process.env.KDF_TEST_VISIBLE = '1';
+  if (visible) process.env.PD_TEST_VISIBLE = '1';
   const a = await launchApp({ size: { width: size[0], height: size[1] }, mirror, signedIn, seed, hidden: !visible });
   await a.win.waitForFunction(() => document.querySelector('#hero .hero-title') || !document.querySelector('#welcome').hidden, null, { timeout: 30000 });
   return {
@@ -24,7 +24,7 @@ async function launch({ size = [1512, 944], visible = false, mirror = true, sign
     },
     /** Records `fn` as an MP4 of every frame the window paints. */
     async record(name, fn, { fps = 30 } = {}) {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-frames-'));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-frames-'));
       await a.app.evaluate(({ BrowserWindow }, { dir, fps }) => {
         const fs = process.getBuiltinModule('fs');
         const p = process.getBuiltinModule('path');

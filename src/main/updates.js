@@ -145,7 +145,7 @@ class Updates extends EventEmitter {
     if (!this.st.zip) return this.status();
     this.set({ state: 'downloading', error: '', progress: null });
     try {
-      const file = path.join(this.d.tempDir, `kick-drops-update-${Date.now()}.zip`);
+      const file = path.join(this.d.tempDir, `pear-drops-update-${Date.now()}.zip`);
       await updater.downloadTo(this.d.fetch, this.st.zip, file, (p) => this.progress(p));
       const files = updater.appFiles(updater.readZip(fs.readFileSync(file)));
       fs.rmSync(file, { force: true });
@@ -187,7 +187,7 @@ class Updates extends EventEmitter {
   async downloadMacApp() {
     const { appPath, req, why } = await this.macSwapCheck();
     if (why) throw new Error(`mac swap: ${why}`);
-    const dir = fs.mkdtempSync(path.join(this.d.tempDir, 'kick-drops-update-'));
+    const dir = fs.mkdtempSync(path.join(this.d.tempDir, 'pear-drops-update-'));
     try {
       const zip = await updater.downloadTo(this.d.fetch, this.st.macZip.url, path.join(dir, path.basename(this.st.macZip.name)), (p) => this.progress(p));
       const newApp = await updater.unpackMacApp(zip, path.join(dir, 'app'), req, this.d.runTool);
@@ -215,7 +215,7 @@ class Updates extends EventEmitter {
       }
     }
     try {
-      const dir = this.d.platform === 'darwin' ? this.d.downloadsDir : path.join(this.d.tempDir, 'kick-drops-update');
+      const dir = this.d.platform === 'darwin' ? this.d.downloadsDir : path.join(this.d.tempDir, 'pear-drops-update');
       const file = await updater.downloadTo(this.d.fetch, this.st.asset.url, path.join(dir, path.basename(this.st.asset.name)), (p) => this.progress(p));
       this.set({ state: 'ready', installed: this.st.latest, installerFile: file, swap: null, blocked: false, needsInstall: false, progress: 1 });
     } catch (e) {

@@ -1,7 +1,7 @@
 const { BrowserWindow, session } = require('electron');
 
 // Demo mode uses a throwaway session with the stand-in Kick (src/main/demo.js).
-const PARTITION = process.env.KDF_DEMO ? 'kdf-demo' : 'persist:kick';
+const PARTITION = process.env.PD_DEMO ? 'pd-demo' : 'persist:kick';
 const KICK = 'https://kick.com';
 const WEB = 'https://web.kick.com';
 const ASSETS = 'https://ext.kick.com/';

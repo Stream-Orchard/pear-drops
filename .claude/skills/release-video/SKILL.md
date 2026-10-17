@@ -23,7 +23,7 @@ Don't install anything without asking.
 
 ## How it records
 
-- The app runs **hidden and muted** (it never takes focus) at 1440×900, rendered at 1.333×, so frames are 1920×1200. The docked stream is mirrored into the window (`KDF_MIRROR_PLAYER`), so it's part of every frame.
+- The app runs **hidden and muted** (it never takes focus) at 1440×900, rendered at 1.333×, so frames are 1920×1200. The docked stream is mirrored into the window (`PD_MIRROR_PLAYER`), so it's part of every frame.
 - The soundtrack is made afterwards to the exact length. Card times become impacts and whooshes, and the times the alert chime played (captured from `playAlert`) become the real chime in the mix.
 - Output is a 1920×1200 H.264 MP4 (CRF 18, AAC 192k) in the temp folder. Alongside it go a `thumbnail.png` (the poster) and a `sheet.png` contact sheet with a still every 4 s.
 
@@ -31,7 +31,7 @@ Don't install anything without asking.
 
 ```js
 module.exports = {
-  name: 'kick-drops-0.2.0',
+  name: 'pear-drops-0.2.0',
   steps: 4,                                  // progress dots on the cards
   signedIn: false,                           // start on the welcome screen
   poster: { kicker: 'New in 0.2', h: 'Pear *Drops*', p: 'One line about it' },

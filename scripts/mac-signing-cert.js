@@ -11,18 +11,15 @@ const os = require('os');
 const path = require('path');
 
 const NAME = 'Pear Drops Local Signing';
-// Made before the app was renamed: still used if it's there, so builds keep one identity.
-const OLD_NAMES = ['Kick Drops Local Signing'];
 
-/** The local signing identity in the keychain (the current name first), or null. */
+/** The local signing identity's name if it's in the keychain, or null. */
 function identity() {
-  for (const name of [NAME, ...OLD_NAMES]) {
-    try {
-      execFileSync('security', ['find-certificate', '-c', name], { stdio: 'ignore' });
-      return name;
-    } catch {}
+  try {
+    execFileSync('security', ['find-certificate', '-c', NAME], { stdio: 'ignore' });
+    return NAME;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function exists() {
@@ -30,7 +27,7 @@ function exists() {
 }
 
 function create() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-cert-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cert-'));
   try {
     const cfg = path.join(dir, 'cert.cnf');
     fs.writeFileSync(

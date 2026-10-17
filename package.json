@@ -1,5 +1,5 @@
 {
-  "name": "kick-drops-client",
+  "name": "pear-drops",
   "productName": "Pear Drops",
   "version": "0.1.0",
   "description": "Desktop farmer for Kick emote and badge drops",
@@ -19,7 +19,7 @@
     "icon": "electron scripts/make-icon/main.js",
     "dist:mac": "npx --yes electron-builder@25.1.8 --mac --publish never",
     "dist:win": "npx --yes electron-builder@25.1.8 --win --publish never",
-    "test:launch:visible": "KDF_TEST_VISIBLE=1 node --test --test-force-exit --test-concurrency=1 --test-timeout=120000 \"test/launch/**/*.test.js\"",
+    "test:launch:visible": "PD_TEST_VISIBLE=1 node --test --test-force-exit --test-concurrency=1 --test-timeout=120000 \"test/launch/**/*.test.js\"",
     "worktree": "node scripts/worktree.js",
     "signing-cert": "node scripts/mac-signing-cert.js"
   },

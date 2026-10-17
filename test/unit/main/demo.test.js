@@ -53,7 +53,7 @@ test('the demo archive has a finished, a missed and a taken-down drop, already g
   const os = require('node:os');
   const path = require('node:path');
   const { DropArchive } = require('../../../src/main/archive');
-  const archive = new DropArchive(fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-demo-arch-')), {});
+  const archive = new DropArchive(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-demo-arch-')), {});
   const demo = createDemo();
   demo.seedArchive(archive);
   const ids = archive.entries().map((e) => e.raw.id).sort();

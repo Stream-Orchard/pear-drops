@@ -1,4 +1,4 @@
-# What's new in Kick Drops
+# What's new in Pear Drops
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 

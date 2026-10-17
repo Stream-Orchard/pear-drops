@@ -703,7 +703,7 @@ function syncPlayerBounds() {
   const key = JSON.stringify(rect);
   if (key === lastBounds) return;
   lastBounds = key;
-  window.kdf.setPlayerBounds(rect);
+  window.pd.setPlayerBounds(rect);
 }
 
 // ------------------------------------------------------------------ settings modal
@@ -787,15 +787,15 @@ function renderModal() {
 
 function openModal(name) {
   ui.modal = name;
-  window.kdf.suspendPlayer(true);
+  window.pd.suspendPlayer(true);
   render();
 }
 
 function closeModal() {
   // The "Updated" card is shown once.
-  if (ui.modal === 'whatsnew') window.kdf.updates.seen();
+  if (ui.modal === 'whatsnew') window.pd.updates.seen();
   ui.modal = null;
-  window.kdf.suspendPlayer(false);
+  window.pd.suspendPlayer(false);
   render();
 }
 
@@ -886,7 +886,7 @@ function render({ tick = false } = {}) {
   $('#welcome').hidden = signedIn;
   $('#app').hidden = !signedIn;
   if (!signedIn) {
-    window.kdf.setPlayerBounds(null);
+    window.pd.setPlayerBounds(null);
     lastBounds = '';
     renderWelcome();
     return;
@@ -928,16 +928,16 @@ const actions = {
     if (ui.view === 'history') loadHistory();
     render();
   },
-  login: () => window.kdf.login(),
+  login: () => window.pd.login(),
   logout: () => {
     closeModal();
-    window.kdf.logout();
+    window.pd.logout();
   },
-  pause: () => window.kdf.pause(true),
-  resume: () => window.kdf.pause(false),
-  refresh: () => window.kdf.refresh(),
-  skip: () => window.kdf.skip(),
-  reload: () => window.kdf.reload(),
+  pause: () => window.pd.pause(true),
+  resume: () => window.pd.pause(false),
+  refresh: () => window.pd.refresh(),
+  skip: () => window.pd.skip(),
+  reload: () => window.pd.reload(),
   settings: () => openModal('settings'),
   'close-modal': () => closeModal(),
   'test-sound': () => playAlert(),
@@ -947,20 +947,20 @@ const actions = {
     const on = !!el.dataset.on;
     ui.followBusy = slug;
     render();
-    const r = await window.kdf.follow(slug, on);
+    const r = await window.pd.follow(slug, on);
     ui.followBusy = null;
     if (r?.error) toast({ title: on ? 'Couldn’t follow' : 'Couldn’t unfollow', body: r.error === 'login' ? 'Kick asked you to sign in again.' : 'Kick didn’t accept it. Try again in a moment.', kind: 'alert' });
     render();
   },
-  'toggle-player': () => window.kdf.setSettings({ playerOpen: !ui.playerOpen }),
-  'open-kick': (el) => window.kdf.openExternal(`https://kick.com/${el.dataset.slug}`),
+  'toggle-player': () => window.pd.setSettings({ playerOpen: !ui.playerOpen }),
+  'open-kick': (el) => window.pd.openExternal(`https://kick.com/${el.dataset.slug}`),
   'chart-campaign': (el) => {
     ui.chartCampaign = el.dataset.id;
     render();
   },
   'queue-mode': (el) => {
     $('#nudge')?.classList.remove('on');
-    window.kdf.setSettings({ queueMode: el.dataset.id });
+    window.pd.setSettings({ queueMode: el.dataset.id });
   },
   'settings-tab': (el) => {
     ui.settingsTab = el.dataset.id;
@@ -989,27 +989,27 @@ const actions = {
     const id = Number(el.dataset.id);
     const disabled = new Set(state.settings.disabledCategories);
     disabled.has(id) ? disabled.delete(id) : disabled.add(id);
-    window.kdf.setSettings({ disabledCategories: [...disabled] });
+    window.pd.setSettings({ disabledCategories: [...disabled] });
   },
   watch: async (el) => {
     try {
-      await window.kdf.watch(el.dataset.slug, Number(el.dataset.cat));
+      await window.pd.watch(el.dataset.slug, Number(el.dataset.cat));
     } catch (err) {
       toast({ title: 'Could not switch', body: String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), kind: 'alert' });
     }
   },
   claim: async (el) => {
     try {
-      await window.kdf.claim(el.dataset.campaign, el.dataset.reward);
+      await window.pd.claim(el.dataset.campaign, el.dataset.reward);
     } catch {
       toast({ title: 'Claim failed', body: 'Kick refused the claim. Try again in a minute.', kind: 'alert' });
     }
   },
-  'setting-value': (el) => window.kdf.setSettings({ [el.dataset.key]: el.dataset.id }),
+  'setting-value': (el) => window.pd.setSettings({ [el.dataset.key]: el.dataset.id }),
   'setting-toggle': (el) => {
     const key = el.dataset.key;
     const current = key === 'showChat' ? state.settings.showChat !== false : state.settings[key];
-    window.kdf.setSettings({ [key]: !current });
+    window.pd.setSettings({ [key]: !current });
   },
 };
 
@@ -1070,7 +1070,7 @@ document.addEventListener('drop', (event) => {
   if (at < 0) return;
   if (t.after) at += 1;
   order.splice(at, 0, ui.drag.id);
-  window.kdf.setSettings({ categoryOrder: order });
+  window.pd.setSettings({ categoryOrder: order });
 });
 document.addEventListener('dragend', () => {
   ghost?.el.remove();
@@ -1130,7 +1130,7 @@ function moveCategory(id, dir) {
   const j = i + dir;
   if (i < 0 || j < 0 || j >= order.length) return;
   [order[i], order[j]] = [order[j], order[i]];
-  window.kdf.setSettings({ categoryOrder: order });
+  window.pd.setSettings({ categoryOrder: order });
 }
 
 document.addEventListener('click', (event) => {
@@ -1150,7 +1150,7 @@ document.addEventListener('input', (event) => {
 });
 document.addEventListener('change', (event) => {
   const key = event.target.dataset?.setting;
-  if (key) window.kdf.setSettings({ [key]: Number(event.target.value) });
+  if (key) window.pd.setSettings({ [key]: Number(event.target.value) });
 });
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && ui.modal) closeModal();
@@ -1164,25 +1164,25 @@ $('.layout').addEventListener('transitionend', () => syncPlayerBounds());
 
 setHTML($('#brand-mark'), brandMark(32));
 initUpdates();
-window.kdf.onState((next) => {
+window.pd.onState((next) => {
   state = next;
   render();
 });
-window.kdf.onAlert((alert) => {
+window.pd.onAlert((alert) => {
   if (alert.kind !== 'stall') return;
   startAlarm();
   toast({ title: 'Another Kick stream is taking your credit', body: `${alert.events} watch events got no credit. Close any other streams to continue progressing drops.`, kind: 'alert' });
 });
 // Capture mode only: the stream's frames, drawn where the docked view would be.
 let mirrorUrl = null;
-window.kdf.onPlayerFrame((jpeg) => {
+window.pd.onPlayerFrame((jpeg) => {
   const el = $('#player-mirror');
   if (mirrorUrl) URL.revokeObjectURL(mirrorUrl);
   mirrorUrl = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
   el.src = mirrorUrl;
   el.hidden = !farm()?.current;
 });
-window.kdf.getState().then((initial) => {
+window.pd.getState().then((initial) => {
   state ??= initial;
   render();
 });
@@ -1197,5 +1197,5 @@ const refreshHistorySoon = () => {
     loadHistory();
   }, 2000);
 };
-window.kdf.onHistoryChanged(refreshHistorySoon);
+window.pd.onHistoryChanged(refreshHistorySoon);
 setInterval(refreshHistorySoon, 30_000);

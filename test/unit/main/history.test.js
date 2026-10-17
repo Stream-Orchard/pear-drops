@@ -8,7 +8,7 @@ const { History, GROUP_OF } = require('../../../src/main/history');
 const MIN = 60_000;
 
 function fresh() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-hist-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-hist-'));
   return { dir, history: new History(dir) };
 }
 

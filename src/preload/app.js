@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('kdf', {
+contextBridge.exposeInMainWorld('pd', {
   getState: () => ipcRenderer.invoke('app:getState'),
   onState: (callback) => {
     const listener = (_event, state) => callback(state);

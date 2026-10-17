@@ -8,19 +8,19 @@ const path = require('node:path');
 const { launchApp, until } = require('./app');
 const { makeZip, standInGitHub } = require('./github');
 
-const REPO = 'pearfarmer/kick-drops';
-const PKG = { name: 'kick-drops-client', version: '0.1.0', main: 'src/main/main.js' };
+const REPO = 'pearfarmer/pear-drops';
+const PKG = { name: 'pear-drops', version: '0.1.0', main: 'src/main/main.js' };
 let gh;
 let a;
 let appRoot;
 
 test.before(async () => {
-  appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-approot-'));
+  appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-approot-'));
   fs.writeFileSync(path.join(appRoot, 'package.json'), JSON.stringify(PKG));
   const zip = makeZip([
-    ['pearfarmer-kick-drops-abc/package.json', JSON.stringify({ ...PKG, version: '0.2.0' })],
-    ['pearfarmer-kick-drops-abc/src/main/main.js', 'new main'],
-    ['pearfarmer-kick-drops-abc/src/renderer/index.html', 'new page'],
+    ['pearfarmer-pear-drops-abc/package.json', JSON.stringify({ ...PKG, version: '0.2.0' })],
+    ['pearfarmer-pear-drops-abc/src/main/main.js', 'new main'],
+    ['pearfarmer-pear-drops-abc/src/renderer/index.html', 'new page'],
   ]);
   gh = await standInGitHub({
     repo: REPO,
@@ -31,7 +31,7 @@ test.before(async () => {
       published_at: new Date().toISOString(),
       html_url: `https://github.com/${REPO}/releases/tag/v0.2.0`,
       body: '- Done tab',
-      body_html: '<h2>Highlights</h2><ul><li>A <strong>Done</strong> tab for finished and missed drops</li><li>Updates from GitHub, <a href="https://github.com/pearfarmer/kick-drops">right in the app</a></li></ul><script>window.__pwned = 1</script><img src="javascript:alert(1)">',
+      body_html: '<h2>Highlights</h2><ul><li>A <strong>Done</strong> tab for finished and missed drops</li><li>Updates from GitHub, <a href="https://github.com/pearfarmer/pear-drops">right in the app</a></li></ul><script>window.__pwned = 1</script><img src="javascript:alert(1)">',
       assets: [],
     },
   });
@@ -39,7 +39,7 @@ test.before(async () => {
     size: { width: 1512, height: 944 },
     // An older version ran before: this start is the first of a new version.
     files: { 'updates.json': { seenVersion: '0.0.9', auto: false } },
-    env: { KDF_UPDATE_API: gh.url, KDF_UPDATE_APP_ROOT: appRoot },
+    env: { PD_UPDATE_API: gh.url, PD_UPDATE_APP_ROOT: appRoot },
   });
   await until(a.win, () => document.querySelector('#hero .hero-title'), 'farming to start', 20000);
 });
@@ -53,7 +53,7 @@ test('the first start of a new version shows what’s new, once', async () => {
   await until(a.win, () => document.querySelector('.modal.whatsnew'), 'the Updated card');
   assert.match(await a.win.textContent('.modal.whatsnew'), /Updated from 0\.0\.9/);
   assert.ok(await a.win.locator('.wn-list li').count(), 'this version’s changes');
-  await a.win.screenshot({ path: path.join(os.tmpdir(), 'kdf-whatsnew.png') });
+  await a.win.screenshot({ path: path.join(os.tmpdir(), 'pd-whatsnew.png') });
   await a.win.click('.modal.whatsnew [data-action="close-whatsnew"].btn');
   await until(a.win, () => !document.querySelector('.modal.whatsnew'), 'the card to close');
   const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'updates.json'), 'utf8'));
@@ -73,7 +73,7 @@ test('Settings › Updates: saving a repository finds the new version and its no
   assert.equal(await a.win.locator('.upd-notes script, .upd-notes img').count(), 0, 'scripts and unsafe images are stripped');
   assert.equal(await a.win.evaluate(() => window.__pwned), undefined);
   assert.equal(await a.win.locator('.tb-update').count(), 1, 'a chip in the title bar');
-  await a.win.screenshot({ path: path.join(os.tmpdir(), 'kdf-updates.png') });
+  await a.win.screenshot({ path: path.join(os.tmpdir(), 'pd-updates.png') });
 });
 
 test('installing copies the new version into the app folder and offers a restart', async () => {
@@ -82,5 +82,5 @@ test('installing copies the new version into the app folder and offers a restart
   assert.equal(fs.readFileSync(path.join(appRoot, 'src', 'main', 'main.js'), 'utf8'), 'new main');
   assert.equal(JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8')).version, '0.2.0');
   assert.match(await a.win.textContent('.tb-update'), /Update ready/);
-  await a.win.screenshot({ path: path.join(os.tmpdir(), 'kdf-updates-ready.png') });
+  await a.win.screenshot({ path: path.join(os.tmpdir(), 'pd-updates-ready.png') });
 });

@@ -134,7 +134,7 @@ class TrayController {
     const win = this.ensurePopover();
     if (win.isVisible()) return this.hidePopover();
     this.position();
-    if (process.env.KDF_TEST_HIDDEN) {
+    if (process.env.PD_TEST_HIDDEN) {
       win.setOpacity(0);
       win.showInactive();
       return;

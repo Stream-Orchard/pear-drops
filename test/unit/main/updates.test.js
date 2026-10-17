@@ -6,7 +6,7 @@ const path = require('node:path');
 const { Updates, parseChangelog } = require('../../../src/main/updates');
 const { makeZip } = require('../../launch/github');
 
-const PKG = { name: 'kick-drops-client', version: '0.1.0', main: 'src/main/main.js' };
+const PKG = { name: 'pear-drops', version: '0.1.0', main: 'src/main/main.js' };
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 
 /** A response with a JSON body, or a streamed binary one. */
@@ -16,10 +16,10 @@ const binary = (buf) => {
   return { ok: true, status: 200, headers: { get: () => String(buf.length) }, body: { getReader: () => ({ read: async () => (sent ? { done: true } : ((sent = true), { done: false, value: buf })) }) } };
 };
 
-function setup({ release, installed = false, platform = 'linux', devCopy = false, pkgRepo = 'me/kick-drops', saved, files } = {}) {
-  const appRoot = tmp('kdf-app-');
+function setup({ release, installed = false, platform = 'linux', devCopy = false, pkgRepo = 'me/pear-drops', saved, files } = {}) {
+  const appRoot = tmp('pd-app-');
   fs.writeFileSync(path.join(appRoot, 'package.json'), JSON.stringify(PKG));
-  const dataDir = tmp('kdf-data-');
+  const dataDir = tmp('pd-data-');
   if (saved) fs.writeFileSync(path.join(dataDir, 'updates.json'), JSON.stringify(saved));
   const zip = makeZip(
     Object.entries(
@@ -28,13 +28,13 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
         'src/main/main.js': 'new main',
         'src/renderer/index.html': 'new page',
       },
-    ).map(([name, content]) => [`me-kick-drops-abc/${name}`, content]),
+    ).map(([name, content]) => [`me-pear-drops-abc/${name}`, content]),
   );
   const calls = [];
   const fetch = async (url) => {
     calls.push(['fetch', url]);
     if (url.endsWith('/releases/latest')) return release ? json(release) : json({}, 404);
-    if (url.endsWith('/repos/me/kick-drops')) return json({}, 404);
+    if (url.endsWith('/repos/me/pear-drops')) return json({}, 404);
     if (url.includes('zip') || url.includes('download')) return binary(zip);
     return json({}, 404);
   };
@@ -44,9 +44,9 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
     platform,
     appRoot,
     dataDir,
-    tempDir: tmp('kdf-tmp-'),
-    downloadsDir: tmp('kdf-dl-'),
-    execPath: '/usr/bin/kick-drops',
+    tempDir: tmp('pd-tmp-'),
+    downloadsDir: tmp('pd-dl-'),
+    execPath: '/usr/bin/pear-drops',
     pid: 1,
     pkgRepo,
     devCopy,
@@ -63,7 +63,7 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
   return { updates, appRoot, dataDir, calls, states };
 }
 
-const RELEASE = { tag_name: 'v0.2.0', name: 'v0.2.0', body: '- Done tab', zipball_url: 'https://api.github.com/zip', html_url: 'https://github.com/me/kick-drops/releases/tag/v0.2.0', assets: [] };
+const RELEASE = { tag_name: 'v0.2.0', name: 'v0.2.0', body: '- Done tab', zipball_url: 'https://api.github.com/zip', html_url: 'https://github.com/me/pear-drops/releases/tag/v0.2.0', assets: [] };
 
 test('parseChangelog reads versions, the current one and their items', () => {
   const list = parseChangelog('# What’s new\n\n## 0.2.0 (current)\n- Done tab\n- Updater\n\n## 0.1.0\n* First version\n');
@@ -76,7 +76,7 @@ test('parseChangelog reads versions, the current one and their items', () => {
 
 test('the repository comes from package.json until one is saved; a new version is noticed once', () => {
   const { updates, dataDir } = setup({ saved: { seenVersion: '0.0.9', auto: false } });
-  assert.equal(updates.status().repo, 'me/kick-drops');
+  assert.equal(updates.status().repo, 'me/pear-drops');
   assert.equal(updates.status().auto, false);
   assert.deepEqual(updates.status().justUpdated, { from: '0.0.9', to: '0.1.0' });
   assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'updates.json'), 'utf8')).seenVersion, '0.1.0');
@@ -126,7 +126,7 @@ test('an update that isn’t this app is refused', async () => {
   const s = await updates.check();
   assert.equal(s.state, 'error');
   assert.equal(s.error, 'wrongapp');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8')).name, 'kick-drops-client');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8')).name, 'pear-drops');
 });
 
 const withAssets = (names) => ({ ...RELEASE, assets: names.map((name) => ({ name, browser_download_url: `https://github.com/download/${name}` })) });

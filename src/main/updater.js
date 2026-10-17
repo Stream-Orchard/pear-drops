@@ -8,8 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const API = process.env.KDF_UPDATE_API || 'https://api.github.com';
-const RAW = process.env.KDF_UPDATE_RAW || 'https://raw.githubusercontent.com';
+const API = process.env.PD_UPDATE_API || 'https://api.github.com';
+const RAW = process.env.PD_UPDATE_RAW || 'https://raw.githubusercontent.com';
 const REPO_RE = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
 const UA = 'Pear-Drops-Updater';
 
@@ -135,7 +135,7 @@ function appFiles(entries) {
 
 // The files the last update installed, kept in the app folder. The next update removes the
 // ones it no longer has, and only those, so node_modules and anything else stay.
-const FILE_LIST = '.kdf-files.json';
+const FILE_LIST = '.pd-files.json';
 const safeRel = (rel) => typeof rel === 'string' && !!rel && !path.isAbsolute(rel) && !rel.split(/[\\/]/).some((s) => s === '..' || s === '');
 
 /** Copies the new files over appDir (backing up the old ones first). -> { version, needsInstall } */
@@ -161,18 +161,18 @@ function applyUpdate(appDir, files, backupDir) {
         fs.copyFileSync(dest, bk);
       }
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(`${dest}.kdf-new`, data);
+      fs.writeFileSync(`${dest}.pd-new`, data);
       written.push(dest);
     }
   } catch (e) {
-    for (const dest of written) fs.rmSync(`${dest}.kdf-new`, { force: true });
+    for (const dest of written) fs.rmSync(`${dest}.pd-new`, { force: true });
     throw e;
   }
   // Swap them all in at the end; if that fails part way, put back what was swapped.
   const swapped = [];
   try {
     for (const dest of written) {
-      fs.renameSync(`${dest}.kdf-new`, dest);
+      fs.renameSync(`${dest}.pd-new`, dest);
       swapped.push(dest);
     }
   } catch (e) {
@@ -183,7 +183,7 @@ function applyUpdate(appDir, files, backupDir) {
         else fs.unlinkSync(dest);
       } catch {}
     }
-    for (const dest of written) fs.rmSync(`${dest}.kdf-new`, { force: true });
+    for (const dest of written) fs.rmSync(`${dest}.pd-new`, { force: true });
     throw e;
   }
   // Files an earlier update installed that this version no longer has: removed, after a backup.
@@ -267,7 +267,7 @@ async function unpackMacApp(zip, dir, req, run) {
 
 /** Mac: can this app change its own files? macOS's App Management setting can refuse it. */
 function canWriteInside(appDir) {
-  const f = path.join(appDir, '.kdf-update-check');
+  const f = path.join(appDir, '.pd-update-check');
   try {
     fs.writeFileSync(f, '');
   } catch (e) {
@@ -285,7 +285,7 @@ function canWriteInside(appDir) {
  */
 function macSwapScript() {
   return `#!/bin/sh
-pid="$1"; app="$2"; new="$3"; open="\${4:-open}"; old="$app.kdf-old-$$"
+pid="$1"; app="$2"; new="$3"; open="\${4:-open}"; old="$app.pd-old-$$"
 i=0
 while kill -0 "$pid" 2>/dev/null; do
   i=$((i + 1)); [ "$i" -gt 600 ] && exit 1

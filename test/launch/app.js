@@ -18,22 +18,22 @@ function playwright() {
  * options: signedIn (skip the welcome screen), seed (believable history),
  * eventSeconds (stand-in player's watch event interval), hidden, settings.
  */
-async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hidden = !process.env.KDF_TEST_VISIBLE, mirror = false, settings, files = {}, env: extraEnv = {}, scale, size = { width: 1480, height: 940 } } = {}) {
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'kdf-test-'));
+async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hidden = !process.env.PD_TEST_VISIBLE, mirror = false, settings, files = {}, env: extraEnv = {}, scale, size = { width: 1480, height: 940 } } = {}) {
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-test-'));
   if (settings) fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify(settings));
   // Other files to start with in the data folder, e.g. { 'updates.json': {...} }.
   for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(data, name), typeof content === 'string' ? content : JSON.stringify(content));
   const env = {
     ...process.env,
-    KDF_DEMO: '1',
-    KDF_DEV_DATA: data,
-    KDF_DEMO_EVENT_SECONDS: String(eventSeconds),
-    ...(size ? { KDF_NO_MAXIMIZE: '1' } : {}),
-    ...(signedIn ? { KDF_DEMO_SIGNED_IN: '1' } : {}),
-    ...(seed ? { KDF_DEMO_SEED: '1' } : {}),
-    ...(hidden ? { KDF_TEST_HIDDEN: '1' } : {}),
-    ...(mirror ? { KDF_MIRROR_PLAYER: '1' } : {}),
-    ...(scale ? { KDF_SCALE: String(scale) } : {}),
+    PD_DEMO: '1',
+    PD_DEV_DATA: data,
+    PD_DEMO_EVENT_SECONDS: String(eventSeconds),
+    ...(size ? { PD_NO_MAXIMIZE: '1' } : {}),
+    ...(signedIn ? { PD_DEMO_SIGNED_IN: '1' } : {}),
+    ...(seed ? { PD_DEMO_SEED: '1' } : {}),
+    ...(hidden ? { PD_TEST_HIDDEN: '1' } : {}),
+    ...(mirror ? { PD_MIRROR_PLAYER: '1' } : {}),
+    ...(scale ? { PD_SCALE: String(scale) } : {}),
     ...extraEnv,
   };
   // --no-sandbox: Ubuntu (GitHub's Linux runners) blocks the user namespaces Electron's sandbox needs, so it
@@ -53,15 +53,15 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
       return [w.getBounds(), screen.getPrimaryDisplay().workAreaSize];
     }, size);
     await win.waitForTimeout(400);
-    if (process.env.KDF_DEBUG_SIZE) console.log('window', got);
+    if (process.env.PD_DEBUG_SIZE) console.log('window', got);
   }
   return {
     app,
     win,
     errors,
     data,
-    /** Runs fn(kdfDemo) in the main process. */
-    demo: (fn, arg) => app.evaluate(new Function('electron', 'arg', `return (${fn.toString()})(global.kdfDemo, arg)`), arg),
+    /** Runs fn(pdDemo) in the main process. */
+    demo: (fn, arg) => app.evaluate(new Function('electron', 'arg', `return (${fn.toString()})(global.pdDemo, arg)`), arg),
     async close() {
       await app.close().catch(() => {});
       fs.rmSync(data, { recursive: true, force: true });

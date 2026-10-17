@@ -21,7 +21,7 @@ Kick's web API is undocumented and changes without notice. Check what it returns
 
    ```js
    await app.evaluate(async () => {
-     const { api } = global.kdfDebug;           // set in dev copies (KDF_DEV_DATA)
+     const { api } = global.pdDebug;           // set in dev copies (PD_DEV_DATA)
      const camps = await api.campaigns();       // web.kick.com/api/v1/drops/campaigns (public)
      const prog = await api.progress();         // web.kick.com/api/v1/drops/progress (signed in)
      return { active: camps.filter((c) => c.status === 'active').length, progress: prog.length };

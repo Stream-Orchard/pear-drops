@@ -11,7 +11,7 @@ const { EventEmitter } = require('events');
 const DAY = 86_400_000;
 const KEEP_DAYS = 400; // the same as the history
 const RETRY_MS = 3600_000; // after a failed image download
-const SCHEME = 'kdf-img';
+const SCHEME = 'pd-img';
 const FILE_RE = /^[a-f0-9]{24}\.(png|jpg|gif|webp|svg|avif)$/;
 const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif' };
 const TYPE = Object.fromEntries(Object.entries(EXT).map(([type, ext]) => [ext, type]));

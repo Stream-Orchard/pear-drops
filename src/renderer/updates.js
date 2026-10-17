@@ -205,19 +205,19 @@ function whatsNewModal() {
 }
 
 const updateActions = {
-  'update-check': () => window.kdf.updates.check(),
-  'update-install': () => window.kdf.updates.install(),
+  'update-check': () => window.pd.updates.check(),
+  'update-install': () => window.pd.updates.install(),
   'update-restart': async () => {
-    const r = await window.kdf.updates.restart();
+    const r = await window.pd.updates.restart();
     if (r?.blocked) {
       ui.settingsTab = 'updates';
       render();
     }
   },
-  'update-auto': () => window.kdf.updates.settings({ auto: !upd.status?.auto }).then(setUpdateStatus),
-  'update-page': () => window.kdf.updates.openPage(),
-  'update-privacy': () => window.kdf.updates.privacySettings(),
-  'update-dmg': () => window.kdf.updates.useDmg(),
+  'update-auto': () => window.pd.updates.settings({ auto: !upd.status?.auto }).then(setUpdateStatus),
+  'update-page': () => window.pd.updates.openPage(),
+  'update-privacy': () => window.pd.updates.privacySettings(),
+  'update-dmg': () => window.pd.updates.useDmg(),
   'update-chip': () => {
     ui.settingsTab = 'updates';
     openModal('settings');
@@ -241,9 +241,9 @@ function setUpdateStatus(status) {
 }
 
 function initUpdates() {
-  window.kdf.updates.onStatus(setUpdateStatus);
-  window.kdf.updates.status().then(setUpdateStatus);
-  window.kdf.updates.changelog().then((list) => {
+  window.pd.updates.onStatus(setUpdateStatus);
+  window.pd.updates.status().then(setUpdateStatus);
+  window.pd.updates.changelog().then((list) => {
     upd.changelog = list;
     render();
   });
@@ -251,9 +251,9 @@ function initUpdates() {
     const form = event.target.closest?.('[data-update-repo]');
     if (!form) return;
     event.preventDefault();
-    window.kdf.updates.settings({ repo: form.elements.repo.value }).then((s) => {
+    window.pd.updates.settings({ repo: form.elements.repo.value }).then((s) => {
       setUpdateStatus(s);
-      if (s.repo && s.state !== 'error') window.kdf.updates.check();
+      if (s.repo && s.state !== 'error') window.pd.updates.check();
     });
   });
   // Links in release notes open in the browser.
@@ -261,6 +261,6 @@ function initUpdates() {
     const a = event.target.closest?.('a[data-note-link]');
     if (!a) return;
     event.preventDefault();
-    window.kdf.updates.openLink(a.href);
+    window.pd.updates.openLink(a.href);
   });
 }

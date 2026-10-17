@@ -18,7 +18,7 @@ const value = (name) => {
 };
 
 const profile = value('profile');
-const data = profile ? path.join(os.tmpdir(), 'kick-drops-profiles', profile) : fs.mkdtempSync(path.join(os.tmpdir(), 'kick-drops-dev-'));
+const data = profile ? path.join(os.tmpdir(), 'pear-drops-profiles', profile) : fs.mkdtempSync(path.join(os.tmpdir(), 'pear-drops-dev-'));
 fs.mkdirSync(data, { recursive: true });
 
 let electron;
@@ -30,8 +30,8 @@ try {
 }
 require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'harden.js')], { stdio: 'inherit' });
 
-const env = { ...process.env, KDF_DEV_DATA: data };
-if (flag('demo')) Object.assign(env, { KDF_DEMO: '1', KDF_DEMO_SEED: '1', KDF_DEMO_SIGNED_IN: '1' });
+const env = { ...process.env, PD_DEV_DATA: data };
+if (flag('demo')) Object.assign(env, { PD_DEMO: '1', PD_DEMO_SEED: '1', PD_DEMO_SIGNED_IN: '1' });
 const extra = flag('debug') ? [`--inspect=${value('debug') ?? 9229}`] : [];
 
 console.log(`Pear Drops dev copy${flag('demo') ? ' (demo)' : ''} · data: ${data}`);

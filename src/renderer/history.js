@@ -73,7 +73,7 @@ async function loadHistory() {
   }
   hist.loading = true;
   try {
-    hist.data = await window.kdf.history({ since: histSince(), campaignId: hist.campaignId, groups: hist.groups, text: hist.text, limit: 600 });
+    hist.data = await window.pd.history({ since: histSince(), campaignId: hist.campaignId, groups: hist.groups, text: hist.text, limit: 600 });
     hist.loadedAt = Date.now();
   } finally {
     hist.loading = false;

@@ -37,5 +37,5 @@ test('the scan catches each kind of pop-up', () => {
   assert.deepEqual(scan('Menu.buildFromTemplate([])'), ['native menu']);
   assert.deepEqual(scan('<input list="x">'), ['datalist']);
   assert.deepEqual(scan('<input type="date">'), ['date picker']);
-  assert.deepEqual(scan('// alert("in a comment")\nwindow.kdf.alert'), []);
+  assert.deepEqual(scan('// alert("in a comment")\nwindow.pd.alert'), []);
 });

@@ -1,4 +1,4 @@
-// Demo mode (KDF_DEMO=1): a stand-in Kick with made-up campaigns, channels, emotes
+// Demo mode (PD_DEMO=1): a stand-in Kick with made-up campaigns, channels, emotes
 // and chat. Used by the launch tests and the trailer, so no real account, streamer
 // or chatter ever appears and nothing goes to the network.
 const MIN = 60_000;
@@ -166,7 +166,7 @@ const LIVE = {
 
 class DemoApi {
   constructor() {
-    this.loggedIn = !!process.env.KDF_DEMO_SIGNED_IN;
+    this.loggedIn = !!process.env.PD_DEMO_SIGNED_IN;
     this.rawCampaigns = makeCampaigns();
     this.units = { 'c-neon': 148, 'c-cozy': 34, 'c-sky': 12, 'c-kart': 92, 'c-market': 0 };
     this.claimed = new Set(['r-neon-1', 'r-cozy-1', 'r-kart-1']);
@@ -339,7 +339,7 @@ function streamPage(slug, eventSeconds, mode = 'page') {
   const d=document.createElement('div');d.className='msg';d.innerHTML='<b style="color:hsl('+h+',80%,65%)">'+n+'</b>'+text+(Math.random()<.5?' <img src="'+C.glyphs[Math.random()*C.glyphs.length|0]+'">':'');
   chatEl.appendChild(d);while(chatEl.children.length>40)chatEl.firstChild.remove();setTimeout(say,500+Math.random()*1400)}say();
   // Kick's player reports watch time about every two minutes.
-  const fire=()=>window.postMessage({__kdf:true,kind:'watch-event'},location.origin);
+  const fire=()=>window.postMessage({__pd:true,kind:'watch-event'},location.origin);
   if(${JSON.stringify(mode)}!=='chat'){window.__demoWatchEvent=fire;setTimeout(fire,4000);setInterval(fire,${eventSeconds * 1000});}
   </script></body></html>`;
 }
@@ -536,7 +536,7 @@ function createDemo() {
   const api = new DemoApi();
   return {
     api,
-    partition: 'kdf-demo',
+    partition: 'pd-demo',
     installStage,
     seedHistory,
     seedHistoryLog: (history) => seedHistoryLog(history, api),

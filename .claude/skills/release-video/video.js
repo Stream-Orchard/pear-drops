@@ -271,11 +271,11 @@ function director(a, { steps = 0 } = {}) {
 async function record(scenes, { out, keep = false } = {}) {
   const r = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
   if (!/libx264/.test(r.stdout || '')) throw new Error('ffmpeg with libx264 is needed (brew install ffmpeg)');
-  const name = scenes.name || 'kick-drops-trailer';
-  const work = path.join(os.tmpdir(), 'kick-drops-video', name);
+  const name = scenes.name || 'pear-drops-trailer';
+  const work = path.join(os.tmpdir(), 'pear-drops-video', name);
   fs.mkdirSync(work, { recursive: true });
   const frames = path.join(work, 'frames');
-  const mp4 = out || path.join(os.tmpdir(), 'kick-drops-video', `${name}.mp4`);
+  const mp4 = out || path.join(os.tmpdir(), 'pear-drops-video', `${name}.mp4`);
   const thumb = path.join(work, 'thumbnail.png');
 
   // Hidden (never takes focus) and muted: the soundtrack is made afterwards.
