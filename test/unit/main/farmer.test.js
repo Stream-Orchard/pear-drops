@@ -274,6 +274,34 @@ test('drops Kick has announced (upcoming) are listed soonest first for Coming so
   assert.equal(heard.length, 1, 'told once');
 });
 
+test("a drop limited to an event's channels finds them through the event, even ones the category's top streams miss", async () => {
+  const c = { ...campaign('ev', { channels: [{ id: 7, slug: 'tiny' }, { id: 8, slug: 'big' }] }), url: 'https://kick.com/events/safe-zone' };
+  const { farmer, api, watcher } = setup({ campaigns: [c], streams: { 1: [live('big', 8, 900), live('other', 9, 5000)] } });
+  const asked = [];
+  const listed = api.livestreams.bind(api);
+  api.livestreams = async (cat, opts) => (asked.push(opts.maxPages), listed(cat, opts));
+  api.eventStreams = async (event) => {
+    assert.equal(event, 'safe-zone');
+    return [live('tiny', 7, 3), live('stranger', 99, 50)];
+  };
+  await farmer.tick();
+  const slugs = farmer.model.categories[0].streams.map((s) => s.slug);
+  assert.ok(slugs.includes('tiny'), 'the small channel, found through the event');
+  assert.ok(!slugs.includes('stranger'), "only the drop's own channels");
+  assert.deepEqual(asked, [1], "with the event's list, the category's first page is enough");
+  assert.equal(watcher.watching, 'big');
+
+  // Kick doesn't answer for the event: the category is searched deeper, as before.
+  api.eventStreams = async () => {
+    throw new Error('HTTP 403');
+  };
+  farmer.streams.clear();
+  asked.length = 0;
+  await farmer.tick({ force: true });
+  assert.deepEqual(asked, [5]);
+  assert.ok(farmer.log.some((l) => /Could not list the event's streams \(HTTP 403\)/.test(l.text)));
+});
+
 test('the user order of categories wins over end dates', async () => {
   const first = campaign('a', { category: { id: 1, name: 'First' }, endsIn: 1 });
   const second = campaign('b', { category: { id: 2, name: 'Second' }, endsIn: 5 });

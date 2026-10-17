@@ -1,5 +1,5 @@
 const { EventEmitter } = require('events');
-const { assetUrl } = require('./kick-api');
+const { assetUrl, eventOf } = require('./kick-api');
 const { Availability } = require('./availability');
 
 const MIN = 60_000;
@@ -569,6 +569,8 @@ class Farmer extends EventEmitter {
           endsAt: c.ends_at,
           startsAt: c.starts_at,
           channelIds: c.channels.map((ch) => ch.id),
+          // A campaign that's part of a Kick event (its url is kick.com/events/<slug>).
+          event: eventOf(c.url),
           channels: c.channels.map((ch) => ({ id: ch.id, slug: ch.slug, username: ch.user?.username, avatar: ch.user?.profile_picture })),
           units,
           rewards,
@@ -804,15 +806,36 @@ class Farmer extends EventEmitter {
       const openWorld = active.some((c) => !c.channelIds.length);
       const wanted = new Set(active.flatMap((c) => c.channelIds));
       try {
-        const list = await this.api.livestreams(cat.id, {
-          maxPages: openWorld ? 1 : 5,
+        // Drops limited to an event's channels: the event lists its live channels however small,
+        // which the category's top streams can miss. The category's first page still comes too.
+        const fromEvents = openWorld ? [] : await this.eventStreams(active, wanted);
+        const listed = await this.api.livestreams(cat.id, {
+          maxPages: openWorld || fromEvents ? 1 : 5,
           stopWhen: (found) => [...wanted].every((id) => found.some((ls) => ls.channel.id === id)),
         });
+        const have = new Set(listed.map((ls) => ls.channel.id));
+        const list = [...listed, ...(fromEvents ?? []).filter((ls) => !have.has(ls.channel.id))];
         this.streams.set(cat.id, { at: now, list });
         this.availability.note(cat.id, now, this.candidatesFor(cat, active).length > 0);
       } catch (err) {
         this.addLog('warn', `Could not list ${cat.name} streams: ${err.message}`);
       }
+    }
+  }
+
+  /**
+   * The live streams of the events these campaigns belong to, only their own channels, or null
+   * when none is an event's (or Kick wouldn't say): then the category's streams are searched deeper.
+   */
+  async eventStreams(campaigns, wanted) {
+    const events = [...new Set(campaigns.map((c) => c.event).filter(Boolean))];
+    if (!events.length || !this.api.eventStreams) return null;
+    try {
+      const lists = await Promise.all(events.map((e) => this.api.eventStreams(e)));
+      return lists.flat().filter((ls) => wanted.has(ls.channel.id));
+    } catch (err) {
+      this.addLog('warn', `Could not list the event's streams (${err.message}), searching the category instead`);
+      return null;
     }
   }
 
