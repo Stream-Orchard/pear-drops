@@ -35,7 +35,7 @@ module.exports = {
 
     // 3. Watches like you would
     await t.step('Watches like *you* would', 'Kick’s own player and chat, muted at the window. Every watch event is tracked live.');
-    await t.zoom('#player', 1.5);
+    await t.zoom('#player-mirror', 1.6); // the video, with the chat under it
     await wait(2200);
     await t.unzoom(900);
     await t.zoom('#chart .monitor', 1.7);
