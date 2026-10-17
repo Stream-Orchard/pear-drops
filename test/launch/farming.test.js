@@ -325,6 +325,7 @@ test('polish: the Queue badge counts its categories, watch events read as sent, 
   assert.notEqual(await ring(), 'none', 'the keyboard shows where focus is');
   await a.win.mouse.click(5, 500);
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
+});
 
 test('the Queue ends with a plan: each live category in order, as long as its time left, with when it should be done', async () => {
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
