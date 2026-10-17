@@ -744,11 +744,11 @@ function syncPlayerBounds() {
 const NOTIFY_KINDS = [
   ['claimed', 'A drop is claimed', 'Each emote or badge, once Kick confirms it.'],
   ['ready', 'A drop is ready to claim', 'When automatic claiming is off, so you can claim it yourself.'],
-  ['ended', 'A stream ends or raids', 'The streamer went offline or sent viewers elsewhere, and the app moves on.'],
-  ['trouble', 'A stream has a problem', 'The player froze, failed or kept failing, and was reloaded or swapped.'],
+  ['ended', 'A stream ends or raids', 'The streamer went offline or raided, and the app moved on.'],
+  ['trouble', 'A stream has a problem', 'The player froze or failed, and was reloaded or swapped.'],
   ['conflict', 'Credit goes to another stream', 'Kick credits one stream per account: another one is taking it.'],
   ['signedOut', 'You need to sign in again', 'Your Kick login expired, so farming stopped.'],
-  ['done', 'Everything is collected, or nothing is live', 'All drops are claimed, or none of the remaining ones has a stream on.'],
+  ['done', 'All collected, or nothing live', 'Every drop is claimed, or none left has a stream on.'],
   ['newDrops', 'New drops on Kick', 'A campaign with emotes or badges starts.'],
 ];
 const NOTIFY_TEST = {
@@ -804,9 +804,14 @@ function renderModal() {
         'If your computer blocks them, nothing shows. Send a test to check.';
       const on = s.notify ?? {};
       const system = mac || navigator.platform.startsWith('Win') ? `<button class="btn sm" data-action="notify-system">${icon('settings')} System settings</button>` : '';
-      return `<p class="pane-note">Your computer’s own notifications, also while Pear Drops is in the background or in the ${tray}. Choose which ones you want.</p>
+      // The kinds as tiles, two to a row, so the whole tab fits without scrolling. A click anywhere on one switches it.
+      const kinds = NOTIFY_KINDS.map(
+        ([kind, title, sub]) =>
+          `<button class="notify-kind ${on[kind] ? 'on' : ''}" data-action="notify-toggle" data-kind="${kind}"><span class="text"><b>${title}</b><span>${sub}</span></span><span class="switch ${on[kind] ? 'on' : ''}"></span></button>`,
+      ).join('');
+      return `<p class="pane-note">Your computer’s own notifications, also while Pear Drops is in the background or in the ${tray}.</p>
       ${row('Check they work', `<span class="notify-result ${ui.notifyTest ?? ''}">${result}</span>`, `<button class="btn sm" data-action="notify-test" ${ui.notifyTest === 'sending' ? 'disabled' : ''}>${icon('bell')} Send a test</button>${system}`)}
-      ${NOTIFY_KINDS.map(([kind, title, sub]) => row(title, sub, `<button class="switch ${on[kind] ? 'on' : ''}" data-action="notify-toggle" data-kind="${kind}"></button>`)).join('')}
+      <div class="notify-grid">${kinds}</div>
       ${row('Only when Pear Drops isn’t in front', 'Skip them while you’re looking at the app.', toggle('notifyAway', s.notifyAway))}`;
     })(),
     refresh: `
@@ -844,7 +849,7 @@ function renderModal() {
         </nav>
         <section class="settings-pane">
           <div class="modal-head"><h3>${SETTINGS_TABS.find(([id]) => id === ui.settingsTab)[2]}</h3><button class="btn sm icon-only ghost" data-action="close-modal" data-tip="Close (Esc)">${icon('x')}</button></div>
-          <div class="modal-section">${panes[ui.settingsTab]}</div>
+          <div class="modal-section pane-${ui.settingsTab}">${panes[ui.settingsTab]}</div>
         </section>
       </div>
     </div>`,
