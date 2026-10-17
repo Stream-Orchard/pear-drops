@@ -487,7 +487,7 @@ function queuePanel(f) {
             })
             .join('')}${finished ? `<button class="link small cat-finished" data-action="side-tab" data-id="done">${icon('check')} ${finished} finished drop${finished > 1 ? 's' : ''} in Done</button>` : ''}</div>`
         : '';
-      return `<div class="cat ${isCurrent ? 'current' : ''} ${cat.enabled ? '' : 'disabled'} ${locked ? 'complete locked' : ''} ${smart && !locked ? 'smart' : ''}" ${fixed ? '' : 'draggable="true"'} data-cat-id="${cat.id}">
+      return `<div class="cat ${isCurrent ? 'current' : ''} ${cat.enabled ? '' : 'disabled'} ${locked ? 'complete locked' : ''} ${smart && !locked ? 'smart' : ''}" ${fixed ? '' : 'data-reorder'} data-cat-id="${cat.id}">
         <div class="cat-row" data-action="expand" data-id="${cat.id}">
           ${locked ? `<span class="cat-grip done" data-tip="Complete">${icon('check')}</span>` : smart ? `<span class="cat-grip" data-tip="Smart order sorts this automatically. Switch to Manual to rearrange.">${icon('lock')}<span class="cat-rank">${i + 1}</span></span>` : `<span class="cat-grip" data-tip="Drag to reorder">${icon('grip')}<span class="cat-rank">${i + 1}</span></span>`}
           ${img(cat.image, 'cat-art', cat.name)}
@@ -1014,18 +1014,21 @@ const actions = {
 };
 
 // ---- drag to reorder the queue
-function dropTarget(event) {
-  // Finished categories are read-only: nothing can be dropped among them.
-  const row = event.target.closest?.('.cat[data-cat-id]:not(.locked)');
+// Pointer events rather than the browser's drag and drop: they behave the same on every
+// system (on Linux a drag session swallows pointer input and can end without a dragend).
+// The dragged row follows the pointer as a lifted card, drawn by the page itself, so it
+// shows in screenshots and recordings.
+const DRAG_START_PX = 4;
+let press = null;
+let ghost = null;
+
+function dropTarget(x, y) {
+  // The lifted card ignores the pointer, so this finds the row underneath it.
+  const row = document.elementFromPoint(x, y)?.closest?.('.cat[data-reorder]');
   if (!row || !ui.drag) return null;
   const r = row.getBoundingClientRect();
-  return { row, id: Number(row.dataset.catId), after: event.clientY > r.top + r.height / 2 };
+  return { row, id: Number(row.dataset.catId), after: y > r.top + r.height / 2 };
 }
-
-// The dragged row follows the pointer as a lifted card, drawn by the page itself
-// (the system's drag image is faint, and isn't part of the window's own pixels).
-const BLANK_DRAG = Object.assign(new Image(), { src: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' });
-let ghost = null;
 
 function moveGhost(y) {
   if (ghost) ghost.el.style.transform = `translate3d(0, ${Math.round(y - ghost.dy - ghost.top)}px, 0) rotate(-0.6deg) scale(1.02)`;
@@ -1035,50 +1038,71 @@ function clearDropMarks() {
   document.querySelectorAll('.cat.drop-before, .cat.drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
 }
 
-document.addEventListener('dragstart', (event) => {
-  const row = event.target.closest?.('.cat[data-cat-id]');
-  if (!row) return;
+function startDrag(row, y, pointerId) {
   ui.drag = { id: Number(row.dataset.catId) };
   const r = row.getBoundingClientRect();
   const el = row.cloneNode(true);
   el.classList.add('drag-ghost');
-  el.classList.remove('dragging');
   Object.assign(el.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px` });
   el.querySelector('.cat-campaigns')?.remove();
   document.body.appendChild(el);
-  ghost = { el, top: r.top, dy: event.clientY - r.top };
-  moveGhost(event.clientY);
+  ghost = { el, top: r.top, dy: y - r.top };
   row.classList.add('dragging');
-  event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData('text/plain', row.dataset.catId);
-  event.dataTransfer.setDragImage(BLANK_DRAG, 0, 0);
-});
-document.addEventListener('dragover', (event) => {
-  if (ui.drag && event.clientY) moveGhost(event.clientY);
-  const t = dropTarget(event);
-  if (!t) return;
-  event.preventDefault();
-  clearDropMarks();
-  if (t.id !== ui.drag.id) t.row.classList.add(t.after ? 'drop-after' : 'drop-before');
-});
-document.addEventListener('drop', (event) => {
-  const t = dropTarget(event);
-  if (!t) return;
-  event.preventDefault();
-  const order = categoryOrder().filter((id) => id !== ui.drag.id);
-  let at = order.indexOf(t.id);
-  if (at < 0) return;
-  if (t.after) at += 1;
-  order.splice(at, 0, ui.drag.id);
-  window.pd.setSettings({ categoryOrder: order });
-});
-document.addEventListener('dragend', () => {
+  // Keeps the drag's pointer events coming to this row, even outside the window. The click
+  // that ends the drag then lands on the row itself, not on the part that opens it.
+  try {
+    row.setPointerCapture(pointerId);
+  } catch {}
+}
+
+function endDrag() {
   ghost?.el.remove();
   ghost = null;
   clearDropMarks();
   document.querySelectorAll('.cat.dragging').forEach((el) => el.classList.remove('dragging'));
   ui.drag = null;
   render();
+}
+
+function dropOn(t) {
+  if (!t || t.id === ui.drag.id) return;
+  const order = categoryOrder().filter((id) => id !== ui.drag.id);
+  let at = order.indexOf(t.id);
+  if (at < 0) return;
+  if (t.after) at += 1;
+  order.splice(at, 0, ui.drag.id);
+  window.pd.setSettings({ categoryOrder: order });
+}
+
+document.addEventListener('pointerdown', (event) => {
+  const row = event.button === 0 && event.target.closest?.('.cat[data-reorder]');
+  press = row && !event.target.closest('button, a, input, .cat-campaigns') ? { row, x: event.clientX, y: event.clientY, id: event.pointerId } : null;
+});
+document.addEventListener('pointermove', (event) => {
+  if (!press) return;
+  if (!ui.drag) {
+    if (!(event.buttons & 1)) return (press = null);
+    if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < DRAG_START_PX) return;
+    startDrag(press.row, press.y, press.id);
+  }
+  moveGhost(event.clientY);
+  clearDropMarks();
+  const t = dropTarget(event.clientX, event.clientY);
+  if (t && t.id !== ui.drag.id) t.row.classList.add(t.after ? 'drop-after' : 'drop-before');
+});
+document.addEventListener('pointerup', (event) => {
+  press = null;
+  if (!ui.drag) return;
+  dropOn(dropTarget(event.clientX, event.clientY));
+  endDrag();
+});
+document.addEventListener('pointercancel', () => {
+  press = null;
+  if (ui.drag) endDrag();
+});
+// A row's pictures would otherwise start the browser's own image drag, which cancels this one.
+document.addEventListener('dragstart', (event) => {
+  if (event.target.closest?.('.cat[data-reorder]')) event.preventDefault();
 });
 
 // ---- a friendly nudge when someone tries to drag the queue in Smart mode

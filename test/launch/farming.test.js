@@ -86,6 +86,15 @@ test('dragging a category to the top reorders the queue and is remembered', asyn
   // card the page draws itself, so it shows in screenshots and recordings.
   const from = await rows.nth(3).boundingBox();
   const to = await rows.nth(0).boundingBox();
+  const opened = () => a.win.locator('.cat .cat-campaigns').count();
+  const openBefore = await opened();
+  // A short drag let go over its own row changes nothing, and doesn't count as a click that opens it.
+  await a.win.mouse.move(from.x + 12, from.y + 20);
+  await a.win.mouse.down();
+  await a.win.mouse.move(from.x + 12, from.y + 40, { steps: 4 });
+  await a.win.mouse.up();
+  await until(a.win, () => !document.querySelector('.drag-ghost'), 'the short drag to end');
+  assert.equal(await opened(), openBefore, 'letting go of a drag doesn’t also open the row');
   await a.win.mouse.move(from.x + 12, from.y + 20);
   await a.win.mouse.down();
   await a.win.mouse.move(from.x + 12, from.y + 14, { steps: 2 });
@@ -125,7 +134,7 @@ test('the queue can switch to smart order, which locks dragging and is saved', a
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
   await a.win.click('[data-action="queue-mode"][data-id="smart"]');
   await until(a.win, () => document.querySelector('.cat.smart'), 'smart rows');
-  assert.equal(await a.win.locator('.cat[draggable="true"]').count(), 0);
+  assert.equal(await a.win.locator('.cat[data-reorder]').count(), 0);
   const smartRow = a.win.locator('.cat.smart').first();
   await smartRow.hover();
   await a.win.waitForTimeout(300);
@@ -143,7 +152,7 @@ test('the queue can switch to smart order, which locks dragging and is saved', a
   await until(a.win, () => document.querySelector('#nudge.on'), 'the smart-order nudge');
   await a.win.screenshot({ path: require('node:os').tmpdir() + '/pd-nudge.png' });
   await a.win.click('#nudge [data-action="queue-mode"][data-id="manual"]');
-  await until(a.win, () => document.querySelector('.cat[draggable="true"]'), 'manual rows');
+  await until(a.win, () => document.querySelector('.cat[data-reorder]'), 'manual rows');
 });
 
 test('hovering a reward shows it large: the real emote once you own it, else the artwork', async () => {

@@ -212,7 +212,7 @@ function director(a, { steps = 0 } = {}) {
     await moveTo(sel, o);
     await press();
   };
-  // Drag from one element to another with the visible pointer (HTML5 drag and drop):
+  // Drag from one element to another with the visible pointer (the queue's own pointer drag):
   // press, lift, carry it over slowly so the lifted card and drop marker show, drop.
   const drag = async (from, to, { fy = 0.15 } = {}) => {
     // Grab what's on screen: a row scrolled out of its list can't be pressed.
