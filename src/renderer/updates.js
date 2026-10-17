@@ -64,9 +64,9 @@ function updMessage(u) {
     case 'norepo':
       return { tone: '', ic: 'clock', text: 'Updates switch on once the project has a GitHub repository. Add it below.' };
     case 'checking':
-      return { tone: 'busy', ic: 'refresh', text: 'Checking for updates…' };
+      return { tone: 'busy checking', ic: 'refresh', text: 'Checking for updates…' };
     case 'downloading':
-      return { tone: 'busy', ic: 'down', text: `Downloading version ${v(u.latest)}…` };
+      return { tone: 'busy downloading', ic: 'down', text: `Downloading version ${v(u.latest)}…` };
     case 'available':
       return { tone: 'new', ic: 'sparkle', text: u.manual ? `Version ${v(u.latest)} is out. Download it from its release page.` : `Version ${v(u.latest)} is out.` };
     case 'ready':
@@ -115,6 +115,13 @@ function primaryAction(u) {
 }
 
 /** Settings › Updates. */
+/** The badge on the logo: a spinner while checking, an arrow dropping in while downloading, else the state's icon. */
+function badgeIcon(m) {
+  if (m.tone.includes('checking')) return '<span class="spinner xs"></span>';
+  if (m.tone.includes('downloading')) return `<span class="dl-arrow">${icon('down')}</span>`;
+  return icon(m.ic);
+}
+
 function updatesPane() {
   const u = upd.status;
   if (!u) return '<div class="upd-hero"><div class="spinner"></div></div>';
@@ -142,7 +149,7 @@ function updatesPane() {
   const repo = `<form class="upd-repo" data-update-repo><span class="upd-gh">github.com/</span><input name="repo" value="${esc(u.repo || '')}" placeholder="owner/repository" spellcheck="false" autocomplete="off" /><button class="btn sm">Save</button></form>`;
 
   return `<div class="upd-hero ${m.tone}">
-      <div class="upd-mark">${brandMark(58)}<span class="upd-badge ${m.tone}">${icon(m.ic)}</span></div>
+      <div class="upd-mark">${brandMark(58)}<span class="upd-badge ${m.tone}">${badgeIcon(m)}</span></div>
       <div class="upd-info">
         <div class="upd-title">Pear Drops <span class="upd-ver num">v${esc(u.current)}</span>${beta ? '<span class="chip flat">beta</span>' : ''}</div>
         <div class="upd-state">${m.text}</div>
@@ -182,7 +189,7 @@ function updateChip() {
   const u = upd.status;
   if (!u || u.devCopy) return '';
   if (u.state === 'ready' && !u.needsInstall) return `<button class="tb-update ready" data-action="update-chip" data-tip="Version ${esc(u.installed)} is ready. Click to install">${icon('gift')}<span>Update ready</span></button>`;
-  if (u.state === 'downloading') return `<button class="tb-update" data-action="update-chip" data-tip="Downloading version ${esc(u.latest)}">${icon('down')}<span>${u.progress == null ? 'Updating' : `${Math.round(u.progress * 100)}%`}</span></button>`;
+  if (u.state === 'downloading') return `<button class="tb-update" data-action="update-chip" data-tip="Downloading version ${esc(u.latest)}"><span class="dl-arrow">${icon('down')}</span><span>${u.progress == null ? 'Updating' : `${Math.round(u.progress * 100)}%`}</span></button>`;
   if (u.state === 'available') return `<button class="tb-update" data-action="update-chip" data-tip="Version ${esc(u.latest)} is out">${icon('sparkle')}<span>v${esc(u.latest)}</span></button>`;
   return '';
 }

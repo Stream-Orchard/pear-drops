@@ -153,3 +153,15 @@ test('the stream notice says what happened and where the app went next', () => {
   ctx.f = { notice: null };
   assert.equal(run('streamNotice(f)'), null);
 });
+
+test('Settings › Updates: a spinner while checking, an arrow dropping in while downloading (not a spinning arrow)', () => {
+  vm.runInContext(fs.readFileSync(path.join(DIR, 'updates.js'), 'utf8'), ctx, { filename: 'updates.js' });
+  ctx.u = (state) => ({ state, repo: 'pearfarmer/pear-drops', current: '0.1.1', latest: '0.2.0', progress: 0.4 });
+  const badge = (state) => run(`badgeIcon(updMessage(u(${JSON.stringify(state)})))`);
+  assert.match(badge('checking'), /class="spinner xs"/);
+  assert.match(badge('downloading'), /class="dl-arrow"/);
+  assert.ok(!/spinner/.test(badge('downloading')));
+  assert.ok(!/dl-arrow|spinner/.test(badge('available')), 'other states keep their icon');
+  run(`upd.status = u('downloading')`);
+  assert.match(run('updateChip()'), /class="dl-arrow".*40%/s, 'the title bar chip too');
+});
