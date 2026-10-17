@@ -16,15 +16,20 @@ Game drops that need a linked game account are skipped unless you turn them on.
 - **Drop queue:** every active emote/badge campaign grouped by category, with live stream counts and a bar of minutes watched with each reward's icon where it unlocks. Drag to reorder, or switch categories off. Or let **Smart order** sort it: what runs out of time first, with drops that are rarely live caught while they're on (it learns how often each category has a stream over the past week; Settings › Farming sets how much that counts and how readily it switches).
 - **Done:** finished drops, and missed ones that ended with rewards left, in their own tab. Each drop's details, your last known progress and its artwork are saved on this computer, so they stay after Kick removes them. A drop Kick lists again with a new end date goes back into the queue.
 - **Recovers by itself:**
+  - streams that end or raid: noticed within seconds (the player's video ending, Kick's own "stream stopped" and raid events, the player moving on), then it switches
+  - a frozen picture: checked with Kick within seconds, then reloaded after a minute
   - stalled progress: reloads, then switches streams after a set time without credit (20 minutes by default)
   - offline, banned or crashed streams
   - streamers changing category
   - sleep and wake
-- **Conflict alarm:** Kick credits **one stream per account**. If the player keeps sending watch events and none are credited, another Kick stream on your account (a multiview, another tab, the phone app) is taking the credit. The app chimes, notifies you and shows a banner.
+
+  What's wrong shows at once: the LIVE chip turns Frozen, Buffering or Checking on the dashboard and in the tray, and a notice says what happened and where it went next.
+- **Conflict alarm:** Kick credits **one stream per account**. If the player keeps sending watch events and none are credited, another Kick stream on your account (a multiview, another tab, the phone app) is taking the credit. The app chimes and shows a banner.
 - **History:** a permanent local log of everything: credits, unlocks, claims, stalls, reloads, crashes, switches, conflicts and completions. It has an overview (daily activity, when you farm, efficiency, top channels), a per-drop view, a timeline, and watch-session and channel tables.
 - **Menu bar / tray:** closing or minimizing keeps it farming. The tray icon is a progress ring, and its popover shows the current drop, ETAs and quick controls.
 - **Stream and chat** dock beside the dashboard. You can collapse them, and stream sound is always muted at the window. Its header has a Follow / Following button (the same Kick calls as kick.com's own button); followed channels are watched first.
 - **Updates from GitHub** (Settings › Updates): checks the project's latest release, with its notes and a What's new timeline. Installed copies download the new installer (on a Mac, the app swaps itself in on restart); copies run from source get the new files, keeping a backup. After an update, the app shows what changed once.
+- **Desktop notifications** (Settings › Notifications): pick which ones you want, all off to start with. They cover a drop claimed or ready to claim, a stream ending or raiding, stream problems, credit going to another stream, signing in again, everything collected or nothing live, and new drops on Kick. They can be limited to when Pear Drops isn't in front. "Send a test" checks your computer allows them, and a button opens its notification settings.
 - **Font** (Settings › App): your computer's own font on macOS and Windows, or Inter, which comes with the app and looks the same everywhere. Linux uses Inter by default.
 
 ## Getting started
@@ -86,6 +91,7 @@ src/main/        Electron main process
   archive.js     saved copies of every drop seen (details, progress, images)
   updates.js     update checks, downloads and installs (updater.js: GitHub, zips, signatures)
   tray.js        menu bar / tray icon and popover
+  notifier.js    desktop notifications: which kinds are on, repeats, Send a test
   security.js    login encryption migration, forget-on-quit, session lock-down
   demo.js        stand-in Kick for tests, demos and the trailer
 src/preload/     bridges for the app pages and the channel page

@@ -3487,6 +3487,17 @@ input[type='range']::-webkit-slider-thumb {
 .settings-pane .modal-head {
   padding-top: 22px;
 }
+/* Settings › Notifications › Check they work: what the test found. */
+.notify-result.shown {
+  color: var(--green);
+}
+.notify-result.failed,
+.notify-result.unsupported {
+  color: var(--red);
+}
+.notify-result.sent {
+  color: var(--amber);
+}
 .pane-note {
   margin: 4px 0 6px;
   color: var(--muted);

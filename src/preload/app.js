@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld('pd', {
   claim: (campaignId, rewardId) => ipcRenderer.invoke('farm:claim', campaignId, rewardId),
   follow: (slug, on) => ipcRenderer.invoke('farm:follow', slug, on),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  notifyTest: () => ipcRenderer.invoke('notify:test'),
+  notifySystemSettings: () => ipcRenderer.invoke('notify:system-settings'),
+  onShowView: (callback) => {
+    const listener = (_event, view) => callback(view);
+    ipcRenderer.on('show-view', listener);
+    return () => ipcRenderer.removeListener('show-view', listener);
+  },
   setPlayerBounds: (rect) => ipcRenderer.invoke('player:bounds', rect),
   suspendPlayer: (value) => ipcRenderer.invoke('player:suspend', value),
   playerDevtools: () => ipcRenderer.invoke('player:devtools'),

@@ -226,6 +226,46 @@ test('Settings › App › Font switches between the system font and the bundled
   await a.win.keyboard.press('Escape');
 });
 
+test('Settings › Notifications: all off to start with; switches are saved, a test is sent, and a stream ending notifies once switched on', async () => {
+  const saved = () => JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
+  await a.win.click('button.icon-only[data-action="settings"]');
+  await a.win.click('[data-action="settings-tab"][data-id="notifications"]');
+  const switches = await a.win.$$eval('[data-action="notify-toggle"]', (els) => els.map((e) => [e.dataset.kind, e.classList.contains('on')]));
+  assert.equal(switches.length, 8);
+  assert.ok(switches.every(([, on]) => !on), 'all off to start with');
+
+  await a.win.click('[data-action="notify-test"]');
+  await until(a.win, () => /^Sent\./.test(document.querySelector('.notify-result')?.textContent ?? ''), 'the test result', 10000);
+  const notes = () => a.app.evaluate(() => global.pdNotes);
+  assert.deepEqual((await notes()).map((n) => n.title), ['Pear Drops'], 'sent (recorded, in tests) whatever is switched on');
+
+  await a.win.click('[data-action="notify-toggle"][data-kind="ended"]');
+  await until(a.win, () => document.querySelector('[data-action="notify-toggle"][data-kind="ended"]')?.classList.contains('on'), 'the switch', 10000);
+  assert.equal(saved().notify.ended, true);
+  assert.equal(saved().notify.claimed, false);
+  await a.win.click('[data-action="setting-toggle"][data-key="notifyAway"]');
+  await until(a.win, () => document.querySelector('[data-key="notifyAway"]')?.classList.contains('on'), 'only when away', 10000);
+  assert.equal(saved().notifyAway, true);
+  await a.win.click('[data-action="setting-toggle"][data-key="notifyAway"]');
+  await until(a.win, () => !document.querySelector('[data-key="notifyAway"]')?.classList.contains('on'), 'always', 10000);
+  await a.win.keyboard.press('Escape');
+
+  await a.app.evaluate(() => {
+    global.pdDebug.farmer.lastQuickCheckAt = 0;
+    global.pdDebug.farmer.blacklist.clear();
+    global.pdDemo.api.offline.clear();
+  });
+  const slug = await a.app.evaluate(() => global.pdDemo.endStream('video'));
+  for (let i = 0; i < 40 && !(await notes()).some((n) => n.kind === 'ended'); i++) await a.win.waitForTimeout(150);
+  const ended = (await notes()).find((n) => n.kind === 'ended');
+  assert.ok(ended, JSON.stringify(await notes()));
+  assert.equal(ended.title, 'Stream ended');
+  assert.match(ended.body, /^\w+: stream went offline\. Finding the next one\.$/);
+  assert.ok(ended.body.toLowerCase().startsWith(`${slug}:`), ended.body);
+  assert.equal(ended.view, 'history', 'a click opens History');
+  assert.ok(!(await notes()).some((n) => n.kind === 'trouble'), 'kinds that are off stay quiet');
+});
+
 test('the tray popover shows the current drop and controls', async () => {
   await a.demo((d) => d.openTray());
   const pop = await until(a.win, () => true, 'tray').then(async () => {
