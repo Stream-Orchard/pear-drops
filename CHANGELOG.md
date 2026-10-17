@@ -2,7 +2,14 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.1 (current)
+## 0.1.2 (current)
+- The forecast reaches a drop's finish however far out it is
+- Streams that end, raid or freeze are noticed in seconds and shown at once
+- Desktop notifications, with a switch for each kind and a way to check they work
+- Updates show a download arrow while downloading, and a spinner while checking
+- Every Settings tab fits without scrolling (only the changelog scrolls)
+
+## 0.1.1
 - A social preview image for the repo
 - Fix a flaky startup cache test on Windows
 - Reopening the tray popover no longer rings the Pause button
