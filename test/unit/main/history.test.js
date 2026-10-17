@@ -47,6 +47,40 @@ test('an unfinished session counts up to now and is marked open', () => {
   assert.equal(s.ms, 10 * MIN);
 });
 
+test('a session left without an end (the app quit by force or restarted) stops at the next one or the next launch, a few minutes after it was last heard from', () => {
+  const { history } = fresh();
+  const now = Date.now();
+  const t0 = now - 10 * 3600_000;
+  const credit = (t, session) => history.add('credit', { t, session, slug: session, campaignId: 'c1', delta: 2, units: 2 });
+  // App started, watched "a" for 30 min with credits, then the app was killed.
+  history.add('start', { t: t0 });
+  history.add('watch-start', { t: t0 + MIN, session: 'a', slug: 'a', campaignIds: ['c1'] });
+  for (let m = 3; m <= 31; m += 2) credit(t0 + m * MIN, 'a');
+  // Started again two hours later, watched "b" and was killed again; "c" starts straight after it without an end.
+  history.add('start', { t: t0 + 2 * 3600_000 });
+  history.add('watch-start', { t: t0 + 2 * 3600_000 + MIN, session: 'b', slug: 'b', campaignIds: ['c1'] });
+  credit(t0 + 2 * 3600_000 + 3 * MIN, 'b');
+  history.add('watch-start', { t: t0 + 2 * 3600_000 + 4 * MIN, session: 'c', slug: 'c', campaignIds: ['c1'] });
+  // The stream being watched now, still going.
+  history.add('start', { t: now - 20 * MIN });
+  history.add('watch-start', { t: now - 19 * MIN, session: 'd', slug: 'd', campaignIds: ['c1'] });
+
+  const s = Object.fromEntries(history.sessions(history.events, now).map((x) => [x.session, x]));
+  assert.equal(s.a.ms, 35 * MIN, "a: to 5 min after its last credit, not to the next launch two hours later");
+  assert.equal(s.a.reason, 'App closed');
+  assert.ok(s.a.cut);
+  assert.equal(s.b.ms, 3 * MIN, 'b: up to when c started');
+  assert.equal(s.c.ms, 5 * MIN, 'c: nothing heard from it, so 5 min at most');
+  assert.ok(s.d.open, 'd is the one still going');
+  assert.equal(s.d.ms, 19 * MIN);
+
+  // Nothing overlaps, so no day can hold more than it has.
+  const v = history.view({ now });
+  assert.equal(v.totals.watchMs, (35 + 3 + 5 + 19) * MIN);
+  assert.ok(v.daily.every((d) => d.watched <= 1440));
+  assert.equal(v.hourly.reduce((a, b) => a + b, 0), 35 + 3 + 5 + 19);
+});
+
 test('view(): totals, per-drop summaries, channels, daily and hourly figures', () => {
   const { history } = fresh();
   const now = Date.now();
