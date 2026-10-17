@@ -373,6 +373,10 @@ button {
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--green);
 }
 
+/* No focus ring after a click: only while moving around with the keyboard (format.js). */
+:root[data-input='pointer'] :focus-visible {
+  outline: none;
+}
 /* In place of an image that's missing or didn't load (format.js img()): the image's own box,
    in its own shape, with a faint picture. */
 .img-missing {
@@ -416,6 +420,24 @@ button {
 .switch.on {
   background: var(--green-2);
   border-color: rgba(255, 255, 255, 0.2);
+}
+/* The queue's category switches: smaller and calmer, so the stream being farmed stands out. */
+.switch.soft {
+  width: 32px;
+  height: 18px;
+}
+.switch.soft::after {
+  width: 12px;
+  height: 12px;
+}
+.switch.soft.on {
+  background: rgba(83, 252, 24, 0.16);
+  border-color: rgba(83, 252, 24, 0.38);
+}
+.switch.soft.on::after {
+  transform: translateX(14px);
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(83, 252, 24, 0.45);
 }
 .switch.on::after {
   transform: translateX(16px);
@@ -2911,8 +2933,9 @@ input[type='range']::-webkit-slider-thumb {
    ========================================================================= */
 .toasts {
   position: fixed;
-  left: 24px;
+  right: 24px;
   bottom: 24px;
+  align-items: flex-end;
   z-index: 30;
   display: flex;
   flex-direction: column;

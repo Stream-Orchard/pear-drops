@@ -55,7 +55,7 @@ test('a watch event from the player is credited and shows up everywhere', async 
   await until(a.win, (b) => document.querySelector('.ring-sub')?.textContent !== b, 'the ring to move', 10000, before);
   assert.notEqual(await heroUnits(), before);
   await a.win.click('[data-action="side-tab"][data-id="activity"]');
-  await until(a.win, () => /\+2 min on Neon Rush/.test(document.querySelector('.log')?.textContent), 'the credit in the activity log');
+  await until(a.win, () => /\+\d+ min on Neon Rush/.test(document.querySelector('.log')?.textContent), 'the credit in the activity log');
 });
 
 test('watch events without credit raise the conflict banner; a repeating alarm can be stopped', async () => {
@@ -300,6 +300,30 @@ test('a stream thumbnail that won’t load shows a placeholder in its place, not
   const box = await a.win.evaluate(() => { const r = document.querySelector('#side .thumb .img-missing').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
   assert.deepEqual(box, [80, 45], 'it keeps the thumbnail’s size');
   await a.app.evaluate(() => global.pdDemo.api.brokenThumbs.clear());
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+});
+
+test('polish: the Queue badge counts its categories, watch events read as sent, credits group in Activity, and a click leaves no focus ring', async () => {
+  const queued = await a.win.evaluate(() => document.querySelectorAll('#side .queue-list .cat').length);
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+  const badge = await a.win.textContent('[data-action="side-tab"][data-id="queue"] em');
+  const rows = await a.win.evaluate(() => document.querySelectorAll('#side .queue-list > *').length);
+  assert.equal(Number(badge), rows || queued, `the badge (${badge}) counts the categories listed`);
+  assert.match(await a.win.textContent('#side .panel-note'), /rewards? to go/);
+  assert.match(await a.win.textContent('#stats'), /\d+\s*sent/, 'watch events sent, not a second count beside it');
+
+  await a.win.click('[data-action="side-tab"][data-id="activity"]');
+  const texts = await a.win.$$eval('#side .log-text', (els) => els.map((e) => e.textContent));
+  const singles = texts.filter((t) => /^\+\d+ min on .* \(\d+ total\)$/.test(t));
+  for (let i = 1; i < texts.length; i++) assert.ok(!(singles.includes(texts[i]) && singles.includes(texts[i - 1]) && texts[i].split(' on ')[1].split(' (')[0] === texts[i - 1].split(' on ')[1].split(' (')[0]), 'a run of credits on one drop is one line');
+
+  // A click leaves no ring; Tab brings rings back.
+  const ring = () => a.win.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
+  await a.win.click('[data-action="side-tab"][data-id="streams"]');
+  assert.equal(await ring(), 'none', 'no ring after a click');
+  await a.win.keyboard.press('Tab');
+  assert.notEqual(await ring(), 'none', 'the keyboard shows where focus is');
+  await a.win.mouse.click(5, 500);
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
 });
 
