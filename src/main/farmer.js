@@ -29,6 +29,16 @@ const ELIGIBLE_RECHECK_MS = 5 * MIN;
 const CONFLICT_EVENTS = 3; // uncredited watch events (~2 min apart) before alerting
 const CONFLICT_REPEAT_MS = 10 * MIN;
 
+// History events as Activity tab lines, by kind.
+const LOG_LEVEL = { claim: 'claim', 'watch-start': 'switch', 'watch-end': 'switch', decision: 'info', stall: 'warn', reload: 'warn', crash: 'warn', offline: 'warn', conflict: 'alert', error: 'error', start: 'info', pause: 'info', resume: 'info', wake: 'info' };
+
+/** A saved history event as a line in the Activity tab (in the same words as when it happened), or null. */
+function logFromHistory(e) {
+  if (e.type === 'credit' && e.campaign && e.delta) return { t: e.t, level: 'credit', text: `+${e.delta} min on ${e.campaign} (${e.units} total)` };
+  const level = LOG_LEVEL[e.type];
+  return level && e.text ? { t: e.t, level, text: e.text } : null;
+}
+
 /** Emote / badge / Kick-native reward vs a game drop that needs a linked game account. */
 function rewardKind(campaign, reward) {
   const name = reward.name.toLowerCase();
@@ -314,6 +324,9 @@ class Farmer extends EventEmitter {
         this.timeline.push({ t: e.t, type: 'credit', campaignId: e.campaignId, delta: e.delta ?? 0 });
       } else if (e.type === 'claim') this.timeline.push({ t: e.t, type: 'claim', name: e.reward });
       else if (e.type === 'watch-start') this.timeline.push({ t: e.t, type: 'switch', name: e.channel });
+      // The Activity tab carries on from before this launch, rather than starting nearly empty.
+      const entry = logFromHistory(e);
+      if (entry) this.log.push(entry);
     }
   }
 
@@ -1399,4 +1412,4 @@ class Farmer extends EventEmitter {
   }
 }
 
-module.exports = { Farmer, rewardKind };
+module.exports = { Farmer, rewardKind, logFromHistory };

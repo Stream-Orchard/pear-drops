@@ -51,11 +51,13 @@ function trackedRewards(cat) {
 }
 
 // Credits per 10-minute bucket over the last two hours.
+/** Credits in 10-minute buckets for the Credited card's sparkline: this session only, as its number is. */
 function creditBuckets(buckets = 12) {
   const now = Date.now();
   const out = new Array(buckets).fill(0);
+  const since = farm()?.stats.sessionStart ?? 0;
   for (const e of farm()?.timeline ?? []) {
-    if (e.type !== 'credit') continue;
+    if (e.type !== 'credit' || e.t < since) continue;
     const i = buckets - 1 - Math.floor((now - e.t) / (10 * MIN));
     if (i >= 0 && i < buckets) out[i] += e.delta;
   }
@@ -691,7 +693,15 @@ function streamsPanel(f) {
   const list = cat.streams.length
     ? `${group('Following', 'heart', followed)}${group('Live now', 'eye', others)}`
     : `<div class="empty">${icon('clock')}${cat.streamsLoaded ? 'No eligible channels are live right now.' : 'Loading live streams…'}</div>`;
-  return `<div class="tabs sub-tabs">${tabs}</div><div class="stream-list">${list}</div>`;
+  // A short list: say how often it's checked, and where else streams are live.
+  const elsewhere = cats.filter((c) => c.id !== cat.id && c.streamCount);
+  const few =
+    cat.streams.length && cat.streams.length <= 3
+      ? `<div class="streams-note">${icon('clock')}<div><b>${cat.streams.length === 1 ? 'Only 1 live stream counts' : `${cat.streams.length} live streams count`} for ${esc(cat.name)} right now.</b>
+          <span>Pear Drops looks for more every ${state.settings.streamsMinutes ?? 3} min.${elsewhere.length ? ' Also live:' : ''}</span>
+          ${elsewhere.length ? `<div class="streams-elsewhere">${elsewhere.map((c) => `<button class="chip" data-action="select-cat" data-id="${c.id}">${img(c.image, 'tiny-img')}${esc(c.name)} <em>${c.streamCount}</em></button>`).join('')}</div>` : ''}</div></div>`
+      : '';
+  return `<div class="tabs sub-tabs">${tabs}</div><div class="stream-list">${list}</div>${few}`;
 }
 
 const LOG_ICON = { credit: 'bolt', claim: 'gift', switch: 'play', warn: 'alert', error: 'alert', alert: 'bell', info: 'pulse' };

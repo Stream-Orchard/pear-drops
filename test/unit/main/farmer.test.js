@@ -558,6 +558,32 @@ test('smart order watches what expires first, re-sorts when it comes online, and
   assert.equal(watcher.watching, 's', '…but 12 minutes sooner is not worth a switch');
 });
 
+test('after a restart the Activity tab carries on from history, in the same words, with credits it can group', () => {
+  const { logFromHistory } = require('../../../src/main/farmer');
+  const { farmer, history } = setup({ campaigns: [], streams: {} });
+  const t = Date.now() - 30 * MIN;
+  history.events = [
+    { t: t - 7 * 60 * MIN, type: 'watch-start', text: 'Watching Old for Neon Rush' }, // older than 6 h: left out
+    { t, type: 'watch-start', text: 'Watching Arcadia for Neon Rush' },
+    { t: t + 2 * MIN, type: 'credit', campaign: 'Neon Rush Launch Week', delta: 2, units: 148, text: '+2 min (148 total)' },
+    { t: t + 3 * MIN, type: 'claim', text: 'Claimed Hype Rocket Emote (confirmed by Kick)' },
+    { t: t + 4 * MIN, type: 'stall', text: 'No progress for 20 min on Arcadia' },
+    { t: t + 5 * MIN, type: 'unlock', text: 'Hype Rocket Emote unlocked at 60 min' }, // not a log line
+  ];
+  farmer.seedFromHistory();
+  assert.deepEqual(
+    farmer.log.map((l) => [l.level, l.text]),
+    [
+      ['switch', 'Watching Arcadia for Neon Rush'],
+      ['credit', '+2 min on Neon Rush Launch Week (148 total)'],
+      ['claim', 'Claimed Hype Rocket Emote (confirmed by Kick)'],
+      ['warn', 'No progress for 20 min on Arcadia'],
+    ],
+  );
+  assert.equal(logFromHistory({ t, type: 'credit', delta: 2 }), null, 'a credit without its drop is left out');
+  assert.equal(logFromHistory({ t, type: 'conflict', text: 'x' }).level, 'alert');
+});
+
 test('the startup cache shows the last known drops at once, and history rebuilds the chart', async () => {
   const fs = require('node:fs');
   const os = require('node:os');
