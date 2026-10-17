@@ -5,5 +5,6 @@
   "src/main/history.js": 97,
   "src/main/kick-api.js": 52,
   "src/main/updater.js": 95,
-  "src/main/updates.js": 86
+  "src/main/updates.js": 86,
+  "src/main/watcher.js": 32
 }

@@ -255,3 +255,12 @@ test('the player header follows and unfollows the channel', async () => {
   await until(a.win, (b) => document.querySelector('#player-head .follow-btn')?.classList.contains('following') === b, 'the button to flip back', 10000, before);
   await a.win.mouse.move(5, 500);
 });
+
+test('links leave for the browser, but demo mode only records them: it never opens your real browser', async () => {
+  const slug = await a.win.getAttribute('#player-head [data-action="open-kick"]', 'data-slug');
+  await a.win.click('#player-head [data-action="open-kick"]');
+  const opened = await until(a.win, () => true, 'the click').then(() => a.app.evaluate(() => global.pdOpened));
+  assert.ok(opened.includes(`https://kick.com/${slug}`), JSON.stringify(opened));
+  // Switching streams (earlier tests do it) never sends a stream's own page to the browser.
+  assert.deepEqual(opened.filter((u) => /player\.kick\.com|\/popout\//.test(u)), []);
+});

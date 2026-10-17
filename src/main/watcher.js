@@ -18,6 +18,17 @@ const URLS = {
   page: (slug) => `${KICK}/${encodeURIComponent(slug)}`,
 };
 
+/** Whether two addresses are the same page, ignoring the query, hash and a trailing slash. */
+function samePage(a, b) {
+  try {
+    const [x, y] = [new URL(a), new URL(b)];
+    const p = (u) => u.pathname.replace(/\/+$/, '').toLowerCase();
+    return x.origin === y.origin && p(x) === p(y);
+  } catch {
+    return false;
+  }
+}
+
 // The full page: Kick's own top bar (logo, follows, search, profile) isn't needed in
 // the panel, so hide it and give its height back to the player.
 const PAGE_CSS = `
@@ -113,14 +124,21 @@ class Watcher extends EventEmitter {
     });
     const css = role === 'chat' ? CHAT_CSS : this.mode === 'full' ? PAGE_CSS : '';
     if (css) wc.on('dom-ready', () => wc.insertCSS(css).catch(() => {}));
+    // The page's own address, so a page that reloads itself or only rewrites its query or hash
+    // (or a page still left over from the previous stream doing so) isn't taken for a link click.
+    let at = '';
+    wc.on('did-navigate', (_event, url) => (at = url));
     // Stay on the stream: links that leave it open in the browser instead.
     wc.on('will-navigate', (event, url) => {
       if (!this.slug || this.isStreamUrl(url)) return;
       event.preventDefault();
-      shell.openExternal(url);
+      if (!samePage(at, url)) shell.openExternal(url);
     });
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
-      if (!isMainFrame || !this.slug || this.isStreamUrl(url)) return;
+      if (!isMainFrame) return;
+      const from = at;
+      at = url;
+      if (!this.slug || this.isStreamUrl(url) || samePage(from, url)) return;
       shell.openExternal(url);
       if (wc.navigationHistory?.canGoBack()) wc.navigationHistory.goBack();
       else this.load(role);
@@ -294,4 +312,4 @@ class Watcher extends EventEmitter {
   }
 }
 
-module.exports = { Watcher, URLS };
+module.exports = { Watcher, URLS, samePage };

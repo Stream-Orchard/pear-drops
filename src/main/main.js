@@ -19,6 +19,14 @@ process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', 
 const DEMO = !!process.env.PD_DEMO;
 const HIDDEN = !!process.env.PD_TEST_HIDDEN;
 const demo = DEMO ? createDemo() : null;
+// Demo mode (and so every test) never opens the real browser: its channels are made up.
+// Links it would open are kept in global.pdOpened instead, for tests to check.
+if (DEMO) {
+  global.pdOpened = [];
+  shell.openExternal = async (url) => {
+    global.pdOpened.push(String(url));
+  };
+}
 
 // Dev copies and tests run against their own data folder.
 if (process.env.PD_DEV_DATA) app.setPath('userData', process.env.PD_DEV_DATA);
