@@ -241,6 +241,10 @@ test('the tray popover shows the current drop and controls', async () => {
   await pop.hover('[data-action="quit"]');
   await until(pop, () => document.querySelector('.tooltip.on')?.textContent, 'the quit tooltip');
   assert.equal(await pop.textContent('.tooltip'), 'Quit Pear Drops (stops farming)');
+  // Reopened, macOS hands focus back to the first button, ringed; the popover drops it.
+  await pop.focus('[data-action="pause"]');
+  await pop.evaluate(() => window.dispatchEvent(new Event('focus')));
+  assert.equal(await pop.evaluate(() => document.querySelector('.tray :focus')), null, 'no button starts focused');
 });
 
 test('the player header follows and unfollows the channel', async () => {
