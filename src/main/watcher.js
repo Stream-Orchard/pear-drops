@@ -27,12 +27,31 @@ function streamChannel(url) {
     const u = new URL(url);
     const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const kick = /(^|\.)kick\.com$/.test(u.hostname);
-    if (u.hostname === 'player.kick.com') return parts.length === 1 ? parts[0] : null;
+    if (u.hostname === 'player.kick.com') return parts.length === 1 || (parts.length === 2 && parts[1] === 'offline') ? parts[0] : null;
     if (kick && parts.length === 3 && parts[0] === 'popout' && parts[2] === 'chat') return parts[1];
     if (kick && u.hostname !== 'player.kick.com' && parts.length === 1 && /^[\w-]{3,25}$/.test(parts[0]) && !KICK_PAGES.has(parts[0].toLowerCase())) return parts[0];
     return null;
   } catch {
     return null;
+  }
+}
+
+/** Whether this is the embedded player's "offline" screen, where it goes once a stream ends. */
+function playerOffline(url) {
+  try {
+    const u = new URL(url);
+    return u.hostname === 'player.kick.com' && /^\/[^/]+\/offline\/?$/.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Kick's embedded player: none of its addresses are links to open in the browser. */
+function isPlayer(url) {
+  try {
+    return new URL(url).hostname === 'player.kick.com';
+  } catch {
+    return false;
   }
 }
 
@@ -146,27 +165,31 @@ class Watcher extends EventEmitter {
     // (or a page still left over from the previous stream doing so) isn't taken for a link click.
     let at = '';
     wc.on('did-navigate', (_event, url) => (at = url));
-    // A raid, or the end of a stream, sends Kick's page on to another channel. That isn't a link
-    // to open in the browser: this stream is over (and the chat just goes back to its own).
+    // A raid, or the end of a stream, sends Kick's page on to another channel, or the player to
+    // its "offline" screen. That isn't a link to open in the browser: this stream is over (and the
+    // chat just goes back to its own).
     const movedOn = (url) => {
       const to = streamChannel(url);
-      if (!to || to.toLowerCase() === this.slug.toLowerCase()) return false;
+      if (!to) return false;
+      const same = to.toLowerCase() === this.slug.toLowerCase();
+      const ended = same && role !== 'chat' && playerOffline(url);
+      if (same && !ended) return false;
       if (role === 'chat') this.load('chat');
-      else this.emit('left', { from: this.slug, to });
+      else this.emit('left', { from: this.slug, to: ended ? null : to });
       return true;
     };
     // Stay on the stream: links that leave it open in the browser instead.
     wc.on('will-navigate', (event, url) => {
       if (!this.slug || this.isStreamUrl(url)) return;
       event.preventDefault();
-      if (!movedOn(url) && !samePage(at, url)) shell.openExternal(url);
+      if (!movedOn(url) && !samePage(at, url) && !isPlayer(url)) shell.openExternal(url);
     });
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!isMainFrame) return;
       const from = at;
       at = url;
       if (!this.slug || this.isStreamUrl(url) || samePage(from, url) || movedOn(url)) return;
-      shell.openExternal(url);
+      if (!isPlayer(url)) shell.openExternal(url);
       if (wc.navigationHistory?.canGoBack()) wc.navigationHistory.goBack();
       else this.load(role);
     });
@@ -339,4 +362,4 @@ class Watcher extends EventEmitter {
   }
 }
 
-module.exports = { Watcher, URLS, samePage, streamChannel };
+module.exports = { Watcher, URLS, samePage, streamChannel, playerOffline, isPlayer };

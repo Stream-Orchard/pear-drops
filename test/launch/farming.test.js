@@ -285,3 +285,20 @@ test('a raid sends the player to another channel: it moves on to the next stream
   const opened = await main(() => global.pdOpened);
   assert.deepEqual(opened.filter((u) => /player\.kick\.com|\/popout\//.test(u)), [], 'the raid target never opens in the browser');
 });
+
+test("a stream ending sends the player to its offline screen: it moves on to the next stream, and nothing opens in the browser", async () => {
+  const main = (fn, arg) => a.app.evaluate(fn, arg);
+  const before = await main(() => global.pdDebug.farmer.current?.slug);
+  assert.ok(before, 'watching a stream');
+  await main((_e, slug) => global.pdDebug.watcher.view.webContents.executeJavaScript(`location.href = 'https://player.kick.com/${slug}/offline'`), before);
+  let now = before;
+  for (let i = 0; i < 60 && (now === before || !now); i++) {
+    await a.win.waitForTimeout(250);
+    now = await main(() => global.pdDebug.farmer.current?.slug);
+  }
+  assert.ok(now && now !== before, `moved on from ${before} (now ${now})`);
+  const ended = await main(() => global.pdDebug.farmer.history.events.filter((e) => e.type === 'offline').map((e) => e.text));
+  assert.ok(ended.some((t) => t.endsWith(' ended the stream')), JSON.stringify(ended));
+  const opened = await main(() => global.pdOpened);
+  assert.deepEqual(opened.filter((u) => /player\.kick\.com/.test(u)), [], 'the offline screen never opens in the browser');
+});
