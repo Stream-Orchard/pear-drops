@@ -127,6 +127,10 @@ window.pd.onState((next) => {
   state = next;
   render();
 });
-window.addEventListener('focus', refresh);
+// Reopening the popover hands focus back to its first button (with a focus ring); start with nothing focused.
+window.addEventListener('focus', () => {
+  document.activeElement?.blur();
+  refresh();
+});
 refresh();
 setInterval(render, 1000);
