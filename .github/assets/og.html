@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- The repository's social preview image (og.png: the picture shown when the repo is linked on GitHub,
+     Discord, X and so on), the README hero with bigger words so it reads as a small thumbnail. No real
+     channels, rewards or accounts. To regenerate og.png after editing (needs npm run test:setup once):
+     node -e "require('playwright').chromium.launch().then(async b=>{const p=await b.newPage({viewport:{width:1280,height:640}});await p.goto('file://'+require('path').resolve('.github/assets/og.html'));await p.evaluate(()=>document.fonts.ready);await p.screenshot({path:'.github/assets/og.png'});await b.close()})"
+     Then upload it in the repository's Settings > General > Social preview. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:'PD Inter';src:url('../../src/renderer/assets/fonts/inter-latin.woff2') format('woff2');font-weight:100 900}
+  :root{--bg:#08090b;--panel:#111317;--panel2:#171a1f;--line:#23272d;--line2:#30353c;--text:#eef0f3;--muted:#7d848f;--green:#53fc18;
+        --teal:#2ee6c5;--violet:#a78bfa;--gold:#ffd36a;--amber:#fbbf4b;--blue:#6ea8ff}
+  *{box-sizing:border-box;margin:0}
+  html,body{width:1280px;height:640px;overflow:hidden}
+  body{background:radial-gradient(1100px 600px at 88% -15%,rgba(83,252,24,.17),transparent 60%),
+       radial-gradient(800px 480px at -12% 115%,rgba(46,230,197,.12),transparent 60%),var(--bg);
+       font-family:'PD Inter',-apple-system,"Segoe UI",sans-serif;color:var(--text);position:relative}
+
+  /* left: name and tagline */
+  .intro{position:absolute;left:72px;top:0;bottom:0;width:440px;display:flex;flex-direction:column;justify-content:center;gap:22px}
+  .logo svg{width:64px;height:64px;filter:drop-shadow(0 0 20px rgba(83,252,24,.5))}
+  h1{font-size:58px;line-height:1.02;letter-spacing:-.03em;font-weight:800}
+  h1 span{color:var(--green)}
+  .tag{font-size:21px;line-height:1.45;color:#b9c1cb}
+  .chips{display:flex;gap:10px;flex-wrap:wrap}
+  .chip{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line2);font-size:15px;font-weight:600}
+  .chip i{width:10px;height:10px;border-radius:50%}
+
+  /* right: the app window */
+  .app{position:absolute;left:548px;top:56px;width:680px;height:530px;border-radius:18px;background:var(--bg);
+       border:1px solid var(--line2);box-shadow:0 40px 90px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.03) inset;overflow:hidden;
+       transform:perspective(1600px) rotateY(-8deg) rotateX(3deg);transform-origin:left center}
+  .bar{height:46px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+  .dots{display:flex;gap:7px;margin-right:8px}.dots i{width:11px;height:11px;border-radius:50%}
+  .dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+  .nav{font-size:12px;font-weight:600;color:var(--muted);padding:5px 10px;border-radius:8px}
+  .nav.on{color:var(--text);box-shadow:inset 0 -2px 0 var(--green)}
+  .pill{margin-left:8px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;border:1px solid rgba(83,252,24,.35);background:rgba(83,252,24,.08)}
+  .pill i{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  .avatar{margin-left:auto;width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,var(--green),var(--teal))}
+  .body{position:absolute;top:46px;left:0;right:0;bottom:0;padding:14px;display:grid;grid-template-columns:1.25fr 1fr;grid-template-rows:auto auto 1fr;gap:12px}
+  .card{border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);overflow:hidden}
+
+  .hero{grid-column:span 2;padding:16px 18px;display:grid;grid-template-columns:1fr 132px;gap:16px;
+        background:radial-gradient(500px 200px at 20% 0%,rgba(83,252,24,.09),transparent 70%),linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.01))}
+  .now{font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--green)}
+  .title{font-size:19px;font-weight:760;letter-spacing:-.02em;margin:4px 0 12px}
+  .title span{color:var(--muted);font-weight:600}
+  .reward{display:grid;grid-template-columns:26px 1fr 54px;align-items:center;gap:10px;padding:7px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.25);margin-top:6px}
+  .em{width:26px;height:26px;border-radius:8px}
+  .rb{display:flex;flex-direction:column;gap:6px}
+  .rb b{height:7px;border-radius:4px;background:#3a4048}
+  .track{height:5px;border-radius:3px;background:#262a30;overflow:hidden}
+  .track i{display:block;height:100%;border-radius:3px;background:var(--green)}
+  .reward small{font-size:10px;color:var(--muted);text-align:right}
+  .reward small.ok{color:var(--green);font-weight:700}
+  .ring{position:relative;width:132px;height:132px;align-self:center}
+  .ring svg{width:132px;height:132px;transform:rotate(-90deg)}
+  .ring div{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring b{font-size:27px;font-weight:780;letter-spacing:-.03em}
+  .ring small{font-size:11px;color:var(--muted)}
+
+  .stats{grid-column:span 2;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .stat{padding:11px 13px}
+  .sh{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);font-weight:600}
+  .sh i{width:18px;height:18px;border-radius:6px}
+  .sv{font-size:19px;font-weight:780;letter-spacing:-.03em;margin-top:7px}
+  .sv small{font-size:12px;color:var(--muted);font-weight:600;margin-left:3px}
+
+  .chart{padding:12px 14px;position:relative}
+  .ch{font-size:12px;font-weight:700}
+  .chart svg{position:absolute;left:10px;right:10px;bottom:10px;width:calc(100% - 20px);height:calc(100% - 44px)}
+  .queue{padding:10px;display:flex;flex-direction:column;gap:8px}
+  .row{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;gap:10px;padding:8px 10px;border-radius:11px;border:1px solid var(--line);background:rgba(0,0,0,.2)}
+  .row.cur{border-color:rgba(83,252,24,.45);background:rgba(83,252,24,.05)}
+  .art{width:34px;height:40px;border-radius:7px}
+  .switch{width:34px;height:19px;border-radius:999px;background:var(--green);position:relative}
+  .switch::after{content:"";position:absolute;right:2px;top:2px;width:15px;height:15px;border-radius:50%;background:#fff}
+
+  /* bigger than the hero: this is usually seen as a small card */
+  .intro{left:80px;width:560px;gap:26px}
+  .logo svg{width:92px;height:92px}
+  h1{font-size:108px;letter-spacing:-.035em}
+  .tag{font-size:31px;line-height:1.32;color:#c7ced6}
+  .chip{font-size:19px;padding:10px 18px}
+  .chip i{width:12px;height:12px}
+  .app{left:700px;top:84px;transform:perspective(1600px) rotateY(-10deg) rotateX(3deg) scale(1.08)}
+</style></head>
+<body>
+  <div class="intro">
+    <div class="logo">
+      <svg viewBox="0 0 32 32">
+        <path d="M16 1.25C19.68 5.99 26.54 12.94 26.54 20.21a10.54 10.54 0 0 1-21.08 0C5.46 12.94 12.32 5.99 16 1.25Z" fill="#53fc18"/>
+        <path d="M9.46 16.94c-1.06 1.63-1.55 3.35-1.47 5.07" stroke="#fff" stroke-opacity=".5" stroke-width="1.23" stroke-linecap="round" fill="none"/>
+        <g transform="translate(16 20.45) scale(0.02043) translate(-512 -520)" fill="#0a1406">
+          <path d="M512 252C447 252 413.2 306.6 413.2 371.6C413.2 426.2 382 457.4 343 504.2C298.8 556.2 267.6 608.2 267.6 670.6C267.6 795.4 374.2 870.8 512 870.8C649.8 870.8 756.4 795.4 756.4 670.6C756.4 608.2 725.2 556.2 681 504.2C642 457.4 610.8 426.2 610.8 371.6C610.8 306.6 577 252 512 252Z"/>
+          <path d="M512 262.4C512 220.8 525 184.4 548.4 158.4" stroke="#0a1406" stroke-width="46" stroke-linecap="round" fill="none"/>
+          <path d="M553.6 200C579.6 140.2 652.4 122 709.6 140.2C691.4 200 623.8 231.2 553.6 200Z"/>
+        </g>
+      </svg>
+    </div>
+    <h1>Pear<br><span>Drops</span></h1>
+    <p class="tag">Collects your Kick emote and badge drops for you.</p>
+    <div class="chips">
+      <span class="chip"><i style="background:var(--green)"></i>Auto-claim</span>
+      <span class="chip"><i style="background:var(--amber)"></i>Stall recovery</span>
+      <span class="chip"><i style="background:var(--violet)"></i>History</span>
+    </div>
+  </div>
+
+  <div class="app">
+    <div class="bar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="nav on">Dashboard</span><span class="nav">History</span>
+      <span class="pill"><i></i>Watching</span>
+      <span class="avatar"></span>
+    </div>
+    <div class="body">
+      <div class="card hero">
+        <div>
+          <div class="now">NOW FARMING</div>
+          <div class="title">Launch Week <span>· Neon Rush</span></div>
+          <div class="reward"><span class="em" style="background:linear-gradient(135deg,#ff5fae,#a78bfa)"></span><span class="rb"><b style="width:46%"></b><span class="track"><i style="width:82%"></i></span></span><small>82%</small></div>
+          <div class="reward"><span class="em" style="background:linear-gradient(135deg,#ffd36a,#fb8b3b)"></span><span class="rb"><b style="width:38%"></b><span class="track"><i style="width:49%"></i></span></span><small>49%</small></div>
+          <div class="reward"><span class="em" style="background:linear-gradient(135deg,#2ee6c5,#6ea8ff)"></span><span class="rb"><b style="width:52%"></b><span class="track"><i style="width:100%"></i></span></span><small class="ok">Claimed</small></div>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="62" fill="none" stroke="#23272d" stroke-width="10"/><circle cx="75" cy="75" r="62" fill="none" stroke="#53fc18" stroke-width="10" stroke-linecap="round" stroke-dasharray="281 390" style="filter:drop-shadow(0 0 6px rgba(83,252,24,.6))"/></svg>
+          <div><b>72%</b><small>216 / 300 min</small></div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="card stat"><div class="sh"><i style="background:rgba(46,230,197,.25)"></i>Watch time</div><div class="sv">1h 34m</div></div>
+        <div class="card stat"><div class="sh"><i style="background:rgba(83,252,24,.25)"></i>Credited</div><div class="sv">92<small>min</small></div></div>
+        <div class="card stat"><div class="sh"><i style="background:rgba(255,211,106,.25)"></i>Claimed</div><div class="sv">3<small>of 10</small></div></div>
+        <div class="card stat"><div class="sh"><i style="background:rgba(110,168,255,.25)"></i>Credit rate</div><div class="sv">1.00<small>×</small></div></div>
+      </div>
+      <div class="card chart">
+        <div class="ch">Progress &amp; forecast</div>
+        <svg viewBox="0 0 400 170" preserveAspectRatio="none">
+          <defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#53fc18" stop-opacity=".35"/><stop offset="1" stop-color="#53fc18" stop-opacity="0"/></linearGradient></defs>
+          <g stroke="#23272d" stroke-width="1"><line x1="0" y1="40" x2="400" y2="40"/><line x1="0" y1="90" x2="400" y2="90"/><line x1="0" y1="140" x2="400" y2="140"/></g>
+          <path d="M0 160 L40 150 L80 138 L120 124 L160 112 L200 98 L220 92 L220 170 L0 170Z" fill="url(#fill)"/>
+          <path d="M0 160 L40 150 L80 138 L120 124 L160 112 L200 98 L220 92" fill="none" stroke="#53fc18" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M220 92 L400 22" fill="none" stroke="#53fc18" stroke-width="2.5" stroke-dasharray="7 6" opacity=".7"/>
+          <circle cx="220" cy="92" r="6" fill="#53fc18"/><circle cx="220" cy="92" r="12" fill="#53fc18" opacity=".18"/>
+          <circle cx="330" cy="49" r="9" fill="#0a0b0d" stroke="#ff5fae" stroke-width="3"/><circle cx="392" cy="25" r="9" fill="#0a0b0d" stroke="#ffd36a" stroke-width="3"/>
+        </svg>
+      </div>
+      <div class="card queue">
+        <div class="row cur"><span class="art" style="background:linear-gradient(160deg,#ff5fae,#6b1d8f)"></span><span class="rb"><b style="width:55%;background:#d7dbe0"></b><span class="track"><i style="width:72%"></i></span></span><span class="switch"></span></div>
+        <div class="row"><span class="art" style="background:linear-gradient(160deg,#2ee6c5,#0b5a52)"></span><span class="rb"><b style="width:42%"></b><span class="track"><i style="width:30%"></i></span></span><span class="switch"></span></div>
+        <div class="row"><span class="art" style="background:linear-gradient(160deg,#ffd36a,#9a4b12)"></span><span class="rb"><b style="width:48%"></b><span class="track"><i style="width:12%"></i></span></span><span class="switch"></span></div>
+      </div>
+    </div>
+  </div>
+</body></html>

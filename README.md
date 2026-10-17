@@ -94,7 +94,7 @@ test/unit/       node --test unit tests
 test/launch/     Playwright launch tests against the real app
 scripts/         dev, coverage, hardening, icon and release tools
 build/           installer hooks and icon source
-.github/assets/  the README's hero image (hero.jpg) and the page it's drawn from (hero.html)
+.github/assets/  the README's hero image (hero.jpg) and the repo's social preview (og.png), with the pages they're drawn from
 ```
 
 The app's own pages never use system pop-ups such as `alert`, native message boxes or date pickers. `test/unit/no-system-popups.test.js` checks for them.
