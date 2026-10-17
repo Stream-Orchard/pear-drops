@@ -96,34 +96,52 @@ const pct = (v) => (v === null || v === undefined ? '—' : `${Math.round(v * 10
 
 // ------------------------------------------------------------------ charts
 
-function dailyChart(days, width, height) {
-  const pad = { l: 34, r: 8, t: 12, b: 22 };
+/**
+ * The activity chart: minutes watched (grey) and credited (green) per day, or per hour while
+ * there's under three days to show. Claims are a gold dot, with a count when there are more.
+ */
+function activityChart(activity, width, height) {
+  const hourly = activity?.unit === 'hour';
+  const pad = { l: 38, r: 8, t: 16, b: 22 };
   const w = Math.max(100, width - pad.l - pad.r);
   const h = Math.max(60, height - pad.t - pad.b);
-  const list = days.length ? days : [{ day: Date.now(), watched: 0, credited: 0, claims: 0 }];
-  const top = Math.max(30, ...list.map((d) => d.watched), ...list.map((d) => d.credited));
-  const nice = [30, 60, 120, 180, 240, 360, 480, 600, 720, 960, 1440].find((n) => n >= top) ?? top;
-  const bw = w / list.length;
-  const y = (v) => pad.t + h - (v / nice) * h;
+  const list = activity?.bars?.length ? activity.bars : [{ t: Date.now(), day: Date.now(), watched: 0, credited: 0, claims: 0 }];
+  const top = Math.max(hourly ? 60 : 30, ...list.map((d) => d.watched), ...list.map((d) => d.credited));
+  // An hour holds 60 minutes and a day 24 hours: the scale never needs more.
+  const nice = hourly ? [60, 90, 120].find((n) => n >= top) ?? top : [30, 60, 120, 180, 240, 360, 480, 600, 720, 960, 1440].find((n) => n >= top) ?? 1440;
+  // A few days sit at the left at a steady width, rather than spread across the chart.
+  const slots = hourly ? list.length : Math.max(list.length, 14);
+  const bw = w / slots;
+  const y = (v) => pad.t + h - (Math.min(v, nice) / nice) * h;
   const grid = [0, 0.5, 1]
     .map((f) => {
       const v = nice * f;
-      const label = v === 0 ? '0' : v >= 60 ? `${+(v / 60).toFixed(1)}h` : `${v}m`;
+      const label = v === 0 ? '0' : v >= 60 && !hourly ? `${+(v / 60).toFixed(1)}h` : `${v}m`;
       return `<line x1="${pad.l}" x2="${pad.l + w}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end" class="axis">${label}</text>`;
     })
     .join('');
-  const labelEvery = Math.ceil(list.length / Math.max(1, Math.floor(w / 46)));
+  const labelEvery = hourly ? Math.max(1, Math.ceil(list.length / Math.max(1, Math.floor(w / 52)))) : Math.ceil(list.length / Math.max(1, Math.floor(w / 46)));
+  const nowHour = new Date();
+  nowHour.setMinutes(0, 0, 0);
   const bars = list
     .map((d, i) => {
+      const t = d.t ?? d.day;
       const x = pad.l + i * bw;
-      const inner = Math.max(3, Math.min(22, bw * 0.62));
+      const inner = Math.max(3, Math.min(hourly ? 18 : 22, bw * 0.62));
       const cx = x + bw / 2 - inner / 2;
-      const today = new Date(d.day).toDateString() === new Date().toDateString();
-      return `<g><title>${fmtDay(d.day)}: watched ${fmtMin(d.watched)}, credited ${d.credited} min${d.claims ? `, ${d.claims} claimed` : ''}</title>
+      const current = hourly ? t === nowHour.getTime() : new Date(t).toDateString() === new Date().toDateString();
+      const when = hourly ? `${fmtDay(t)} ${fmtHour(new Date(t).getHours())}` : fmtDay(t);
+      const label = hourly ? (current ? 'Now' : fmtHour(new Date(t).getHours())) : current ? 'Today' : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const claim = d.claims
+        ? d.claims > 1
+          ? `<circle cx="${cx + inner / 2}" cy="${y(d.watched) - 10}" r="7" class="hb-claim"/><text x="${cx + inner / 2}" y="${y(d.watched) - 6.5}" text-anchor="middle" class="claim-count">${d.claims}</text>`
+          : `<circle cx="${cx + inner / 2}" cy="${y(d.watched) - 8}" r="4" class="hb-claim"/>`
+        : '';
+      return `<g><title>${when}: watched ${fmtMin(d.watched)}, credited ${d.credited} min${d.claims ? `, ${d.claims} claimed` : ''}</title>
         <rect x="${cx}" y="${y(d.watched)}" width="${inner}" height="${pad.t + h - y(d.watched)}" rx="${Math.min(5, inner / 2)}" class="bar-watched"/>
-        <rect x="${cx}" y="${y(d.credited)}" width="${inner}" height="${pad.t + h - y(d.credited)}" rx="${Math.min(5, inner / 2)}" class="bar-credited ${today ? 'today' : ''}"/>
-        ${d.claims ? `<circle cx="${cx + inner / 2}" cy="${y(d.watched) - 8}" r="4" class="hb-claim"/>` : ''}
-        ${i % labelEvery === 0 || today ? `<text x="${x + bw / 2}" y="${height - 6}" text-anchor="middle" class="axis ${today ? 'today' : ''}">${today ? 'Today' : new Date(d.day).toLocaleDateString([], { month: 'short', day: 'numeric' })}</text>` : ''}</g>`;
+        <rect x="${cx}" y="${y(d.credited)}" width="${inner}" height="${pad.t + h - y(d.credited)}" rx="${Math.min(5, inner / 2)}" class="bar-credited ${current ? 'today' : ''}"/>
+        ${claim}
+        ${(list.length - 1 - i) % labelEvery === 0 || current ? `<text x="${x + bw / 2}" y="${height - 6}" text-anchor="middle" class="axis ${current ? 'today' : ''}">${label}</text>` : ''}</g>`;
     })
     .join('');
   return `<svg class="chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${grid}${bars}</svg>`;
@@ -181,7 +199,7 @@ function sessionsTable(d) {
   return `<table class="htable"><thead><tr><th>Stream</th><th>Drop</th><th>Started</th><th class="r">Watched</th><th class="r">Credited</th><th>Efficiency</th><th>Issues</th><th>Ended</th></tr></thead><tbody>${d.sessions
     .map(
       (s) => `<tr>
-        <td class="ellipsis">${img(s.avatar, 'avatar xs')}<b>${esc(s.channel)}</b>${s.manual ? ' <span class="chip blue tiny">you</span>' : ''}</td>
+        <td class="sess-stream"><div class="sess-cell">${img(s.avatar, 'avatar xs')}<span class="sess-who"><span class="sess-name"><b>${esc(s.channel)}</b>${s.manual ? ' <span class="chip blue tiny">you</span>' : ''}</span>${s.title ? `<span class="sess-title" data-tip="${esc(s.title)}">${esc(s.title)}</span>` : ''}</span></div></td>
         <td class="ellipsis">${esc((s.campaigns ?? []).join(', ') || s.category || '')}</td>
         <td class="nowrap muted num">${fmtStamp(s.start)}</td>
         <td class="r num">${fmtDur(s.ms)}</td>
@@ -246,6 +264,8 @@ function renderHistory() {
   const selectedImage = liveCat?.image ?? live?.categories.find((k) => k.id === recorded?.categoryId)?.image ?? savedSel?.image;
   const rangeLabel = { '24h': 'the last 24 hours', '7d': 'the last 7 days', '30d': 'the last 30 days', all: 'all time' }[hist.range];
   const t = d.totals;
+  // Under three days, the chart is by hour, and "When you farm" would only repeat it.
+  const byHour = !selected && d.activity?.unit === 'hour';
 
   const kpi = (ic, tone, label, value, foot) => `<div class="card stat"><div class="stat-head"><span class="stat-icon ${tone}">${icon(ic)}</span>${label}</div><div class="stat-value">${value}</div><div class="stat-foot"><span>${foot}</span></div></div>`;
 
@@ -327,11 +347,11 @@ function renderHistory() {
     </div>
     <div class="hist-grid">
       <div class="card hist-chart-card">
-        <div class="card-head"><div class="card-title">${icon(selected ? 'target' : 'pulse')} ${selected ? 'Drop progress' : 'Daily activity'}</div>
+        <div class="card-head"><div class="card-title">${icon(selected ? 'target' : 'pulse')} ${selected ? 'Drop progress' : byHour ? 'Activity by hour' : 'Daily activity'}</div>
           ${selected ? '' : '<div class="legend"><span><i style="background:rgba(255,255,255,.14)"></i>Watched</span><span><i style="background:var(--green)"></i>Credited</span><span><i style="background:var(--gold);border-radius:50%"></i>Claim</span></div>'}
         </div>
-        <div class="${selected ? 'hist-series-chart' : 'hist-daily-chart'}">${selected ? series : dailyChart(d.daily, cw, ch)}</div>
-        <div class="hist-hours"><span class="eyebrow">When you farm</span>${hourHeatmap(d.hourly)}</div>
+        <div class="${selected ? 'hist-series-chart' : 'hist-daily-chart'}">${selected ? series : activityChart(d.activity, cw, ch)}</div>
+        ${byHour ? '' : `<div class="hist-hours"><span class="eyebrow">When you farm</span>${hourHeatmap(d.hourly)}</div>`}
       </div>
       <div class="card hist-drops">
         <div class="card-head"><div class="card-title">${icon('gift')} Drops</div><span class="card-sub">click to focus</span></div>

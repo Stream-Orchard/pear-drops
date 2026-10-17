@@ -458,7 +458,9 @@ function seedHistoryLog(history, api, now = Date.now()) {
     const start = Math.min(day.getTime(), now - 3 * 3600_000);
     const session = `demo-${i}`;
     const stream = { session, slug, channel: channel.username, avatar: channel.avatar, categoryId: c.category.id, category: c.category.name, campaignIds: [c.id] };
-    add(start, 'watch-start', { ...stream, campaigns: [c.name], text: `Watching ${channel.username} for ${c.category.name}` });
+    // The stream's title then: its title now, if it's in the stand-in's live list.
+    const title = Object.values(LIVE).flat().find(([s]) => s === slug)?.[1] ?? `${channel.username} live`;
+    add(start, 'watch-start', { ...stream, campaigns: [c.name], title, text: `Watching ${channel.username} for ${c.category.name}` });
     let credited = 0;
     for (let m = 2; m <= minutes; m += 2) {
       const t = start + m * MIN + Math.floor(rand() * 20_000);

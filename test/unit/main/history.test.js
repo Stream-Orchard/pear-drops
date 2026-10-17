@@ -81,6 +81,36 @@ test('a session left without an end (the app quit by force or restarted) stops a
   assert.equal(v.hourly.reduce((a, b) => a + b, 0), 35 + 3 + 5 + 19);
 });
 
+test('the activity chart is by hour on a first day or the last 24 hours, and by day once there is more', () => {
+  const { history } = fresh();
+  const now = new Date();
+  now.setMinutes(30, 0, 0);
+  const t = now.getTime();
+  const start = t - 5 * 3600_000; // 5 h ago, at :30
+  history.add('start', { t: start - MIN });
+  history.add('watch-start', { t: start, session: 'a', slug: 'a', campaignIds: ['c1'], title: 'Ranked grind, road to the top' });
+  for (let m = 2; m <= 300; m += 2) history.add('credit', { t: start + m * MIN - 1000, session: 'a', slug: 'a', campaignId: 'c1', delta: 2, units: m });
+  history.add('claim', { t: start + 90 * MIN, session: 'a', campaignId: 'c1', reward: 'Hype Emote' });
+  history.add('claim', { t: start + 95 * MIN, session: 'a', campaignId: 'c1', reward: 'Neon Badge' });
+
+  const v = history.view({ now: t });
+  assert.equal(v.sessions[0].title, 'Ranked grind, road to the top', 'sessions keep the stream title');
+  assert.equal(v.activity.unit, 'hour', 'a first day is shown by hour');
+  assert.equal(v.activity.bars.length, 6, 'from the hour it started to now');
+  assert.equal(v.activity.bars[0].watched, 30, 'the first half hour');
+  assert.ok(v.activity.bars.slice(1, -1).every((b) => b.watched === 60), 'full hours in between');
+  assert.ok(v.activity.bars.every((b) => b.watched <= 60));
+  assert.equal(v.activity.bars.reduce((n, b) => n + b.credited, 0), 300);
+  assert.equal(v.activity.bars.reduce((n, b) => n + b.claims, 0), 2);
+
+  // Weeks of history: by day, unless the last 24 hours are picked.
+  history.events.unshift({ t: t - 20 * 86_400_000, type: 'start' });
+  assert.equal(history.view({ now: t }).activity.unit, 'day');
+  const day = history.view({ now: t, since: t - 86_400_000 });
+  assert.equal(day.activity.unit, 'hour');
+  assert.equal(day.activity.bars.length, 25, 'the last 24 hours, by the hour');
+});
+
 test('view(): totals, per-drop summaries, channels, daily and hourly figures', () => {
   const { history } = fresh();
   const now = Date.now();
