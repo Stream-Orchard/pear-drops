@@ -123,10 +123,19 @@ jobs:
         run: |
           echo "$MAC_CERT_P12" | base64 --decode > cert.p12
           security create-keychain -p ci build.keychain
+          # Stays unlocked for the whole build (by default it locks itself after 5 minutes).
+          security set-keychain-settings build.keychain
+          security unlock-keychain -p ci build.keychain
           security import cert.p12 -k build.keychain -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          rm cert.p12
           security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
           security list-keychains -d user -s build.keychain login.keychain
-          echo "MAC_SIGN_IDENTITY=$(security find-identity -v -p codesigning build.keychain | head -1 | awk -F'\"' '{print $2}')" >> "$GITHUB_ENV"
+          # Not just "valid" (trusted) identities: a self-signed certificate works too, and keeps
+          # one signature from release to release, so installed copies can update themselves.
+          IDENTITY=$(security find-identity -p codesigning build.keychain | grep -m1 -o '"[^"]*"' | tr -d '"')
+          [ -n "$IDENTITY" ] || { echo "::error title=Signing certificate::MAC_CERT_P12 has no code-signing identity"; exit 1; }
+          echo "::notice title=Signing certificate::Signing with \"$IDENTITY\""
+          echo "MAC_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
           echo "MAC_SIGN_KEYCHAIN=build.keychain" >> "$GITHUB_ENV"
       - name: Build
         env:
