@@ -895,15 +895,18 @@ class Farmer extends EventEmitter {
 
   /** Kick refused a claim: says why (and links the game account if that's it), and waits a while before the next try. */
   claimRefused(c, r, err, now = Date.now()) {
-    const why = claimFailure(err);
+    // Too late: the drop ended before the claim got through. Trying again can't help.
+    const ended = new Date(c.endsAt ?? c.ends_at ?? Infinity).getTime() <= now;
+    const why = ended ? { type: 'ENDED', text: 'The drop ended before it was claimed', retryMs: Infinity } : claimFailure(err);
     const known = this.claimErrors.get(r.id);
     this.claimErrors.set(r.id, { type: why.type, text: why.text, connectUrl: why.connectUrl ?? null, at: now });
     this.claimBackoff.set(r.id, now + why.retryMs);
     const wait = why.retryMs >= 60 * MIN ? `${why.retryMs / (60 * MIN)} h` : `${why.retryMs / MIN} min`;
+    const next = Number.isFinite(why.retryMs) ? `. Trying again in ${wait}` : '';
     this.addLog('warn', `Claim failed for ${r.name}: ${why.text}`);
     // Once per reason, not at every retry.
     if (known?.type !== why.type || known?.text !== why.text) {
-      this.record('claim-failed', { ...this.ctx(c.id), rewardId: r.id, reward: r.name, rewardImage: r.image, reason: why.type, connectUrl: why.connectUrl, text: `Kick refused the claim: ${why.text}. Trying again in ${wait}` });
+      this.record('claim-failed', { ...this.ctx(c.id), rewardId: r.id, reward: r.name, rewardImage: r.image, reason: why.type, connectUrl: why.connectUrl, text: `Kick refused the claim: ${why.text}${next}` });
     }
     return why;
   }

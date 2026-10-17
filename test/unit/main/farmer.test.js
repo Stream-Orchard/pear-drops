@@ -332,6 +332,15 @@ test("a refused claim says why, in Kick's words: a link to connect the game acco
   assert.ok(!farmer.knownLinks().has('https://evil.example/'));
   assert.equal(farmer.model.campaigns[0].url, 'https://kick.com/events/safe-zone');
 
+  // Refused after the drop's end: too late, said plainly, and not tried again.
+  const ended = { ...farmer.model.campaigns[0], endsAt: new Date(Date.now() - MIN).toISOString() };
+  const late = farmer.claimRefused(ended, ended.rewards[0], refusal({ type: 'INVALID_CLAIM' }));
+  assert.equal(late.text, 'The drop ended before it was claimed');
+  assert.equal(farmer.claimBackoff.get('a-r1'), Infinity, 'never retried');
+  assert.ok(history.events.some((e) => e.type === 'claim-failed' && e.text === 'Kick refused the claim: The drop ended before it was claimed'));
+  farmer.claimBackoff.clear();
+  farmer.claimErrors.clear();
+
   // A claim by hand says why too; a confirmed one clears it.
   assert.deepEqual(await farmer.claimOne('a', 'a-r1'), { error: 'Kick needs a game account linked first', connectUrl: 'https://games.example/link' });
   api.claim = async (cid, rid) => api.claimed.add(rid);

@@ -523,7 +523,7 @@ function queuePanel(f) {
                   .map(
                     (r) =>
                       `<span class="mini-reward ${r.claimed ? 'claimed' : r.ready ? 'ready' : r.tracked ? '' : 'game'}" ${previewAttrs(r, c.units)}>${img(r.image)}${esc(r.name)} <em>${r.required}m</em>${
-                        r.ready && r.tracked ? ` <button class="btn sm primary" data-action="claim" data-campaign="${esc(c.id)}" data-reward="${esc(r.id)}">Claim</button>` : ''
+                        r.ready && r.tracked ? ` <button class="btn sm primary" data-action="claim" data-campaign="${esc(c.id)}" data-reward="${esc(r.id)}">${r.claimError ? 'Try again' : 'Claim'}</button>` : ''
                       }${r.tracked ? claimErrorHTML(r) : ''}</span>`,
                   )
                   .join('')}</div>
@@ -576,6 +576,16 @@ function queuePanel(f) {
 // Coming soon: how long each announced drop shows before the next, unless one was picked.
 const COMING_EVERY_MS = 30_000;
 
+/** How long ago, roughly: "40 min ago", "5 hours ago", "2 days ago". */
+function fmtSince(t) {
+  const m = Math.max(0, (Date.now() - t) / MIN);
+  if (m < 60) return m < 2 ? 'just now' : `${Math.round(m)} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
 /** A drop's About page (an event, a category or the publisher's site), as a Details button. */
 function detailsButton(url) {
   if (!url) return '';
@@ -622,7 +632,7 @@ function comingCard(f) {
       ${img(c.image, 'coming-art', c.category)}
       <div class="coming-info">
         <b>${esc(c.name)}</b>
-        <span class="coming-when">${esc(c.category)} · starts ${when} · in ${fmtDur(starts - now)}${c.announcedAt ? ` · announced ${fmtAgo(new Date(c.announcedAt).getTime())}` : ''}</span>
+        <span class="coming-when">${esc(c.category)} · starts ${when} · in ${fmtDur(starts - now)}${c.announcedAt ? ` · announced ${fmtSince(new Date(c.announcedAt).getTime())}` : ''}</span>
         <div class="coming-rewards">${c.rewards.map((r) => `<span class="mini-reward" ${previewAttrs(r, 0)}>${img(r.image)}${esc(r.name)} <em>${r.required}m</em></span>`).join('')}</div>
       </div>
     </div>
