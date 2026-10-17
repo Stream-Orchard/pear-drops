@@ -124,7 +124,35 @@ function morphNode(cur, want) {
   morphChildren(cur, want);
 }
 
-const img = (src, cls = '', alt = '') => (src ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" decoding="async" referrerpolicy="no-referrer" />` : `<span class="${cls}"></span>`);
+// Images that didn't load (Kick's thumbnail for a stream that just started, an expired link),
+// and when: shown as a placeholder for a few minutes, then tried again.
+const brokenImages = new Map();
+const BROKEN_RETRY_MS = 5 * 60_000;
+const isBroken = (src) => {
+  const at = brokenImages.get(src);
+  if (at && Date.now() - at > BROKEN_RETRY_MS) brokenImages.delete(src);
+  return brokenImages.has(src);
+};
+
+/** An image's placeholder: its box, with a faint picture in it, while there's nothing to show. */
+const imgPlaceholder = (cls = '', alt = '') => `<span class="${cls ? `${cls} img-missing` : 'img-missing fill'}" role="img" aria-label="${esc(alt)}"></span>`;
+
+const img = (src, cls = '', alt = '') =>
+  src && !isBroken(src) ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" decoding="async" referrerpolicy="no-referrer" />` : imgPlaceholder(cls, alt);
+
+// One that fails gives way to its placeholder at once, rather than the broken-image icon.
+document.addEventListener(
+  'error',
+  (event) => {
+    const el = event.target;
+    if (el?.tagName !== 'IMG' || !el.getAttribute('src') || el.closest?.('svg')) return;
+    brokenImages.set(el.getAttribute('src'), Date.now());
+    const t = document.createElement('template');
+    t.innerHTML = imgPlaceholder(el.getAttribute('class') ?? '', el.getAttribute('alt') ?? '');
+    el.replaceWith(t.content.firstChild);
+  },
+  true,
+);
 
 // The app's font (settings.font, see styles.css): the system's own (SF Pro, Segoe UI), or the
 // bundled Inter, which measures the same everywhere. Linux uses Inter unless told otherwise.

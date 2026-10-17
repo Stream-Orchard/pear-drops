@@ -284,6 +284,25 @@ test('every Settings tab fits without scrolling; only the changelog under Update
   await a.win.keyboard.press('Escape');
 });
 
+test('a stream thumbnail that won’t load shows a placeholder in its place, not a broken image', async () => {
+  const live = await a.app.evaluate(() => global.pdDebug.farmer.model.categories.find((c) => c.id === global.pdDebug.farmer.current?.categoryId)?.streams.map((s) => s.slug));
+  assert.ok(live?.length >= 2, 'a category with streams');
+  await a.app.evaluate(async (_e, slug) => {
+    global.pdDemo.api.brokenThumbs.add(slug);
+    global.pdDebug.farmer.streams.clear();
+    while (global.pdDebug.farmer.ticking) await new Promise((r) => setTimeout(r, 50));
+    await global.pdDebug.farmer.tick({ force: true });
+  }, live[1]);
+  await a.win.click('[data-action="side-tab"][data-id="streams"]');
+  await until(a.win, () => document.querySelector('#side .thumb .img-missing'), 'the placeholder', 10000);
+  const broken = await a.win.evaluate(() => [...document.querySelectorAll('#side img')].filter((i) => i.complete && i.naturalWidth === 0).length);
+  assert.equal(broken, 0, 'no broken-image icons');
+  const box = await a.win.evaluate(() => { const r = document.querySelector('#side .thumb .img-missing').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+  assert.deepEqual(box, [80, 45], 'it keeps the thumbnail’s size');
+  await a.app.evaluate(() => global.pdDemo.api.brokenThumbs.clear());
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+});
+
 test('the tray popover shows the current drop and controls', async () => {
   await a.demo((d) => d.openTray());
   const pop = await until(a.win, () => true, 'tray').then(async () => {

@@ -174,6 +174,7 @@ class DemoApi {
     this.watching = null;
     this.conflict = false;
     this.offline = new Set(); // stand-in channels taken offline by a test or the trailer
+    this.brokenThumbs = new Set(); // channels whose thumbnail won't load (a stream that just started)
     this.follows = new Set(['arcadia', 'nightowl', 'emberfox']);
   }
 
@@ -239,7 +240,7 @@ class DemoApi {
         id: `ls-${slug}`,
         title,
         viewer_count: viewers,
-        thumbnail: { src: thumbnail(c.glyph, c.hue) },
+        thumbnail: { src: this.brokenThumbs.has(slug) ? 'data:image/webp;base64,AAAA' : thumbnail(c.glyph, c.hue) },
         start_time: new Date(Date.now() - (40 + i * 25) * MIN).toISOString(),
         channel: { id: c.id, slug, username: c.username, profile_pic: c.avatar },
         category: { id: categoryId },

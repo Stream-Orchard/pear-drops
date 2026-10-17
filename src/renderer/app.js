@@ -617,7 +617,7 @@ function streamsPanel(f) {
   const cats = f.categories.filter((c) => c.needsWatching && c.enabled);
   if (!cats.some((c) => c.id === ui.selectedCategory)) ui.selectedCategory = f.current?.categoryId ?? cats[0]?.id ?? null;
   const cat = cats.find((c) => c.id === ui.selectedCategory);
-  const tabs = cats.map((c) => `<button class="tab ${c.id === ui.selectedCategory ? 'active' : ''}" data-action="select-cat" data-id="${c.id}">${esc(c.name)} <em>${c.streamCount}</em></button>`).join('');
+  const tabs = cats.map((c) => `<button class="tab ${c.id === ui.selectedCategory ? 'active' : ''}" data-action="select-cat" data-id="${c.id}"${c.name.length > 24 ? ` data-tip="${esc(c.name)}"` : ''}><span class="tab-name">${esc(c.name)}</span><em>${c.streamCount}</em></button>`).join('');
   if (!cat) return `<div class="empty">${icon('users')}No categories need watching.</div>`;
   const followed = cat.streams.filter((s) => s.followed);
   const others = cat.streams.filter((s) => !s.followed);

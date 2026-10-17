@@ -165,3 +165,13 @@ test('Settings › Updates: a spinner while checking, an arrow dropping in while
   run(`upd.status = u('downloading')`);
   assert.match(run('updateChip()'), /class="dl-arrow".*40%/s, 'the title bar chip too');
 });
+
+test('images: a missing one, or one that failed to load, shows a placeholder in its own box, and is tried again later', () => {
+  assert.match(run("img('https://x/a.png', 'avatar', 'EmberFox')"), /^<img class="avatar" src="https:\/\/x\/a\.png" alt="EmberFox"/);
+  assert.equal(run("img(null, 'avatar', 'EmberFox')"), '<span class="avatar img-missing" role="img" aria-label="EmberFox"></span>');
+  assert.equal(run('img(null)'), '<span class="img-missing fill" role="img" aria-label=""></span>', 'no class: it fills its box');
+  run("brokenImages.set('https://x/gone.png', Date.now())");
+  assert.match(run("img('https://x/gone.png', 'thumb-art')"), /img-missing/, 'a failed one stays a placeholder');
+  run("brokenImages.set('https://x/gone.png', Date.now() - 6 * 60_000)");
+  assert.match(run("img('https://x/gone.png', 'thumb-art')"), /^<img /, 'tried again after a few minutes');
+});
