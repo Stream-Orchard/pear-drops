@@ -141,7 +141,12 @@ function notifyFarming() {
     if (code === 'done' && was !== 'starting') send('done', 'All drops collected', message);
     if (code === 'waiting' && was === 'farming') send('done', 'Nothing to watch right now', 'No live streams for the remaining drops. Pear Drops keeps checking.');
   });
-  farmer.on('new-drops', (list) => send('newDrops', list.length > 1 ? `${list.length} new drops on Kick` : 'New drop on Kick', list.map((c) => `${c.name}${c.category ? ` · ${c.category}` : ''}`).join('\n')));
+  const startsOn = (t) => new Date(t).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  farmer.on('new-drops', (list) => {
+    const soon = list.every((c) => c.startsAt);
+    const title = soon ? (list.length > 1 ? `${list.length} drops coming to Kick` : 'Drop coming to Kick') : list.length > 1 ? `${list.length} new drops on Kick` : 'New drop on Kick';
+    send('newDrops', title, list.map((c) => `${c.name}${c.category ? ` · ${c.category}` : ''}${c.startsAt ? ` · starts ${startsOn(c.startsAt)}` : ''}`).join('\n'));
+  });
 }
 
 // Opens maximized the first time, then wherever the user last left it.

@@ -1951,69 +1951,73 @@ button {
 /* =========================================================================
    Drop queue
    ========================================================================= */
-/* The queue as a timeline (planStrip), at the foot of the Queue tab. */
-.plan {
+/* Coming soon (comingCard): an announced drop at the foot of the Queue tab. */
+.coming {
   margin-top: auto;
-  padding: 12px 14px 10px;
+  padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.022);
+  background: linear-gradient(135deg, rgba(110, 168, 255, 0.07), rgba(255, 255, 255, 0.02));
 }
-.plan-head {
+.coming-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   margin-bottom: 10px;
 }
-.plan-bar {
+.coming-dots {
   display: flex;
-  gap: 4px;
-  height: 34px;
+  gap: 6px;
 }
-.plan-seg {
-  min-width: 0;
+.coming-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--border-2);
+  cursor: pointer;
+}
+.coming-dot.on {
+  background: var(--blue);
+  width: 18px;
+  border-radius: 4px;
+}
+.coming-body {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 8px 0 4px;
+  gap: 12px;
+  align-items: flex-start;
+  animation: notice-in 0.4s var(--ease);
+}
+.coming-art {
+  width: 46px;
+  height: 61px;
   border-radius: 9px;
-  background: linear-gradient(90deg, rgba(83, 252, 24, 0.16), rgba(46, 230, 197, 0.08));
-  border: 1px solid rgba(83, 252, 24, 0.18);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.plan-seg.now {
-  background: linear-gradient(90deg, rgba(83, 252, 24, 0.34), rgba(83, 252, 24, 0.12));
-  border-color: rgba(83, 252, 24, 0.45);
-  color: var(--text);
-}
-.plan-seg span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.plan-art {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
   object-fit: cover;
   flex: none;
+  border: 1px solid var(--border);
 }
-.plan-ticks {
-  display: flex;
-  gap: 4px;
-  margin-top: 5px;
-}
-.plan-ticks span {
+.coming-info {
   min-width: 0;
-  text-align: right;
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.coming-info b {
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+.coming-when {
+  color: var(--muted);
+  font-size: 12px;
+}
+.coming-rewards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
 }
 .queue-list {
   display: flex;
