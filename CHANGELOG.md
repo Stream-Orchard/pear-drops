@@ -2,7 +2,12 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.2 (current)
+## 0.1.3 (current)
+- History no longer counts an interrupted watch session as still going
+- History shows a first day by the hour, and watch sessions show the stream title
+- Images that won't load show a tidy placeholder, and every Streams category shows its name and count
+
+## 0.1.2
 - The forecast reaches a drop's finish however far out it is
 - Streams that end, raid or freeze are noticed in seconds and shown at once
 - Desktop notifications, with a switch for each kind and a way to check they work
