@@ -8,6 +8,9 @@ const path = require('path');
 const DAY = 86_400_000;
 const KEEP_DAYS = 400;
 const COMPACT_BYTES = 25 * 1024 * 1024;
+// A watch session left without an end stops this long after the last thing heard from it
+// (credits come about every 2 minutes).
+const CUT_GRACE_MS = 5 * 60_000;
 
 // Event types, grouped for filtering in the UI.
 const GROUPS = {
@@ -102,12 +105,23 @@ class History {
     };
   }
 
-  /** Pairs watch-start / watch-end into watch sessions (an open one runs to `now`). */
+  /**
+   * Pairs watch-start / watch-end into watch sessions. One left without an end (the app was
+   * quit by force, crashed or restarted mid-stream) ends when the next one starts or the app
+   * starts again, but no later than a few minutes after the last thing heard from it: only one
+   * stream is ever watched at a time. The last one still going runs to `now`.
+   */
   sessions(events, now = Date.now()) {
     const open = new Map();
     const out = [];
+    const cut = (t) => {
+      for (const s of open.values()) out.push({ ...s, end: Math.max(s.start, Math.min(t, s.lastAt + CUT_GRACE_MS)), reason: s.reason ?? 'App closed', cut: true });
+      open.clear();
+    };
     for (const e of events) {
+      if (e.type === 'start') cut(e.t);
       if (e.type === 'watch-start') {
+        cut(e.t);
         open.set(e.session, {
           session: e.session,
           start: e.t,
@@ -124,9 +138,11 @@ class History {
           stalls: 0,
           reloads: 0,
           reason: null,
+          lastAt: e.t,
         });
       } else if (open.has(e.session)) {
         const s = open.get(e.session);
+        s.lastAt = e.t;
         if (e.type === 'credit') s.credited += e.delta ?? 0;
         if (e.type === 'stall') s.stalls += 1;
         if (e.type === 'reload' || e.type === 'crash') s.reloads += 1;
