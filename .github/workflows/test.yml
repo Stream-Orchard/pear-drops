@@ -25,6 +25,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Electron 44 downloads its binary the first time it's loaded. Doing it once here stops test files
+      # that load it at the same time from racing (on Windows two unpacks into one folder fail).
+      - run: npx --no install-electron
       - run: npm test
 
   app:
@@ -38,6 +41,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npx --no install-electron
       - run: npm run test:setup
       - name: Coverage (unit) with per-file minimums
         run: npm run test:coverage
