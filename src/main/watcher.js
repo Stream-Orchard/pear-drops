@@ -3,8 +3,8 @@ const { EventEmitter } = require('events');
 const path = require('path');
 const { PARTITION, KICK } = require('./kick-api');
 
-// Capture mode (trailer, screenshots): the player renders offscreen and its frames
-// are mirrored into the main window, so a recording of that window includes it.
+// Capture mode (trailer, screenshots): the player (and in light mode its chat) render offscreen
+// and their frames are mirrored into the main window, so a recording of that window includes them.
 const MIRROR = !!process.env.PD_MIRROR_PLAYER;
 
 // Two ways to show the stream in the docked panel. Both run Kick's own player code,
@@ -101,7 +101,7 @@ class Watcher extends EventEmitter {
     if (this.mode !== mode) this.destroyViews();
     this.mode = mode;
     if (!this.view || this.view.webContents.isDestroyed()) this.view = this.createView('player');
-    if (mode === 'light' && !MIRROR && (!this.chatView || this.chatView.webContents.isDestroyed())) this.chatView = this.createView('chat');
+    if (mode === 'light' && (!this.chatView || this.chatView.webContents.isDestroyed())) this.chatView = this.createView('chat');
     this.applyBounds();
     return this.view;
   }
@@ -114,7 +114,7 @@ class Watcher extends EventEmitter {
       sandbox: true,
       backgroundThrottling: false,
     };
-    const view = role !== 'chat' && MIRROR ? this.createMirror(webPreferences) : new WebContentsView({ webPreferences });
+    const view = MIRROR ? this.createMirror(webPreferences, role) : new WebContentsView({ webPreferences });
     view.setBackgroundColor('#0b0d10');
     const wc = view.webContents;
     wc.setAudioMuted(true);
@@ -159,7 +159,7 @@ class Watcher extends EventEmitter {
         this.emit('crashed', { reason: description || `load error ${code}` });
       });
     }
-    if (!(role !== 'chat' && MIRROR)) this.getWindow()?.contentView.addChildView(view);
+    if (!MIRROR) this.getWindow()?.contentView.addChildView(view);
     return view;
   }
 
@@ -175,7 +175,7 @@ class Watcher extends EventEmitter {
     }
   }
 
-  createMirror(webPreferences) {
+  createMirror(webPreferences, role) {
     const win = new BrowserWindow({ show: false, width: 420, height: 760, webPreferences: { ...webPreferences, offscreen: true } });
     win.webContents.setFrameRate(30);
     let last = 0;
@@ -184,7 +184,7 @@ class Watcher extends EventEmitter {
       if (now - last < 30) return;
       last = now;
       const target = this.getWindow();
-      if (target && !target.isDestroyed() && !target.webContents.isDestroyed() && this.slug) target.webContents.send('player:frame', image.toJPEG(85));
+      if (target && !target.isDestroyed() && !target.webContents.isDestroyed() && this.slug) target.webContents.send('player:frame', role, image.toJPEG(85));
     });
     return {
       webContents: win.webContents,

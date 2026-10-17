@@ -654,11 +654,16 @@ function renderSide() {
 
 // ------------------------------------------------------------------ player panel
 
+const mirrorShowsChat = () => state.settings.playerMode !== 'full' && state.settings.showChat !== false;
+
 function renderPlayer() {
   const f = farm();
   const cur = f?.current;
   $('.layout').classList.toggle('player-collapsed', !ui.playerOpen);
+  // Light shows the player at 16:9 with the chat below it (see watcher.js applyBounds).
+  $('#player-slot').classList.toggle('light', state.settings.playerMode !== 'full');
   if (!cur) $('#player-mirror').hidden = true;
+  if (!cur || !mirrorShowsChat()) $('#chat-mirror').hidden = true;
   const collapse = `<button class="btn sm icon-only ghost collapse-btn" data-action="toggle-player" data-tip="${ui.playerOpen ? 'Hide stream' : 'Show stream'}">${icon(ui.playerOpen ? 'chevronRight' : 'chevronLeft')}</button>`;
   setHTML(
     $('#player-head'),
@@ -1199,14 +1204,14 @@ window.pd.onAlert((alert) => {
   startAlarm();
   toast({ title: 'Another Kick stream is taking your credit', body: `${alert.events} watch events got no credit. Close any other streams to continue progressing drops.`, kind: 'alert' });
 });
-// Capture mode only: the stream's frames, drawn where the docked view would be.
-let mirrorUrl = null;
-window.pd.onPlayerFrame((jpeg) => {
-  const el = $('#player-mirror');
-  if (mirrorUrl) URL.revokeObjectURL(mirrorUrl);
-  mirrorUrl = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
-  el.src = mirrorUrl;
-  el.hidden = !farm()?.current;
+// Capture mode only: the player's and the chat's frames, drawn where the docked views would be.
+const mirrorUrls = {};
+window.pd.onPlayerFrame((role, jpeg) => {
+  const el = $(role === 'chat' ? '#chat-mirror' : '#player-mirror');
+  if (mirrorUrls[role]) URL.revokeObjectURL(mirrorUrls[role]);
+  mirrorUrls[role] = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
+  el.src = mirrorUrls[role];
+  el.hidden = !farm()?.current || (role === 'chat' && !mirrorShowsChat());
 });
 window.pd.getState().then((initial) => {
   state ??= initial;

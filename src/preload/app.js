@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('pd', {
     return () => ipcRenderer.removeListener('alert', listener);
   },
   onPlayerFrame: (callback) => {
-    const listener = (_event, jpeg) => callback(jpeg);
+    const listener = (_event, role, jpeg) => callback(role, jpeg);
     ipcRenderer.on('player:frame', listener);
     return () => ipcRenderer.removeListener('player:frame', listener);
   },
