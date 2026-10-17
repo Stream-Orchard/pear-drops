@@ -58,6 +58,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+          cache: npm
+      # For the quick tests below: they load Electron, which downloads its binary on first use.
+      - run: npm ci
+      - run: npx --no install-electron
 
       - name: Check the release was made from the latest main
         run: |
