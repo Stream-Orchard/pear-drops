@@ -304,8 +304,8 @@ function renderHero() {
           <dl class="eta">
             <dt>Next reward</dt><dd>${primary?.next ? fmtEta(fc?.nextMinutes) : 'claiming…'}</dd>
             <dt>Campaign done</dt><dd>${fmtEta(fc?.doneMinutes)}</dd>
-            <dt>Credit rate</dt><dd>${fc ? `${fc.rate.toFixed(2)}×${fc.observed ? '' : ' est.'}` : '—'}</dd>
-            <dt>Watching for</dt><dd>${fmtDur(Date.now() - cur.startedWatchingAt)}</dd>
+            <dt class="opt">Credit rate</dt><dd class="opt">${fc ? `${fc.rate.toFixed(2)}×${fc.observed ? '' : ' est.'}` : '—'}</dd>
+            <dt class="opt">Watching for</dt><dd class="opt">${fmtDur(Date.now() - cur.startedWatchingAt)}</dd>
           </dl>
         </div>
       </div>
@@ -333,7 +333,8 @@ function renderStats() {
   const claimedAll = tracked.filter((r) => r.claimed).length;
   const p = f.player ?? {};
   const health = streamHealth(f);
-  const player = health ? [health.label, health.tone, health.foot] : ['Idle', '', 'nothing playing'];
+  // On a narrow card, "540p · window muted" keeps the resolution.
+  const player = health ? [health.label, health.tone, esc(health.foot).replace(' · window muted', '<span class="opt"> · window muted</span>')] : ['Idle', '', 'nothing playing'];
   const nextEvent = p.lastEventAt ? p.lastEventAt + 120_000 - Date.now() : null;
   const conflictTone = f.eventsSinceCredit >= 3 ? 'bad' : f.eventsSinceCredit >= 2 ? 'warn' : '';
 
@@ -354,7 +355,7 @@ function renderStats() {
         efficiency === null ? 'measuring…' : `<span class="${efficiency >= 80 ? 'delta-up' : 'delta-down'}">${efficiency}%</span> efficient`,
         sparkBars(creditBuckets(), { width: 64, height: 24 }),
       ),
-      card('pulse', 'blue', 'Credit rate', fc ? `${fc.rate.toFixed(2)}<small>×</small>` : '—', fc?.observed ? 'measured, last 30 min' : 'estimated'),
+      card('pulse', 'blue', 'Credit rate', fc ? `${fc.rate.toFixed(2)}<small>×</small>` : '—', fc?.observed ? 'measured<span class="opt">, last 30 min</span>' : 'estimated'),
       card('gift', 'gold', 'Claimed', `${s.claims}<small>today</small>`, `${claimedAll} of ${tracked.length} collected`),
       card(
         'users',

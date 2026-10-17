@@ -39,7 +39,8 @@
    Pear Drops: design tokens
    ========================================================================= */
 :root {
-  --player-w: 400px;
+  /* The docked stream: 400px, a little less on a small window so the dashboard keeps its room. */
+  --player-w: clamp(345px, 27vw, 400px);
   --bg: #08090b;
   --bg-2: #0c0e11;
   --surface: rgba(255, 255, 255, 0.028);
@@ -682,8 +683,10 @@ button {
 
 /* The board fills whatever height is left; only its panels scroll. */
 .board {
-  flex: 1 0 380px;
-  min-height: 380px;
+  /* Room for the chart's header, at least 120px of chart and the live monitor: a 13" laptop's
+     window still fits without the page scrolling. */
+  flex: 1 0 300px;
+  min-height: 300px;
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr);
   gap: 14px;
@@ -1512,7 +1515,7 @@ button {
 .chart-wrap {
   position: relative;
   flex: 1;
-  min-height: 150px;
+  min-height: 120px;
   overflow: hidden;
 }
 /* Out of the layout flow, so drawing the chart can't change the size it's drawn to. */
@@ -3485,7 +3488,13 @@ input[type='range']::-webkit-slider-thumb {
 .hist-table-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  /* The table always fits its width: long details are cut (hover for all of it), no sideways scrolling. */
+  overflow-x: hidden;
+}
+.htable td.detail {
+  width: 100%;
+  max-width: 0;
 }
 .htable {
   width: 100%;
@@ -4822,4 +4831,131 @@ input[type='range']::-webkit-slider-thumb {
 .past span.cat-art {
   display: block;
   background: linear-gradient(160deg, rgba(83, 252, 24, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+/* =========================================================================
+   Small windows (a 13" laptop): each panel adapts to the room it has, so nothing is cut to a
+   letter or runs off the edge. Big windows are unchanged.
+   ========================================================================= */
+.hero {
+  container: hero / inline-size;
+}
+@container hero (max-width: 1040px) {
+  .hero-grid {
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) auto;
+    gap: 14px;
+  }
+  /* Credit rate and time watched are in the stats row too. */
+  .hero-side .opt {
+    display: none;
+  }
+  .hero-side {
+    gap: 12px;
+  }
+  .hero-side .ring {
+    width: 100px;
+    height: 100px;
+  }
+}
+.stat {
+  container: stat / inline-size;
+}
+@container stat (max-width: 200px) {
+  .stat .spark,
+  .stat-foot .opt {
+    display: none;
+  }
+  .stat-head {
+    white-space: nowrap;
+  }
+}
+#side {
+  container: side / inline-size;
+}
+@container side (max-width: 640px) {
+  .side-tab {
+    gap: 5px;
+    padding: 0 9px;
+  }
+  .side-tab > .icon {
+    display: none;
+  }
+}
+@container side (max-width: 600px) {
+  /* Time left over the switch, in one column, so the name and details keep their room. */
+  .cat-row {
+    grid-template-columns: 16px 38px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 4px 8px;
+  }
+  .cat-row > .cat-grip,
+  .cat-row > .cat-art,
+  .cat-row > .cat-info {
+    grid-row: 1 / 3;
+  }
+  .cat-row > .cat-side {
+    grid-column: 4;
+    grid-row: 1;
+    width: auto;
+    align-self: end;
+  }
+  .cat-row > .cat-controls {
+    grid-column: 4;
+    grid-row: 2;
+    width: auto;
+    display: flex;
+    align-self: start;
+  }
+  .cat-row .cat-rank {
+    display: none;
+  }
+  .cat-stats span {
+    display: none;
+  }
+  /* The claimed count shows as filled icons on the bar. */
+  .cat-meta > i:nth-of-type(2),
+  .cat-meta > span:nth-of-type(3) {
+    display: none;
+  }
+}
+#chart {
+  container: chart / inline-size;
+}
+@container chart (max-width: 760px) {
+  #chart .legend {
+    gap: 8px;
+  }
+  #chart .legend span {
+    white-space: nowrap;
+  }
+}
+.hist-table-card {
+  container: histtable / inline-size;
+}
+/* A narrow History table: the event filters as icons (each has its tooltip), and a shorter search. */
+@container histtable (max-width: 1240px) {
+  .group-chips .chip {
+    padding: 0 7px;
+  }
+  .group-chips .chip .chip-label {
+    display: none;
+  }
+  .hist-table-head .search {
+    width: 130px;
+  }
+}
+/* A short window: slightly tighter spacing, so the board keeps its room with some to spare. */
+@media (max-height: 820px) {
+  .content {
+    padding: 12px 16px 12px;
+    gap: 10px;
+  }
+  .hero-inner {
+    padding: 12px 18px 8px;
+    gap: 10px;
+  }
+  .stat {
+    padding: 10px 12px 9px;
+    gap: 4px;
+  }
 }

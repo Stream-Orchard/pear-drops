@@ -186,7 +186,7 @@ function timelineTable(d) {
         <td><span class="ev ${tone}">${icon(ic)}${label}</span></td>
         <td class="ellipsis">${e.campaign ? `<button class="link" data-action="hist-campaign" data-id="${esc(e.campaignId)}">${esc(e.campaign)}</button>` : esc(e.category ?? '')}</td>
         <td class="ellipsis">${e.channel ? `${img(e.avatar, 'avatar xs')}${esc(e.channel)}` : ''}</td>
-        <td class="ellipsis detail">${detail}</td>
+        <td class="ellipsis detail" ${(e.text ?? '').length > 60 ? `data-tip="${esc(e.text)}"` : ''}>${detail}</td>
         <td class="r num">${e.type === 'credit' ? `<b class="pos">+${e.delta}</b>` : e.type === 'credit-elsewhere' ? `<b class="neg">−${e.delta}</b>` : e.minutes ? `${e.minutes}m` : ''}</td>
       </tr>`;
     })
@@ -336,7 +336,7 @@ function renderHistory() {
     </div>
     ${filterBar}
     <div class="stats hist-kpis">
-      ${kpi('clock', 'teal', 'Watch time', fmtDur(t.watchMs), `${t.sessions} sessions · ${t.channels} channels`)}
+      ${kpi('clock', 'teal', 'Watch time', fmtDur(t.watchMs), `${t.sessions} sessions<span class="opt"> · ${t.channels} channels</span>`)}
       ${kpi('bolt', 'green', 'Credited', `${fmtCount(t.credited)}<small>min</small>`, `<span class="${(t.efficiency ?? 1) >= 0.85 ? 'delta-up' : 'delta-down'}">${pct(t.efficiency)}</span> efficient`)}
       ${kpi('gift', 'gold', 'Claimed', `${t.claims}<small>rewards</small>`, `${t.unlocks} unlocked · ${t.completed} done`)}
       ${kpi('reload', 'amber', 'Recoveries', `${t.stalls + t.reloads + t.offline}`, `${t.stalls} stalls · ${t.reloads} reloads`)}
@@ -371,7 +371,7 @@ function renderHistory() {
           <div class="spacer"></div>
           ${
             hist.table === 'timeline'
-              ? `<div class="group-chips">${GROUP_CHIPS.map(([id, label, ic]) => `<button class="chip ${hist.groups.includes(id) ? 'green' : ''}" data-action="hist-group" data-id="${id}">${icon(ic)}${label}</button>`).join('')}</div>
+              ? `<div class="group-chips">${GROUP_CHIPS.map(([id, label, ic]) => `<button class="chip ${hist.groups.includes(id) ? 'green' : ''}" data-action="hist-group" data-id="${id}" data-tip="${label} events">${icon(ic)}<span class="chip-label">${label}</span></button>`).join('')}</div>
                  <input id="hist-search" class="search" type="search" placeholder="Search events" value="${esc(hist.text)}" spellcheck="false" />`
               : ''
           }
