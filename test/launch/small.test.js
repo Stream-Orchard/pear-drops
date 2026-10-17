@@ -6,7 +6,8 @@ const { launchApp, until } = require('./app');
 
 let a;
 test.before(async () => {
-  a = await launchApp({ size: { width: 1280, height: 775 } });
+  // Inter, as on Linux: its lines run a little taller than the system font's.
+  a = await launchApp({ size: { width: 1280, height: 775 }, settings: { font: 'bundled' } });
   await a.farming();
 });
 test.after(async () => {
