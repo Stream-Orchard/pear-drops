@@ -256,6 +256,19 @@ test('a failed refresh retries soon, backing off up to the normal refresh, and r
   assert.equal(waits.at(-1), 5_000, 'the backoff starts over');
 });
 
+test('a raid or the end of a stream (Kick moving the player on) switches to the next stream and is recorded', async () => {
+  const { farmer, watcher, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('one', 1), live('two', 1)] } });
+  await farmer.tick();
+  const first = watcher.watching;
+  watcher.emit('left', { from: 'someone-else', to: 'x' });
+  assert.equal(watcher.watching, first, 'only the stream being watched counts');
+  watcher.emit('left', { from: first, to: 'pixelpete' });
+  await new Promise((r) => setImmediate(r));
+  assert.ok(watcher.watching && watcher.watching !== first, `moved on from ${first} to ${watcher.watching}`);
+  const ended = history.events.find((e) => e.type === 'offline');
+  assert.match(ended.text, /ended the stream and sent viewers to pixelpete/);
+});
+
 test('trayInfo shows the current drop as a fraction and percentage', async () => {
   const { farmer } = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 30 } });
   await farmer.tick();

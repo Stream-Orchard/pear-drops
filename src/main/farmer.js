@@ -93,6 +93,7 @@ class Farmer extends EventEmitter {
     });
     watcher.on('status', () => this.changed());
     watcher.on('crashed', ({ reason }) => this.handleCrash(reason));
+    watcher.on('left', (moved) => this.handleLeft(moved));
   }
 
   // ------------------------------------------------------------------ history
@@ -1083,6 +1084,19 @@ class Farmer extends EventEmitter {
     this.crashTimer = setTimeout(() => {
       if (this.current?.slug === cur.slug) this.watcher.reload();
     }, delay);
+  }
+
+  /** Kick sent the player on to another channel (a raid, or the stream ended): this stream is over. */
+  handleLeft({ from, to }) {
+    const cur = this.current;
+    if (!cur || cur.slug.toLowerCase() !== String(from).toLowerCase()) return;
+    const text = `${cur.username} ended the stream${to ? ` and sent viewers to ${to}` : ''}`;
+    this.addLog('switch', `${text}, switching stream`);
+    this.record('offline', { ...this.streamCtx(cur), text });
+    this.blacklist.set(cur.slug, Date.now() + 10 * MIN);
+    this.stopWatching('Stream ended');
+    this.buildModel();
+    this.pickStream().finally(() => this.changed());
   }
 
   /** After the computer sleeps the page and socket are usually dead. */

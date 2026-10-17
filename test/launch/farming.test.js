@@ -264,3 +264,20 @@ test('links leave for the browser, but demo mode only records them: it never ope
   // Switching streams (earlier tests do it) never sends a stream's own page to the browser.
   assert.deepEqual(opened.filter((u) => /player\.kick\.com|\/popout\//.test(u)), []);
 });
+
+test('a raid sends the player to another channel: it moves on to the next stream, and nothing opens in the browser', async () => {
+  const main = (fn) => a.app.evaluate(fn);
+  const before = await main(() => global.pdDebug.farmer.current?.slug);
+  assert.ok(before, 'watching a stream');
+  await main(() => global.pdDebug.watcher.view.webContents.executeJavaScript("location.href = 'https://player.kick.com/raidtarget'"));
+  let now = before;
+  for (let i = 0; i < 60 && (now === before || !now); i++) {
+    await a.win.waitForTimeout(250);
+    now = await main(() => global.pdDebug.farmer.current?.slug);
+  }
+  assert.ok(now && now !== before, `moved on from ${before} (now ${now})`);
+  const ended = await main(() => global.pdDebug.farmer.history.events.filter((e) => e.type === 'offline').map((e) => e.text));
+  assert.ok(ended.some((t) => /sent viewers to raidtarget/.test(t)), JSON.stringify(ended));
+  const opened = await main(() => global.pdOpened);
+  assert.deepEqual(opened.filter((u) => /player\.kick\.com|\/popout\//.test(u)), [], 'the raid target never opens in the browser');
+});

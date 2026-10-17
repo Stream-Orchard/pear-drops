@@ -18,6 +18,24 @@ const URLS = {
   page: (slug) => `${KICK}/${encodeURIComponent(slug)}`,
 };
 
+// kick.com pages with a one-word address that aren't channels.
+const KICK_PAGES = new Set(['browse', 'categories', 'category', 'following', 'search', 'dashboard', 'settings', 'subscriptions', 'terms-of-service', 'privacy-policy', 'community-guidelines', 'dmca-policy']);
+
+/** The channel a Kick stream page belongs to (its embed, popout chat or channel page), or null. */
+function streamChannel(url) {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    const kick = /(^|\.)kick\.com$/.test(u.hostname);
+    if (u.hostname === 'player.kick.com') return parts.length === 1 ? parts[0] : null;
+    if (kick && parts.length === 3 && parts[0] === 'popout' && parts[2] === 'chat') return parts[1];
+    if (kick && u.hostname !== 'player.kick.com' && parts.length === 1 && /^[\w-]{3,25}$/.test(parts[0]) && !KICK_PAGES.has(parts[0].toLowerCase())) return parts[0];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether two addresses are the same page, ignoring the query, hash and a trailing slash. */
 function samePage(a, b) {
   try {
@@ -128,17 +146,26 @@ class Watcher extends EventEmitter {
     // (or a page still left over from the previous stream doing so) isn't taken for a link click.
     let at = '';
     wc.on('did-navigate', (_event, url) => (at = url));
+    // A raid, or the end of a stream, sends Kick's page on to another channel. That isn't a link
+    // to open in the browser: this stream is over (and the chat just goes back to its own).
+    const movedOn = (url) => {
+      const to = streamChannel(url);
+      if (!to || to.toLowerCase() === this.slug.toLowerCase()) return false;
+      if (role === 'chat') this.load('chat');
+      else this.emit('left', { from: this.slug, to });
+      return true;
+    };
     // Stay on the stream: links that leave it open in the browser instead.
     wc.on('will-navigate', (event, url) => {
       if (!this.slug || this.isStreamUrl(url)) return;
       event.preventDefault();
-      if (!samePage(at, url)) shell.openExternal(url);
+      if (!movedOn(url) && !samePage(at, url)) shell.openExternal(url);
     });
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!isMainFrame) return;
       const from = at;
       at = url;
-      if (!this.slug || this.isStreamUrl(url) || samePage(from, url)) return;
+      if (!this.slug || this.isStreamUrl(url) || samePage(from, url) || movedOn(url)) return;
       shell.openExternal(url);
       if (wc.navigationHistory?.canGoBack()) wc.navigationHistory.goBack();
       else this.load(role);
@@ -312,4 +339,4 @@ class Watcher extends EventEmitter {
   }
 }
 
-module.exports = { Watcher, URLS, samePage };
+module.exports = { Watcher, URLS, samePage, streamChannel };
