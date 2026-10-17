@@ -29,6 +29,25 @@ const ELIGIBLE_RECHECK_MS = 5 * MIN;
 const CONFLICT_EVENTS = 3; // uncredited watch events (~2 min apart) before alerting
 const CONFLICT_REPEAT_MS = 10 * MIN;
 
+/** An https link from Kick (a campaign's About page, a connect link), or null. */
+const httpsLink = (url) => (typeof url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(url) ? url : null);
+
+/**
+ * Why Kick refused a claim, from its answer ({ data: { type, details, connect_url } }, which is
+ * what kick.com's own drops page reads): what to say, a link to connect a game account if Kick
+ * gives one, and how long to wait before trying again.
+ */
+function claimFailure(err) {
+  const d = err?.body?.data;
+  const type = typeof d?.type === 'string' ? d.type : null;
+  const details = typeof d?.details === 'string' && d.details.trim() ? d.details.trim().slice(0, 160) : null;
+  const connectUrl = httpsLink(d?.connect_url);
+  if (connectUrl) return { type: type ?? 'CONNECT', text: details ?? 'Kick needs a game account linked first', connectUrl, retryMs: 60 * MIN };
+  if (type === 'INVALID_CLAIM') return { type, text: details ?? 'Kick says this reward can’t be claimed on your account', retryMs: 60 * MIN };
+  if (type === 'FAILED_TO_CLAIM') return { type, text: details ?? 'Kick couldn’t claim it just now', retryMs: 10 * MIN };
+  return { type: type ?? 'ERROR', text: `Kick refused the claim (${err?.status ? `HTTP ${err.status}` : (err?.message ?? 'no answer')})`, retryMs: 10 * MIN };
+}
+
 // History events as Activity tab lines, by kind.
 const LOG_LEVEL = { claim: 'claim', 'watch-start': 'switch', 'watch-end': 'switch', decision: 'info', stall: 'warn', reload: 'warn', crash: 'warn', offline: 'warn', conflict: 'alert', error: 'error', start: 'info', pause: 'info', resume: 'info', wake: 'info' };
 
@@ -84,6 +103,7 @@ class Farmer extends EventEmitter {
     this.blacklist = new Map(); // slug -> until
     this.availability = new Availability(); // how often each category has a stream live
     this.claimBackoff = new Map(); // rewardId -> until
+    this.claimErrors = new Map(); // rewardId -> { type, text, connectUrl, at }: why Kick last refused it
     this.prevUnits = new Map(); // campaignId -> units
 
     this.model = { categories: [], campaigns: [] };
@@ -279,6 +299,8 @@ class Farmer extends EventEmitter {
           categoryId: c.category.id,
           image: this.img(c.category.image_url || c.category.banner_image_url || null),
           org: c.organization?.name,
+          url: httpsLink(c.url),
+          announcedAt: c.created_at ?? null,
           startsAt: c.starts_at,
           endsAt: c.ends_at,
           channels: c.channels?.length ?? 0,
@@ -425,6 +447,7 @@ class Farmer extends EventEmitter {
           tracked: kind !== 'game' || settings.includeGameDrops,
           claimed,
           ready: !claimed && (units >= r.required_units || (pr?.progress ?? 0) >= 1),
+          claimError: claimed ? null : (this.claimErrors.get(r.id) ?? null),
         };
       })
       .sort((a, b) => a.required - b.required);
@@ -452,6 +475,7 @@ class Farmer extends EventEmitter {
         category: cat.name ?? null,
         image: this.img(cat.image_url || cat.banner_image_url || null),
         org: c.organization?.name ?? c.org ?? null,
+        url: httpsLink(c.url),
         startsAt: c.starts_at ?? c.startsAt,
         endsAt: c.ends_at ?? c.endsAt,
         units,
@@ -571,6 +595,7 @@ class Farmer extends EventEmitter {
           channelIds: c.channels.map((ch) => ch.id),
           // A campaign that's part of a Kick event (its url is kick.com/events/<slug>).
           event: eventOf(c.url),
+          url: httpsLink(c.url),
           channels: c.channels.map((ch) => ({ id: ch.id, slug: ch.slug, username: ch.user?.username, avatar: ch.user?.profile_picture })),
           units,
           rewards,
@@ -848,6 +873,7 @@ class Farmer extends EventEmitter {
   async claimReady() {
     const now = Date.now();
     const sent = [];
+    let refused = false;
     for (const c of this.model.campaigns) {
       for (const r of c.rewards) {
         if (!r.ready || !r.tracked) continue;
@@ -856,14 +882,30 @@ class Farmer extends EventEmitter {
           await this.api.claim(c.id, r.id);
           sent.push([c, r]);
         } catch (err) {
-          this.claimBackoff.set(r.id, now + 10 * MIN);
-          this.addLog('warn', `Claim failed for ${r.name}: ${err.message}`);
-          this.record('claim-failed', { ...this.ctx(c.id), rewardId: r.id, reward: r.name, rewardImage: r.image, text: `Kick refused the claim (${err.message}), retrying in 10 min` });
+          this.claimRefused(c, r, err, now);
+          refused = true;
         }
       }
     }
+    // The rewards show why at once, not at the next refresh.
+    if (refused) this.buildModel();
     if (!sent.length) return;
     await this.confirmClaims(sent);
+  }
+
+  /** Kick refused a claim: says why (and links the game account if that's it), and waits a while before the next try. */
+  claimRefused(c, r, err, now = Date.now()) {
+    const why = claimFailure(err);
+    const known = this.claimErrors.get(r.id);
+    this.claimErrors.set(r.id, { type: why.type, text: why.text, connectUrl: why.connectUrl ?? null, at: now });
+    this.claimBackoff.set(r.id, now + why.retryMs);
+    const wait = why.retryMs >= 60 * MIN ? `${why.retryMs / (60 * MIN)} h` : `${why.retryMs / MIN} min`;
+    this.addLog('warn', `Claim failed for ${r.name}: ${why.text}`);
+    // Once per reason, not at every retry.
+    if (known?.type !== why.type || known?.text !== why.text) {
+      this.record('claim-failed', { ...this.ctx(c.id), rewardId: r.id, reward: r.name, rewardImage: r.image, reason: why.type, connectUrl: why.connectUrl, text: `Kick refused the claim: ${why.text}. Trying again in ${wait}` });
+    }
+    return why;
   }
 
   /** Re-reads progress and settles each sent claim as confirmed or not. */
@@ -874,6 +916,7 @@ class Farmer extends EventEmitter {
       const confirmed = byId.get(c.id)?.rewards?.find((x) => x.id === r.id)?.claimed;
       if (confirmed) {
         this.claimBackoff.delete(r.id);
+        this.claimErrors.delete(r.id);
         this.stats.claims += 1;
         this.pushTimeline({ t: Date.now(), type: 'claim', name: r.name });
         this.addLog('claim', `Claimed ${r.name} (${c.name}), confirmed by Kick`);
@@ -892,9 +935,29 @@ class Farmer extends EventEmitter {
     this.claimBackoff.delete(rewardId);
     const c = this.model.campaigns.find((x) => x.id === campaignId);
     const r = c?.rewards.find((x) => x.id === rewardId);
-    await this.api.claim(campaignId, rewardId);
+    try {
+      await this.api.claim(campaignId, rewardId);
+    } catch (err) {
+      const why = c && r ? this.claimRefused(c, r, err) : claimFailure(err);
+      this.buildModel();
+      this.changed();
+      return { error: why.text, connectUrl: why.connectUrl ?? null };
+    }
     if (c && r) await this.confirmClaims([[c, r]]);
     this.changed();
+    return { ok: true };
+  }
+
+  /**
+   * Links the pages may open in the browser besides kick.com: each campaign's About page and the
+   * connect links Kick gave, all from Kick's own answers (never anything a page makes up).
+   */
+  knownLinks() {
+    const links = new Set();
+    for (const c of this.rawCampaigns) for (const u of [c.url, c.connect_url]) if (httpsLink(u)) links.add(u);
+    for (const e of this.claimErrors.values()) if (e.connectUrl) links.add(e.connectUrl);
+    for (const entry of this.archive?.entries() ?? []) for (const u of [entry?.raw?.url, entry?.raw?.connect_url]) if (httpsLink(u)) links.add(u);
+    return links;
   }
 
 
@@ -1469,4 +1532,4 @@ class Farmer extends EventEmitter {
   }
 }
 
-module.exports = { Farmer, rewardKind, logFromHistory };
+module.exports = { Farmer, rewardKind, logFromHistory, claimFailure };

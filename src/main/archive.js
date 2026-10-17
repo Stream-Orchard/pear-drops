@@ -25,6 +25,7 @@ function slim(c) {
     starts_at: c.starts_at,
     ends_at: c.ends_at,
     connect_url: c.connect_url || null,
+    url: c.url || null, // its "About" page: an event, a category or the publisher's site
     category: c.category && { id: c.category.id, name: c.category.name, slug: c.category.slug, image_url: c.category.image_url || c.category.banner_image_url || null },
     organization: c.organization && { name: c.organization.name, logo_url: c.organization.logo_url || null },
     channelCount: c.channels?.length ?? 0,

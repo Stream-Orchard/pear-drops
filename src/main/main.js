@@ -517,6 +517,8 @@ function registerIpc() {
   ipcMain.handle('player:devtools', () => watcher.openDevTools());
   ipcMain.handle('open:external', (_e, url) => {
     if (/^https:\/\/(www\.)?kick\.com\//.test(url)) shell.openExternal(url);
+    // A drop's About page or a connect link, exactly as Kick gave them.
+    else if (typeof url === 'string' && farmer.knownLinks().has(url)) shell.openExternal(url);
     // Links in release notes, and the release page.
     else if (/^https:\/\/github\.com\//.test(url)) shell.openExternal(url);
   });

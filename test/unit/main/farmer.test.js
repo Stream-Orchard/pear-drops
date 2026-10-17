@@ -302,6 +302,43 @@ test("a drop limited to an event's channels finds them through the event, even o
   assert.ok(farmer.log.some((l) => /Could not list the event's streams \(HTTP 403\)/.test(l.text)));
 });
 
+test("a refused claim says why, in Kick's words: a link to connect the game account if that's it, and fewer retries for an invalid one", async () => {
+  const { claimFailure } = require('../../../src/main/farmer');
+  const refusal = (data, status = 400) => Object.assign(new Error(`HTTP ${status}`), { status, body: data && { data } });
+  assert.deepEqual(claimFailure(refusal({ type: 'INVALID_CLAIM' })), { type: 'INVALID_CLAIM', text: 'Kick says this reward can’t be claimed on your account', retryMs: 60 * MIN });
+  assert.equal(claimFailure(refusal({ type: 'FAILED_TO_CLAIM', details: 'Try again later' })).text, 'Try again later', "Kick's own details win");
+  assert.equal(claimFailure(refusal({ type: 'FAILED_TO_CLAIM' })).retryMs, 10 * MIN);
+  const link = claimFailure(refusal({ type: 'INVALID_CLAIM', connect_url: 'https://games.example/link' }));
+  assert.equal(link.connectUrl, 'https://games.example/link');
+  assert.equal(link.text, 'Kick needs a game account linked first');
+  assert.equal(claimFailure(refusal({ type: 'X', connect_url: 'javascript:alert(1)' })).connectUrl, undefined, 'only https links');
+  assert.equal(claimFailure(refusal(null, 500)).text, 'Kick refused the claim (HTTP 500)');
+
+  // In the app: the reward shows why, the link is allowed to open, and history notes it once.
+  const c = { ...campaign('a', { rewards: [{ id: 'a-r1', name: 'Hype Emote', required_units: 60, image_url: 'x' }] }), url: 'https://kick.com/events/safe-zone' };
+  const { farmer, api, history } = setup({ campaigns: [c], streams: { 1: [live('s', 1)] }, units: { a: 60 } });
+  api.claim = async () => {
+    throw refusal({ type: 'INVALID_CLAIM', connect_url: 'https://games.example/link' });
+  };
+  await farmer.tick();
+  const r = farmer.model.campaigns[0].rewards[0];
+  assert.equal(r.claimError.connectUrl, 'https://games.example/link');
+  assert.ok(farmer.claimBackoff.get('a-r1') > Date.now() + 59 * MIN, 'an hour before trying again');
+  farmer.claimBackoff.clear();
+  await farmer.tick();
+  assert.equal(history.events.filter((e) => e.type === 'claim-failed').length, 1, 'noted once per reason, not at every retry');
+  assert.ok(farmer.knownLinks().has('https://games.example/link'));
+  assert.ok(farmer.knownLinks().has('https://kick.com/events/safe-zone'), "the drop's About page");
+  assert.ok(!farmer.knownLinks().has('https://evil.example/'));
+  assert.equal(farmer.model.campaigns[0].url, 'https://kick.com/events/safe-zone');
+
+  // A claim by hand says why too; a confirmed one clears it.
+  assert.deepEqual(await farmer.claimOne('a', 'a-r1'), { error: 'Kick needs a game account linked first', connectUrl: 'https://games.example/link' });
+  api.claim = async (cid, rid) => api.claimed.add(rid);
+  assert.deepEqual(await farmer.claimOne('a', 'a-r1'), { ok: true });
+  assert.equal(farmer.claimErrors.size, 0);
+});
+
 test('the user order of categories wins over end dates', async () => {
   const first = campaign('a', { category: { id: 1, name: 'First' }, endsIn: 1 });
   const second = campaign('b', { category: { id: 2, name: 'Second' }, endsIn: 5 });

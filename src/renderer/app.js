@@ -188,7 +188,9 @@ function rewardLine(r, units, { roomy = false, rate = 1 } = {}) {
   const cls = r.claimed ? 'claimed' : r.ready ? 'ready' : '';
   const status = r.claimed
     ? `<span class="rl-status ok">${icon('check')} Claimed</span>`
-    : r.ready
+    : r.claimError
+      ? `<span class="rl-status bad" data-tip="${esc(r.claimError.text)}">${icon('alert')} Couldn’t claim</span>`
+      : r.ready
       ? `<span class="rl-status ready">Ready to claim</span>`
       : `<span class="rl-status num">${Math.min(units, r.required)}/${r.required}m</span>`;
   return `<div class="reward-line ${cls}" ${previewAttrs(r, units)}>
@@ -510,7 +512,7 @@ function queuePanel(f) {
               return `<div class="campaign">
                 <div class="campaign-head">
                   <span class="campaign-name">${esc(c.name)}</span>
-                  <button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(c.id)}" data-tip="This drop's history">${icon('list')} History</button>
+                  <button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(c.id)}" data-tip="This drop's history">${icon('list')} History</button>${detailsButton(c.url)}
                   ${c.watching ? '<span class="chip green">Watching</span>' : ''}
                   <span class="chip flat">${c.channels.length ? `${c.channels.length} channel${c.channels.length > 1 ? 's' : ''}` : 'any channel'} · ${esc(c.org ?? '')}</span>
                   <div class="spacer"></div>
@@ -522,7 +524,7 @@ function queuePanel(f) {
                     (r) =>
                       `<span class="mini-reward ${r.claimed ? 'claimed' : r.ready ? 'ready' : r.tracked ? '' : 'game'}" ${previewAttrs(r, c.units)}>${img(r.image)}${esc(r.name)} <em>${r.required}m</em>${
                         r.ready && r.tracked ? ` <button class="btn sm primary" data-action="claim" data-campaign="${esc(c.id)}" data-reward="${esc(r.id)}">Claim</button>` : ''
-                      }</span>`,
+                      }${r.tracked ? claimErrorHTML(r) : ''}</span>`,
                   )
                   .join('')}</div>
                 ${ready.length ? '' : ''}
@@ -574,6 +576,25 @@ function queuePanel(f) {
 // Coming soon: how long each announced drop shows before the next, unless one was picked.
 const COMING_EVERY_MS = 30_000;
 
+/** A drop's About page (an event, a category or the publisher's site), as a Details button. */
+function detailsButton(url) {
+  if (!url) return '';
+  let host = '';
+  try {
+    host = new URL(url).hostname.replace(/^www\./, '');
+  } catch {}
+  return `<button class="btn sm hist-btn" data-action="open-link" data-url="${esc(url)}" data-tip="${esc(host ? `Opens ${host}` : 'More about this drop')}">${icon('external')} Details</button>`;
+}
+
+/** Why Kick refused a reward's claim, with a button to link the game account if that's it. */
+function claimErrorHTML(r) {
+  const e = r.claimError;
+  if (!e) return '';
+  return `<span class="claim-error" data-tip="${esc(e.text)}">${icon('alert')} Couldn’t claim</span>${
+    e.connectUrl ? `<button class="btn sm" data-action="open-link" data-url="${esc(e.connectUrl)}">${icon('external')} Link your account</button>` : ''
+  }`;
+}
+
 /**
  * Drops Kick has announced but not started, at the foot of the Queue: one at a time, the next
  * every 30 seconds (not while the pointer is on it), with dots to pick one.
@@ -596,12 +617,12 @@ function comingCard(f) {
       ? `<span class="coming-dots">${list.map((x, i) => `<button class="coming-dot ${i === ui.comingIdx ? 'on' : ''}" data-action="coming-pick" data-id="${i}" data-tip="${esc(x.name)}"></button>`).join('')}</span>`
       : '';
   return `<div class="coming" data-key="coming-${esc(c.id)}">
-    <div class="coming-head"><span class="eyebrow">Coming soon</span>${list.length > 1 ? `<span class="card-sub">${ui.comingIdx + 1} of ${list.length}</span>` : ''}<span class="spacer"></span>${dots}</div>
+    <div class="coming-head"><span class="eyebrow">Coming soon</span>${list.length > 1 ? `<span class="card-sub">${ui.comingIdx + 1} of ${list.length}</span>` : ''}<span class="spacer"></span>${dots}${detailsButton(c.url)}</div>
     <div class="coming-body">
       ${img(c.image, 'coming-art', c.category)}
       <div class="coming-info">
         <b>${esc(c.name)}</b>
-        <span class="coming-when">${esc(c.category)} · starts ${when} · in ${fmtDur(starts - now)}</span>
+        <span class="coming-when">${esc(c.category)} · starts ${when} · in ${fmtDur(starts - now)}${c.announcedAt ? ` · announced ${fmtAgo(new Date(c.announcedAt).getTime())}` : ''}</span>
         <div class="coming-rewards">${c.rewards.map((r) => `<span class="mini-reward" ${previewAttrs(r, 0)}>${img(r.image)}${esc(r.name)} <em>${r.required}m</em></span>`).join('')}</div>
       </div>
     </div>
@@ -654,7 +675,7 @@ function donePanel(f) {
             <div class="cat-meta">${meta.map((m) => `<span>${m}</span>`).join('<i>·</i>')}</div>
             ${p.partial ? `<div class="past-partial" data-tip="Kick removed this drop before this version of the app could save its details">${icon('list')} From your history: ${p.units ? `${p.units} min credited` : 'watched, nothing credited'}</div>` : unitsTrack(p.name, p.units, p.rewards, { ended })}
           </div>
-          <button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(p.id)}" data-tip="This drop's history">${icon('list')} History</button>
+          <button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(p.id)}" data-tip="This drop's history">${icon('list')} History</button>${detailsButton(p.url)}
         </div>
         ${rewards ? `<div class="campaign-rewards">${rewards}</div>` : ''}
       </div>`;
@@ -1161,12 +1182,10 @@ const actions = {
     }
   },
   claim: async (el) => {
-    try {
-      await window.pd.claim(el.dataset.campaign, el.dataset.reward);
-    } catch {
-      toast({ title: 'Claim failed', body: 'Kick refused the claim. Try again in a minute.', kind: 'alert' });
-    }
+    const r = await window.pd.claim(el.dataset.campaign, el.dataset.reward).catch(() => ({ error: 'Kick didn’t answer. Try again in a minute.' }));
+    if (r?.error) toast({ title: 'Couldn’t claim it', body: r.connectUrl ? `${r.error}. Use Link your account on the reward.` : r.error, kind: 'alert' });
   },
+  'open-link': (el) => window.pd.openExternal(el.dataset.url),
   'setting-value': (el) => window.pd.setSettings({ [el.dataset.key]: el.dataset.id }),
   'coming-pick': (el) => {
     ui.comingIdx = Number(el.dataset.id);
