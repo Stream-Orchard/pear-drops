@@ -3428,7 +3428,9 @@ input[type='range']::-webkit-slider-thumb {
    ========================================================================= */
 .modal.settings-modal {
   width: min(860px, 94vw);
-  height: min(600px, 88vh);
+  /* Every tab fits this without scrolling (test/launch/farming.test.js checks); only the
+     changelog under Updates scrolls, inside itself. */
+  height: min(680px, 90vh);
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
   overflow: hidden;
@@ -3486,6 +3488,80 @@ input[type='range']::-webkit-slider-thumb {
 }
 .settings-pane .modal-head {
   padding-top: 22px;
+}
+/* Settings › Notifications: the kinds as tiles, two to a row. */
+.notify-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.notify-kind {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.notify-kind:hover {
+  border-color: var(--border-2);
+}
+.notify-kind.on {
+  border-color: rgba(83, 252, 24, 0.28);
+  background: var(--green-soft);
+}
+.notify-kind .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.notify-kind b {
+  font-size: 13px;
+  font-weight: 650;
+}
+.notify-kind .text span {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.notify-kind .switch {
+  flex: none;
+  pointer-events: none;
+}
+/* Settings › Updates: the changelog takes what room is left, and scrolls inside itself. */
+.settings-pane .modal-section.pane-updates {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.settings-pane .modal-section.pane-updates > * {
+  flex-shrink: 0;
+}
+/* A new version's notes stand in for the changelog until it's installed, and scroll the same way. */
+.settings-pane .modal-section.pane-updates > .upd-release {
+  flex: 0 1 auto;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+}
+.pane-updates .upd-release .upd-notes {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.settings-pane .modal-section.pane-updates > .upd-timeline {
+  flex: 1 1 auto;
+  min-height: 90px;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 /* Settings › Notifications › Check they work: what the test found. */
 .notify-result.shown {

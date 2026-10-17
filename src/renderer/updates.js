@@ -165,8 +165,7 @@ function updatesPane() {
     ${release}
     <div class="setting"><div class="text"><b>Update automatically</b><span>Downloads new versions in the background; they install when you restart.</span></div>${toggle}</div>
     <div class="setting"><div class="text"><b>GitHub repository</b><span>Where new versions come from. It must be public.</span></div>${repo}</div>
-    <h4 class="upd-h">What's new</h4>
-    ${changelogTimeline()}
+    ${release ? '' : `<h4 class="upd-h">What's new</h4>${changelogTimeline()}`}
     <p class="pane-note">Updating replaces the app, keeping the old version as a backup. Your login, settings, history and saved drops aren't touched.</p>`;
 }
 

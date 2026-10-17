@@ -266,6 +266,24 @@ test('Settings › Notifications: all off to start with; switches are saved, a t
   assert.ok(!(await notes()).some((n) => n.kind === 'trouble'), 'kinds that are off stay quiet');
 });
 
+test('every Settings tab fits without scrolling; only the changelog under Updates scrolls, inside itself', async () => {
+  await a.win.click('button.icon-only[data-action="settings"]');
+  const tabs = await a.win.$$eval('[data-action="settings-tab"]', (els) => els.map((e) => e.dataset.id));
+  assert.ok(tabs.length >= 8);
+  for (const id of tabs) {
+    await a.win.click(`[data-action="settings-tab"][data-id="${id}"]`);
+    if (id === 'updates') await until(a.win, () => document.querySelector('.upd-timeline li'), 'the changelog', 10000);
+    const [content, box] = await a.win.evaluate(() => {
+      const p = document.querySelector('.settings-pane');
+      return [p.scrollHeight, p.clientHeight];
+    });
+    assert.ok(content <= box + 1, `Settings › ${id} needs ${content - box}px of scrolling`);
+  }
+  const timeline = await a.win.evaluate(() => getComputedStyle(document.querySelector('.pane-updates .upd-timeline')).overflowY);
+  assert.equal(timeline, 'auto', 'the changelog scrolls inside itself');
+  await a.win.keyboard.press('Escape');
+});
+
 test('the tray popover shows the current drop and controls', async () => {
   await a.demo((d) => d.openTray());
   const pop = await until(a.win, () => true, 'tray').then(async () => {
