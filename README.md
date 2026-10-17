@@ -134,4 +134,8 @@ Only the first two stop the Keychain prompt after updates. Release builds should
 
 ## Disclaimer
 
-Pear Drops isn't affiliated with or endorsed by Kick. Automating watch time may be against Kick's terms; use it at your own risk.
+Pear Drops isn't affiliated with or endorsed by Kick.
+
+## License
+
+Pear Drops is free software under the [GNU General Public License v3.0](LICENSE).
