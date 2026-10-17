@@ -154,6 +154,18 @@ document.addEventListener(
   true,
 );
 
+// Focus rings are for the keyboard: a click (or the docked stream handing focus back) never
+// leaves one on a button. Tab and the arrow keys bring them back.
+document.documentElement.dataset.input = 'pointer';
+document.addEventListener('pointerdown', () => (document.documentElement.dataset.input = 'pointer'), true);
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key === 'Tab' || e.key.startsWith('Arrow')) document.documentElement.dataset.input = 'keys';
+  },
+  true,
+);
+
 // The app's font (settings.font, see styles.css): the system's own (SF Pro, Segoe UI), or the
 // bundled Inter, which measures the same everywhere. Linux uses Inter unless told otherwise.
 function applyFont(choice) {

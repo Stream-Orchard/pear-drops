@@ -194,6 +194,9 @@ function timelineTable(d) {
     .join('')}</tbody></table>`;
 }
 
+/** Why a session ended, without the figures in brackets ("IRL ends sooner (6d 22h vs …)"); hover has them. */
+const shortReason = (reason) => reason.replace(/\s*\([^)]*\)\s*$/, '');
+
 function sessionsTable(d) {
   if (!d.sessions.length) return `<div class="empty">${icon('play')}No watch sessions in this range.</div>`;
   return `<table class="htable"><thead><tr><th>Stream</th><th>Drop</th><th>Started</th><th class="r">Watched</th><th class="r">Credited</th><th>Efficiency</th><th>Issues</th><th>Ended</th></tr></thead><tbody>${d.sessions
@@ -206,7 +209,7 @@ function sessionsTable(d) {
         <td class="r num"><b class="pos">${s.credited}m</b></td>
         <td>${effBar(s.efficiency)}</td>
         <td class="nowrap">${s.stalls ? `<span class="chip amber tiny">${s.stalls} stall${s.stalls > 1 ? 's' : ''}</span>` : ''}${s.reloads ? ` <span class="chip tiny">${s.reloads} reload${s.reloads > 1 ? 's' : ''}</span>` : ''}</td>
-        <td class="ellipsis muted">${s.open ? '<span class="chip green tiny"><span class="live-dot green"></span>Watching now</span>' : esc(s.reason ?? '')}</td>
+        <td class="ellipsis muted" ${s.reason && shortReason(s.reason) !== s.reason ? `data-tip="${esc(s.reason)}"` : ''}>${s.open ? '<span class="chip green tiny"><span class="live-dot green"></span>Watching now</span>' : esc(shortReason(s.reason ?? ''))}</td>
       </tr>`,
     )
     .join('')}</tbody></table>`;
@@ -289,7 +292,7 @@ function renderHistory() {
         ${img(cat?.image ?? sv?.image, 'drop-art')}
         <span class="drop-info"><b>${esc(c.campaign ?? 'Unknown drop')}</b><span class="muted">${esc(c.category ?? '')} · ${fmtDur(c.watchMs)} watched</span>
         <span class="mini-bar"><i style="width:${target ? Math.min(100, (units / target) * 100) : done ? 100 : 0}%"></i></span></span>
-        <span class="drop-stats"><b class="pos">+${c.credited}m</b><span>${done ? `${icon('check')} done` : missed ? `missed ${sv.total - sv.claimed}` : c.claims ? `${c.claims} claimed` : target ? `${units}/${target}` : ''}</span></span>
+        <span class="drop-stats"><b class="pos">+${c.credited}m</b><span>${done ? `${icon('check')} done` : missed ? (sv.total > sv.claimed ? `missed ${sv.total - sv.claimed}` : 'ended') : c.claims ? `${c.claims} claimed` : target ? `${units}/${target}` : ''}</span></span>
       </button>`;
     })
     .join('');
@@ -327,7 +330,7 @@ function renderHistory() {
     el,
     `<div class="hist-toolbar">
       <div class="hist-title">${selected ? img(selectedImage, 'hist-title-art') : ''}<h2>${selected ? esc(selected.campaign) : 'History'}</h2>
-        <span class="card-sub">${selected ? `${esc(selected.category ?? '')}${selected.firstAt ? ` · first seen ${fmtStamp(selected.firstAt)}` : ' · nothing recorded yet'}${!liveCampaign && savedSel ? ` · ${savedSel.status === 'missed' ? `missed ${savedSel.total - savedSel.claimed} of ${savedSel.total}` : 'completed'}${savedSel.onKick ? '' : ', saved after Kick removed it'}` : ''}` : d.first ? `All drops · recording since ${fmtDay(d.first)}` : 'Nothing recorded yet'}</span></div>
+        <span class="card-sub">${selected ? `${esc(selected.category ?? '')}${selected.firstAt ? ` · first seen ${fmtStamp(selected.firstAt)}` : ' · nothing recorded yet'}${!liveCampaign && savedSel ? ` · ${savedSel.status === 'missed' ? (savedSel.total > savedSel.claimed ? `missed ${savedSel.total - savedSel.claimed} of ${savedSel.total}` : 'ended') : 'completed'}${savedSel.onKick ? '' : ', saved after Kick removed it'}` : ''}` : d.first ? `All drops · recording since ${fmtDay(d.first)}` : 'Nothing recorded yet'}</span></div>
       ${selected ? `<button class="chip green clear-chip" data-action="hist-campaign" data-id="">${icon('chevronLeft')} All drops</button>` : ''}
       <div class="spacer"></div>
       <div class="tabs">${RANGES.map(([id, label]) => `<button class="tab ${hist.range === id ? 'active' : ''}" data-action="hist-range" data-id="${id}">${label}</button>`).join('')}</div>

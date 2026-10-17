@@ -1,4 +1,4 @@
-/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -317,7 +317,6 @@ function renderStats() {
   const fc = primary ? f.forecast[primary.id] : null;
   const tracked = f.categories.flatMap(trackedRewards);
   const claimedAll = tracked.filter((r) => r.claimed).length;
-  const credits = f.timeline.filter((e) => e.type === 'credit').length;
   const p = f.player ?? {};
   const health = streamHealth(f);
   const player = health ? [health.label, health.tone, health.foot] : ['Idle', '', 'nothing playing'];
@@ -347,7 +346,7 @@ function renderStats() {
         'users',
         'violet',
         'Watch events',
-        `${s.eventsSent}<small>${credits} credited</small>`,
+        `${s.eventsSent}<small>sent</small>`,
         !f.current ? 'none while idle' : nextEvent === null ? 'first one soon' : nextEvent > 0 ? `next in ${fmtDur(nextEvent)}` : 'next due now',
         f.eventsSinceCredit >= 2 ? `<span class="chip ${conflictTone === 'bad' ? 'red' : 'amber'}">${f.eventsSinceCredit} uncredited</span>` : '',
       ),
@@ -535,7 +534,7 @@ function queuePanel(f) {
             }
           </div>
           <div class="cat-controls">
-            ${locked ? '' : `<button class="switch ${cat.enabled ? 'on' : ''}" data-action="cat-toggle" data-id="${cat.id}" data-tip="${cat.enabled ? 'Farming this category' : 'Skipping this category'}"></button>`}
+            ${locked ? '' : `<button class="switch soft ${cat.enabled ? 'on' : ''}" data-action="cat-toggle" data-id="${cat.id}" data-tip="${cat.enabled ? 'Farming this category' : 'Skipping this category'}"></button>`}
           </div>
         </div>
         ${campaigns}
@@ -549,7 +548,8 @@ function queuePanel(f) {
       <button class="mode-opt ${smart ? '' : 'active'}" data-action="queue-mode" data-id="manual" data-tip="Your own order (drag to arrange)">${icon('grip')}<span>Manual</span></button>
     </div>`;
   const note = smart ? '<b>Running out first.</b> Rare drops while they’re live.' : '<b>Your order.</b> Drag to rearrange.';
-  return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>Click a category for its drops.</span></p></div>
+  const toGo = cats.flatMap(trackedRewards).filter((r) => !r.claimed).length;
+  return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>${toGo ? `${toGo} reward${toGo > 1 ? 's' : ''} to go · ` : ''}click a category for its drops.</span></p></div>
     <div class="queue-list">${rows || `<div class="empty">${icon('gift')}${f.categories.length ? 'Every drop is collected. Finished ones are in Done.' : 'No active emote or badge drops right now.'}</div>`}</div>`;
 }
 
@@ -585,7 +585,8 @@ function donePanel(f) {
         : p.partial
           ? `<span class="chip red" data-tip="Ended without every reward claimed">Missed</span>`
           : `<span class="chip ${p.claimed ? 'amber' : 'red'}" data-tip="${p.claimed ? `${p.total - p.claimed} reward${p.total - p.claimed > 1 ? 's' : ''} left unclaimed` : 'Ended before any reward was earned'}">${p.claimed ? `${p.claimed}/${p.total} claimed` : 'Missed'}</span>`;
-      const meta = [esc(p.category ?? ''), when, done && p.onKick && !ended ? fmtEnds(p.endsAt) : ''].filter(Boolean);
+      // A finished drop can still be running on Kick for others: say so plainly.
+      const meta = [esc(p.category ?? ''), when, done && p.onKick && !ended ? `still live, ${fmtEnds(p.endsAt)}` : ''].filter(Boolean);
       const rewards = p.rewards
         .filter((r) => r.tracked)
         .map((r) => `<span class="mini-reward ${r.claimed ? 'claimed' : 'missed'}" ${previewAttrs(r, p.units, !r.claimed && ended)}>${img(r.image)}${esc(r.name)} <em>${r.claimed ? icon('check') : `${r.required}m`}</em></span>`)
@@ -642,13 +643,32 @@ function streamsPanel(f) {
 
 const LOG_ICON = { credit: 'bolt', claim: 'gift', switch: 'play', warn: 'alert', error: 'alert', alert: 'bell', info: 'pulse' };
 
+/** The log, newest first, with a run of credits on one drop as one line ("+8 min on X · 142 → 148 min"). */
+function activityRows(log) {
+  const rows = [];
+  for (const l of [...log].reverse().slice(0, 300)) {
+    const m = l.level === 'credit' && /^\+(\d+) min on (.+) \((\d+) total\)$/.exec(l.text);
+    const prev = rows[rows.length - 1];
+    if (m && prev?.credit && prev.credit.name === m[2]) {
+      prev.credit.delta += Number(m[1]);
+      prev.credit.from = Number(m[3]) - Number(m[1]);
+      prev.credit.count += 1;
+      prev.first = l.t;
+      continue;
+    }
+    rows.push({ ...l, first: l.t, credit: m ? { name: m[2], delta: Number(m[1]), from: Number(m[3]) - Number(m[1]), to: Number(m[3]), count: 1 } : null });
+  }
+  return rows.slice(0, 150).map((r) =>
+    r.credit && r.credit.count > 1 ? { ...r, text: `+${r.credit.delta} min on ${r.credit.name} · ${r.credit.from} → ${r.credit.to} min` } : r,
+  );
+}
+
 function activityPanel(f) {
-  const items = [...f.log]
-    .reverse()
-    .slice(0, 150)
+  const clock = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const items = activityRows(f.log)
     .map(
       (l) => `<div class="log-item lv-${l.level}"><span class="log-icon">${icon(LOG_ICON[l.level] ?? 'pulse')}</span>
-        <span class="log-text">${esc(l.text)}</span><span class="log-time">${new Date(l.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>`,
+        <span class="log-text">${esc(l.text)}</span><span class="log-time">${l.first !== l.t ? `${clock(l.first)}–${clock(l.t)}` : clock(l.t)}</span></div>`,
     )
     .join('');
   return `<div class="log">${items || `<div class="empty">${icon('pulse')}Nothing yet.</div>`}</div>`;
@@ -660,11 +680,12 @@ function renderSide() {
   const f = farm();
   const el = $('#side');
   if (!f) return setHTML(el, '<div class="card-body"><div class="skeleton" style="height:100%"></div></div>');
-  const left = f.categories.flatMap(trackedRewards).filter((r) => !r.claimed).length;
+  // What the Queue tab lists: the categories with drops still to collect.
+  const queued = f.categories.filter((c) => !c.complete).length;
   const streams = f.categories.find((c) => c.id === (f.current?.categoryId ?? ui.selectedCategory))?.streamCount ?? 0;
   const pastCount = (f.past ?? []).length;
   const tabs = [
-    ['queue', 'list', 'Queue', `${left} left`],
+    ['queue', 'list', 'Queue', queued ? String(queued) : ''],
     ['done', 'trophy', 'Done', pastCount ? String(pastCount) : ''],
     ['streams', 'eye', 'Streams', streams ? `${streams} live` : ''],
     ['activity', 'pulse', 'Activity', ''],
@@ -877,7 +898,10 @@ function toast({ title, body, kind = '', image }) {
   el.className = `toast ${kind}`;
   el.innerHTML = `${image ? img(image) : `<span class="stat-icon ${kind === 'claim' ? 'gold' : 'green'}" style="width:36px;height:36px">${icon(kind === 'alert' ? 'alert' : 'gift')}</span>`}
     <div><b>${esc(title)}</b><span>${esc(body)}</span></div>`;
-  $('#toasts').appendChild(el);
+  // Bottom right of the dashboard, clear of the docked stream (and of the charts on the left).
+  const host = $('#toasts');
+  host.style.right = `${Math.max(24, innerWidth - popupWall(innerHeight - 220, innerHeight) + 24)}px`;
+  host.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity .3s, transform .3s';
     el.style.opacity = '0';
