@@ -100,3 +100,23 @@ test('the font: the system one on macOS and Windows, the bundled Inter on Linux,
   assert.equal(font('MacIntel', 'bundled'), 'bundled');
   assert.equal(font('MacIntel', 'comic-sans'), 'system', 'an unknown choice falls back to the default');
 });
+
+test('progressChart: a forecast many hours out reaches the target, with the past wide enough for its labels', () => {
+  const now = Date.now();
+  // 6 of 600 minutes, done in about 20 h (the 12 h cap once stopped the line short of it).
+  ctx.far = { points: [[now - 10 * MIN, 0], [now, 6]], rewards: [{ name: 'Safe Badge', required: 600, tracked: true }], target: 600, now, rate: 0.5, width: 900, height: 300 };
+  const svg = run('progressChart(far)');
+  assert.ok(!/NaN|Infinity/.test(svg));
+  assert.match(svg, /Done .* · 19h 4[0-9]m|Done .* · 1[89]h|Done .* · 20h/, 'the finish is marked, not off the edge');
+  const proj = svg.match(/class="projection"/) && svg.match(/<path d="M([\d.]+),([\d.]+) L([\d.]+),([\d.]+)" class="projection"/);
+  const yTarget = svg.match(/<line x1="[\d.]+" x2="[\d.]+" y1="([\d.]+)" y2="[\d.]+" class="guide"/)?.[1];
+  assert.ok(proj, 'a projection is drawn');
+  assert.ok(Math.abs(Number(proj[4]) - Number(yTarget)) < 1, 'the projection ends on the target line');
+  const xNow = Number(svg.match(/<line x1="([\d.]+)" x2="[\d.]+" y1="[\d.]+" y2="[\d.]+" class="now-line"/)[1]);
+  assert.ok(xNow - 42 > 120, `the past keeps room for its labels (now at x=${xNow})`);
+  assert.match(svg, /CREDITED/);
+
+  // Further out than two weeks: the edge says when instead.
+  ctx.farther = { ...ctx.far, rate: 0.021 };
+  assert.match(run('progressChart(farther)'), /Done in \d+d/);
+});
