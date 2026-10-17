@@ -1,8 +1,10 @@
 /* =========================================================================
    Pear Drops: fonts
-   The app ships its own fonts (assets/fonts, SIL Open Font License), so text has the
-   same widths on macOS, Windows and Linux and the layout doesn't depend on what the
-   system has installed. Other scripts fall back to the system's fonts.
+   macOS and Windows use the system's own font. The app also ships Inter and JetBrains
+   Mono (assets/fonts, SIL Open Font License), which measure the same everywhere: Linux
+   uses them by default, so its layout doesn't depend on what the distribution
+   installed, and Settings › App › Font switches any system to them. Other scripts fall
+   back to the system's fonts.
    ========================================================================= */
 @font-face {
   font-family: 'PD Inter';
@@ -73,12 +75,18 @@
   --shadow: 0 1px 0 var(--highlight) inset, 0 10px 30px -12px rgba(0, 0, 0, 0.6);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --font: 'PD Inter', system-ui, sans-serif;
-  --font-display: 'PD Inter', system-ui, sans-serif;
-  --mono: 'PD Mono', ui-monospace, monospace;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'SF Mono', ui-monospace, Consolas, Menlo, monospace;
 
   --titlebar-h: 60px;
   color-scheme: dark;
+}
+/* Settings › App › Font: the bundled fonts instead of the system's (applyFont in format.js). */
+:root[data-font='bundled'] {
+  --font: 'PD Inter', system-ui, sans-serif;
+  --font-display: 'PD Inter', system-ui, sans-serif;
+  --mono: 'PD Mono', ui-monospace, monospace;
 }
 
 * {

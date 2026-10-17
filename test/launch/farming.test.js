@@ -209,6 +209,23 @@ test('settings toggles are saved', async () => {
   await a.win.keyboard.press('Escape');
 });
 
+test('Settings › App › Font switches between the system font and the bundled Inter, and is saved', async () => {
+  const font = () => a.win.evaluate(() => [document.documentElement.dataset.font, getComputedStyle(document.body).fontFamily]);
+  const [start] = await font();
+  assert.equal(start, process.platform === 'linux' ? 'bundled' : 'system', 'Inter on Linux, the system font elsewhere');
+  const other = start === 'bundled' ? 'system' : 'bundled';
+  await a.win.click('button.icon-only[data-action="settings"]');
+  await a.win.click('[data-action="settings-tab"][data-id="app"]');
+  await a.win.click(`[data-key="font"][data-id="${other}"]`);
+  await until(a.win, (f) => document.documentElement.dataset.font === f, 'the other font', 10000, other);
+  const [, family] = await font();
+  assert.equal(family.startsWith('"PD Inter"'), other === 'bundled', family);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8')).font, other);
+  await a.win.click(`[data-key="font"][data-id="${start}"]`);
+  await until(a.win, (f) => document.documentElement.dataset.font === f, 'the first font again', 10000, start);
+  await a.win.keyboard.press('Escape');
+});
+
 test('the tray popover shows the current drop and controls', async () => {
   await a.demo((d) => d.openTray());
   const pop = await until(a.win, () => true, 'tray').then(async () => {

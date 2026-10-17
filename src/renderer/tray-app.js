@@ -1,4 +1,4 @@
-/* global previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, setHTML, img */
+/* global previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 
@@ -21,6 +21,7 @@ function statusLine(f) {
 function render() {
   const root = $('#tray');
   if (!state) return;
+  applyFont(state.settings?.font);
   if (state.auth.status !== 'signed-in' || !state.farm) {
     setHTML(
       root,

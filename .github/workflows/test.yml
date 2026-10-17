@@ -46,4 +46,5 @@ jobs:
       - name: Coverage (unit) with per-file minimums
         run: npm run test:coverage
       - name: Launch tests (real app, demo mode, hidden and muted)
-        run: xvfb-run -a npm run test:launch
+        # A screen bigger than the test window, in full colour (xvfb-run's default is small and 8-bit).
+        run: xvfb-run -a --server-args="-screen 0 1920x1200x24" npm run test:launch

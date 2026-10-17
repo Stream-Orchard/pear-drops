@@ -1,4 +1,4 @@
-/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, setHTML, widthOf, img */
+/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -754,6 +754,7 @@ function renderModal() {
       ${row('Stream panel', 'Light shows Kick’s embed player with the popout chat, like Stream Multiview: much lighter on your computer. Full shows the whole channel page. Both earn drops the same way.', seg('setting-value', s.playerMode === 'full' ? 'full' : 'light', [['light', 'Light'], ['full', 'Full page']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="playerMode"'))}
       ${s.playerMode === 'full' ? '' : row('Show chat under the stream', 'Hide it to save a little more.', toggle('showChat', s.showChat !== false))}
       ${s.playerMode === 'full' ? row('Stream quality', 'Drops credit the same at any quality; lower uses less CPU and data.', seg('setting-value', String(s.playerQuality ?? 'auto'), [['160', '160p'], ['360', '360p'], ['720', '720p'], ['auto', 'Auto']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="playerQuality"')) : ''}
+      ${row('Font', `System uses your computer’s own font${mac ? ' (SF Pro)' : navigator.platform.startsWith('Win') ? ' (Segoe UI)' : ''}. Inter comes with the app and looks the same on every computer.`, seg('setting-value', s.font === 'bundled' ? 'bundled' : 'system', [['system', 'System'], ['bundled', 'Inter']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="font"'))}
       ${row(`Keep running in the ${tray}`, `Closing or minimizing the window keeps farming. Quit from the ${tray} icon.`, toggle('minimizeToTray', s.minimizeToTray))}
       ${row('Show progress next to the icon', `The current drop's percentage beside the ${tray} ring.`, toggle('trayPercent', s.trayPercent))}
       ${row('Keep the player unmuted', 'Sound is always muted at the window. Leaving the player itself unmuted keeps it playing normally in the background.', toggle('unmutePlayer', s.unmutePlayer))}`,
@@ -882,6 +883,7 @@ function checkToasts() {
 
 function render({ tick = false } = {}) {
   if (!state) return;
+  applyFont(state.settings?.font);
   const signedIn = state.auth.status === 'signed-in';
   $('#welcome').hidden = signedIn;
   $('#app').hidden = !signedIn;

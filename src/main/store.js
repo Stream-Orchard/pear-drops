@@ -23,6 +23,7 @@ const DEFAULTS = {
   queueMode: 'manual', // 'manual': the user's order · 'smart': soonest-expiring first
   minimizeToTray: true,
   trayPercent: true,
+  font: process.platform === 'linux' ? 'bundled' : 'system', // 'system': SF Pro, Segoe UI · 'bundled': Inter, the same everywhere
   window: null, // { bounds, maximized }: remembered between launches
   categoryOrder: [],
   disabledCategories: [],

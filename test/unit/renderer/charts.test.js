@@ -7,7 +7,7 @@ const vm = require('node:vm');
 
 const DIR = path.join(__dirname, '..', '..', '..', 'src', 'renderer');
 const noop = () => {};
-const ctx = vm.createContext({ document: { querySelector: () => null, addEventListener: noop, documentElement: { addEventListener: noop } }, window: { addEventListener: noop }, Date, Math, Number, String, Array, JSON, Intl });
+const ctx = vm.createContext({ document: { querySelector: () => null, addEventListener: noop, documentElement: { addEventListener: noop, dataset: {} } }, window: { addEventListener: noop }, navigator: { platform: 'MacIntel' }, Date, Math, Number, String, Array, JSON, Intl });
 for (const file of ['icons.js', 'charts.js', 'format.js']) vm.runInContext(fs.readFileSync(path.join(DIR, file), 'utf8'), ctx, { filename: file });
 const run = (code) => vm.runInContext(code, ctx);
 const MIN = 60_000;
@@ -89,4 +89,14 @@ test('the brand mark draws with plain fills, so every copy shows', () => {
   const svg = run('brandMark(28)');
   assert.match(svg, /width="28"/);
   assert.doesNotMatch(svg, /\sid=|url\(#/);
+});
+
+test('the font: the system one on macOS and Windows, the bundled Inter on Linux, or whatever was chosen', () => {
+  const font = (platform, choice) => run(`navigator.platform = ${JSON.stringify(platform)}; applyFont(${JSON.stringify(choice)}); document.documentElement.dataset.font`);
+  assert.equal(font('MacIntel'), 'system', 'set as the page loads, before any settings arrive');
+  assert.equal(font('Win32'), 'system');
+  assert.equal(font('Linux x86_64'), 'bundled');
+  assert.equal(font('Linux x86_64', 'system'), 'system');
+  assert.equal(font('MacIntel', 'bundled'), 'bundled');
+  assert.equal(font('MacIntel', 'comic-sans'), 'system', 'an unknown choice falls back to the default');
 });

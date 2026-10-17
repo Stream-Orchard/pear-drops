@@ -97,6 +97,13 @@ function morphNode(cur, want) {
 
 const img = (src, cls = '', alt = '') => (src ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" decoding="async" referrerpolicy="no-referrer" />` : `<span class="${cls}"></span>`);
 
+// The app's font (settings.font, see styles.css): the system's own (SF Pro, Segoe UI), or the
+// bundled Inter, which measures the same everywhere. Linux uses Inter unless told otherwise.
+function applyFont(choice) {
+  const font = choice === 'system' || choice === 'bundled' ? choice : navigator.platform.startsWith('Linux') ? 'bundled' : 'system';
+  if (document.documentElement.dataset.font !== font) document.documentElement.dataset.font = font;
+}
+applyFont();
 
 // ------------------------------------------------------------------ tooltips
 /**
