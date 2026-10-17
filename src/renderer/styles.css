@@ -302,6 +302,11 @@ button {
   background: rgba(167, 139, 250, 0.1);
   border-color: rgba(167, 139, 250, 0.22);
 }
+.chip.violet {
+  color: var(--violet);
+  background: rgba(167, 139, 250, 0.1);
+  border-color: rgba(167, 139, 250, 0.22);
+}
 .chip.pink {
   color: #ff7ab6;
   background: rgba(255, 122, 182, 0.1);

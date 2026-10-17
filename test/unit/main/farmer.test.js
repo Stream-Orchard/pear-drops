@@ -269,6 +269,70 @@ test('a raid or the end of a stream (Kick moving the player on) switches to the 
   assert.match(ended.text, /ended the stream and sent viewers to pixelpete/);
 });
 
+/** Common (category 1, ends in a day) always has a stream on; Rare (2, ends in 3 days) one hour in ten. */
+function commonAndRare(settings) {
+  const { Availability } = require('../../../src/main/availability');
+  const common = campaign('c', { category: { id: 1, name: 'Common' }, endsIn: 1 });
+  const rare = campaign('r', { category: { id: 2, name: 'Rare' }, endsIn: 3 });
+  const env = setup({ campaigns: [common, rare], streams: { 1: [live('everyday', 1)], 2: [live('sometimes', 2)] } }, { queueMode: 'smart', ...settings });
+  const seen = { 1: {}, 2: {} };
+  const hour = Math.floor(Date.now() / 3600_000);
+  for (let h = 1; h <= 40; h++) {
+    seen[1][hour - h] = 1;
+    seen[2][hour - h] = h % 10 === 0 ? 1 : 0;
+  }
+  env.farmer.availability = new Availability(seen);
+  return env;
+}
+
+test('Smart order catches a rarely live drop while it is on, ahead of a common one that ends sooner', async () => {
+  const { farmer, watcher, history } = commonAndRare();
+  await farmer.tick();
+  const [first, second] = farmer.model.categories;
+  assert.equal(first.id, 2, 'Rare first: about 7h of live time left, against a day for Common');
+  assert.equal(first.rarelyLive, true);
+  assert.equal(second.rarelyLive, false);
+  assert.equal(watcher.watching, 'sometimes');
+  assert.ok(history.events.some((e) => e.type === 'decision' && /rarely live \(live 1\d% of the past week\)/.test(e.text)), 'the pick says why');
+});
+
+test('Favour rarely live drops: Some weighs the live rate less, Off sorts by end time alone', async () => {
+  const some = commonAndRare({ smartRarity: 'some' });
+  await some.farmer.tick();
+  const [rare, common] = [2, 1].map((id) => some.farmer.model.categories.find((c) => c.id === id));
+  assert.ok(rare.liveEnd - Date.now() > 0.9 * 86_400_000, 'about a day of live time left at Some, not 7 hours');
+  assert.ok(rare.liveEnd < common.liveEnd + 3 * 3600_000);
+
+  const off = commonAndRare({ smartRarity: 'off' });
+  await off.farmer.tick();
+  assert.equal(off.farmer.model.categories[0].id, 1, 'Common first: it ends sooner');
+  assert.equal(off.watcher.watching, 'everyday');
+  assert.equal(off.farmer.model.categories[1].rarelyLive, true, 'still shown as rare');
+  assert.ok(!off.history.events.some((e) => /rarely live/.test(e.text ?? '')), 'but not given as a reason');
+});
+
+test('Switch streams for: Smart only leaves a working stream for a drop with that much less live time left', async () => {
+  // Watching Common; Rare comes online with about 7h of live time left against Common's day.
+  for (const [minutes, moves] of [[30, true], [24 * 60, false]]) {
+    const { farmer, watcher, api } = commonAndRare({ smartHopMinutes: minutes });
+    api.offline.add('sometimes');
+    await farmer.tick();
+    assert.equal(watcher.watching, 'everyday');
+    api.offline.delete('sometimes');
+    farmer.streams.clear();
+    await farmer.tick();
+    assert.equal(watcher.watching, moves ? 'sometimes' : 'everyday', `with ${minutes} min`);
+  }
+});
+
+test('without a week of looks yet, Smart order is soonest-ending first as before', async () => {
+  const common = campaign('c', { category: { id: 1, name: 'Common' }, endsIn: 1 });
+  const rare = campaign('r', { category: { id: 2, name: 'Rare' }, endsIn: 3 });
+  const { farmer } = setup({ campaigns: [common, rare], streams: { 1: [live('everyday', 1)], 2: [live('sometimes', 2)] } }, { queueMode: 'smart' });
+  await farmer.tick();
+  assert.deepEqual(farmer.model.categories.map((c) => [c.id, c.liveRate]), [[1, null], [2, null]]);
+});
+
 test('trayInfo shows the current drop as a fraction and percentage', async () => {
   const { farmer } = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 30 } });
   await farmer.tick();
@@ -406,6 +470,8 @@ test('the startup cache shows the last known drops at once, and history rebuilds
   assert.equal(second.farmer.status.code, 'starting');
   assert.deepEqual(second.farmer.samples[0].units, { a: 18 });
   assert.equal(second.farmer.prevUnits.size, 0, 'cached progress is not a credit baseline');
+  assert.deepEqual(second.farmer.availability.toJSON(), first.farmer.availability.toJSON(), 'how often each category is live is kept too');
+  assert.ok(Object.keys(second.farmer.availability.toJSON()['1']).length, 'the first look was noted');
 });
 
 test('leaves a stream whose streamer changes category, or that stops counting for the drop', async () => {

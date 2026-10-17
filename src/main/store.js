@@ -20,7 +20,9 @@ const DEFAULTS = {
   repeatAlert: false, // keep chiming until stopped, or until credit returns
   alertRepeatSeconds: 30,
   prioritizeExpiring: true,
-  queueMode: 'manual', // 'manual': the user's order · 'smart': soonest-expiring first
+  queueMode: 'manual', // 'manual': the user's order · 'smart': least expected live time left first
+  smartRarity: 'strong', // Smart: how much a rarely live category counts as ending sooner ('off' | 'some' | 'strong')
+  smartHopMinutes: 30, // Smart: how much sooner another drop must run out before leaving a working stream
   minimizeToTray: true,
   trayPercent: true,
   font: process.platform === 'linux' ? 'bundled' : 'system', // 'system': SF Pro, Segoe UI · 'bundled': Inter, the same everywhere

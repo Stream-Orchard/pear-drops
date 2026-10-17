@@ -1,9 +1,15 @@
 const { EventEmitter } = require('events');
 const { assetUrl } = require('./kick-api');
+const { Availability } = require('./availability');
 
 const MIN = 60_000;
 // After a failed refresh, the first retry (then doubling, up to the normal refresh).
 const RETRY_MS = 5_000;
+// A category live less than this share of the time is "rarely live" (Smart order, the queue).
+const RARELY_LIVE = 0.35;
+// Settings › Farming › Favour rarely live drops: the power the live rate is raised to.
+const RARITY_WEIGHT = { off: 0, some: 0.5, strong: 1 };
+const livePct = (cat) => `live ${Math.round(cat.liveRate * 100)}%`;
 const NOMINAL_RATE = 1; // progress units (minutes) per minute watched
 const HISTORY_MS = 6 * 60 * MIN;
 const PLAYER_STUCK_MS = 3 * MIN;
@@ -57,6 +63,7 @@ class Farmer extends EventEmitter {
     this.followedAt = 0;
     this.streams = new Map(); // categoryId -> { at, list }
     this.blacklist = new Map(); // slug -> until
+    this.availability = new Availability(); // how often each category has a stream live
     this.claimBackoff = new Map(); // rewardId -> until
     this.prevUnits = new Map(); // campaignId -> units
 
@@ -244,6 +251,7 @@ class Farmer extends EventEmitter {
     } catch {
       return false;
     }
+    this.availability = new Availability(c?.availability);
     if (!c?.campaigns?.length) return false;
     this.rawCampaigns = c.campaigns;
     this.campaignsAt = c.savedAt ?? 0;
@@ -260,7 +268,7 @@ class Farmer extends EventEmitter {
     if (!this.cacheFile || this.cacheTimer) return;
     this.cacheTimer = setTimeout(() => {
       this.cacheTimer = null;
-      const data = { savedAt: Date.now(), campaigns: this.rawCampaigns, progress: this.progress, followed: [...this.followed], streams: [...this.streams] };
+      const data = { savedAt: Date.now(), campaigns: this.rawCampaigns, progress: this.progress, followed: [...this.followed], streams: [...this.streams], availability: this.availability };
       require('fs').promises.writeFile(this.cacheFile, JSON.stringify(data)).catch(() => {});
     }, 2000);
   }
@@ -526,6 +534,12 @@ class Farmer extends EventEmitter {
       const urgent = settings.prioritizeExpiring !== false ? this.urgency(active, now) : null;
       // Can the next reward of any open campaign still be earned before it ends?
       const feasible = active.some((c) => c.next && c.next.remaining * MIN < new Date(c.endsAt).getTime() - now);
+      // Expected live time left: until the drop ends, counting only the share of the time this
+      // category has a stream on. A rarely live drop "ends" sooner, so Smart catches it while it's on.
+      const liveRate = this.availability.rate(cat.id, now);
+      const ends = (active.length ? active : cat.campaigns).map((c) => new Date(c.endsAt).getTime());
+      const weight = RARITY_WEIGHT[settings.smartRarity] ?? 1;
+      const liveEnd = Math.min(...ends.map((t) => now + Math.max(0, t - now) * (liveRate ?? 1) ** weight));
       return {
         urgent,
         feasible,
@@ -535,6 +549,11 @@ class Farmer extends EventEmitter {
         needsWatching: active.length > 0,
         soonestEnd: Math.min(...(active.length ? active : cat.campaigns).map((c) => new Date(c.endsAt).getTime())),
         remainingUnits: active.reduce((sum, c) => sum + c.remainingUnits, 0),
+        liveRate,
+        liveEnd,
+        rarelyLive: liveRate !== null && liveRate < RARELY_LIVE,
+        // Whether being rarely live is moving it up (Smart order, unless that's switched off).
+        rarityCounts: liveRate !== null && liveRate < RARELY_LIVE && weight > 0,
         streams,
         streamCount: streams.length,
         streamsLoaded: this.streams.has(cat.id),
@@ -550,14 +569,14 @@ class Farmer extends EventEmitter {
       if (ua !== ub) return ua ? -1 : 1;
       if (ua && ub) return a.urgent.slack - b.urgent.slack;
       if (settings.queueMode === 'smart') {
-        // Smart order: what's still worth watching, soonest-expiring first.
+        // Smart order: what's still worth watching, least expected live time left first.
         if (a.needsWatching !== b.needsWatching) return a.needsWatching ? -1 : 1;
         if (a.feasible !== b.feasible) return a.feasible ? -1 : 1;
         // Drops with a live stream right now come before ones waiting for a stream.
         const la = a.streams.some((s) => !s.blocked);
         const lb = b.streams.some((s) => !s.blocked);
         if (a.streamsLoaded && b.streamsLoaded && la !== lb) return la ? -1 : 1;
-        return a.soonestEnd - b.soonestEnd || a.remainingUnits - b.remainingUnits;
+        return a.liveEnd - b.liveEnd || a.soonestEnd - b.soonestEnd || a.remainingUnits - b.remainingUnits;
       }
       const ia = order.indexOf(a.id);
       const ib = order.indexOf(b.id);
@@ -710,6 +729,7 @@ class Farmer extends EventEmitter {
           stopWhen: (found) => [...wanted].every((id) => found.some((ls) => ls.channel.id === id)),
         });
         this.streams.set(cat.id, { at: now, list });
+        this.availability.note(cat.id, now, this.candidatesFor(cat, active).length > 0);
       } catch (err) {
         this.addLog('warn', `Could not list ${cat.name} streams: ${err.message}`);
       }
@@ -887,16 +907,18 @@ class Farmer extends EventEmitter {
       const first = this.firstWatchableCategory();
       const order = this.model.categories.map((c) => c.id);
       const curCat = this.model.categories.find((c) => c.id === cur.categoryId);
-      // Smart order doesn't hop for a small difference: the other drop must end at least 30 min sooner.
-      const smartHop = settings.queueMode !== 'smart' || first?.urgent || !curCat || first.soonestEnd < curCat.soonestEnd - 30 * MIN;
+      // Smart order doesn't hop for a small difference: the other drop must have at least
+      // Settings › Farming › Switch streams for (30 min by default) less expected live time left.
+      const smartHop = settings.queueMode !== 'smart' || first?.urgent || !curCat || first.liveEnd < curCat.liveEnd - (settings.smartHopMinutes ?? 30) * MIN;
       if (first && first.id !== cur.categoryId && order.indexOf(first.id) < order.indexOf(cur.categoryId) && smartHop) {
-        const why = first.urgent
-          ? `${first.urgent.campaign} ends in ${fmtSpan(first.urgent.msLeft)} with ${first.urgent.remaining} min to go (${fmtSpan(Math.max(0, first.urgent.slack))} to spare)`
-          : settings.queueMode === 'smart'
-            ? `${first.name} ends sooner (${fmtSpan(first.soonestEnd - now)}`
-            : `${first.name} is higher in your queue`;
+        const smart = settings.queueMode === 'smart';
+        let why;
+        if (first.urgent) why = `${first.urgent.campaign} ends in ${fmtSpan(first.urgent.msLeft)} with ${first.urgent.remaining} min to go (${fmtSpan(Math.max(0, first.urgent.slack))} to spare)`;
+        else if (smart && first.rarityCounts) why = `${first.name} is rarely live (${livePct(first)} of the past week) and is on now (it ends in ${fmtSpan(first.soonestEnd - now)}`;
+        else if (smart) why = `${first.name} ends sooner (${fmtSpan(first.soonestEnd - now)}`;
+        else why = `${first.name} is higher in your queue`;
         const curEnd = curCat ? Math.min(...curCat.campaigns.filter((c) => c.needsWatching).map((c) => new Date(c.endsAt).getTime())) : null;
-        const versus = settings.queueMode === 'smart' && !first.urgent ? ` vs ${curCat?.name ?? 'now'} ${curEnd ? fmtSpan(curEnd - now) : ''})` : curEnd ? ` vs ${curCat.name} (${fmtSpan(curEnd - now)} left)` : '';
+        const versus = smart && !first.urgent ? ` vs ${curCat?.name ?? 'now'} ${curEnd ? fmtSpan(curEnd - now) : ''})` : curEnd ? ` vs ${curCat.name} (${fmtSpan(curEnd - now)} left)` : '';
         return { kind: 'priority', text: `${why}${versus}`, to: first };
       }
     }
@@ -977,6 +999,7 @@ class Farmer extends EventEmitter {
     const reasons = [];
     if (cat.urgent) reasons.push(`${cat.urgent.campaign} ends in ${fmtSpan(cat.urgent.msLeft)} and needs ${cat.urgent.remaining} min`);
     else if (targets[0]?.id !== cat.id) reasons.push(`${targets.filter((c) => c.id !== cat.id && c.streams.every((s) => s.blocked)).map((c) => c.name).join(', ') || 'higher categories'} had no usable stream`);
+    else if (this.store.get().queueMode === 'smart' && cat.rarityCounts) reasons.push(`it's rarely live (${livePct(cat)} of the past week), so it's caught while it's on (${fmtSpan(cat.soonestEnd - Date.now())} left)`);
     else if (this.store.get().queueMode === 'smart') reasons.push(`it ends soonest (${fmtSpan(cat.soonestEnd - Date.now())} left)`);
     else reasons.push(`top of your queue`);
     if (stream.followed) reasons.push('a channel you follow');

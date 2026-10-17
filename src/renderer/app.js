@@ -402,6 +402,14 @@ function catStatus(cat, f) {
   return '<span class="chip blue">Next</span>';
 }
 
+/** A category that rarely has a stream on (farmer.js liveRate): Smart order catches it while it's live. */
+function rareChip(cat) {
+  if (!cat.rarelyLive || cat.complete || !cat.needsWatching) return '';
+  const pct = Math.round(cat.liveRate * 100);
+  const smart = state.settings.queueMode === 'smart';
+  return `<span class="chip violet" data-tip="Live ${pct}% of the hours seen this week.${smart ? ' Smart order watches it while it’s on.' : ' Smart order would watch it while it’s on.'}">Rare</span>`;
+}
+
 /** A thin bar of minutes watched, with each reward's icon at the minute it unlocks. */
 function unitsTrack(name, units, rewards, { note = '', ended = false } = {}) {
   const tracked = rewards.filter((r) => r.tracked);
@@ -492,7 +500,7 @@ function queuePanel(f) {
           ${locked ? `<span class="cat-grip done" data-tip="Complete">${icon('check')}</span>` : smart ? `<span class="cat-grip" data-tip="Smart order sorts this automatically. Switch to Manual to rearrange.">${icon('lock')}<span class="cat-rank">${i + 1}</span></span>` : `<span class="cat-grip" data-tip="Drag to reorder">${icon('grip')}<span class="cat-rank">${i + 1}</span></span>`}
           ${img(cat.image, 'cat-art', cat.name)}
           <div class="cat-info">
-            <div class="cat-name"><span>${esc(cat.name)}</span>${catStatus(cat, f)}</div>
+            <div class="cat-name"><span>${esc(cat.name)}</span>${catStatus(cat, f)}${rareChip(cat)}</div>
             <div class="cat-meta">${meta.map((m) => `<span>${m}</span>`).join('<i>·</i>')}</div>
             ${catTrack(cat)}
           </div>
@@ -521,7 +529,7 @@ function queuePanel(f) {
       <button class="mode-opt ${smart ? 'active' : ''}" data-action="queue-mode" data-id="smart" data-tip="Order by which drops expire first, automatically">${icon('bolt')}<span>Smart</span></button>
       <button class="mode-opt ${smart ? '' : 'active'}" data-action="queue-mode" data-id="manual" data-tip="Your own order (drag to arrange)">${icon('grip')}<span>Manual</span></button>
     </div>`;
-  const note = smart ? '<b>Expiring first.</b> Re-sorts as streams come and go.' : '<b>Your order.</b> Drag to rearrange.';
+  const note = smart ? '<b>Running out first.</b> Rare drops while they’re live.' : '<b>Your order.</b> Drag to rearrange.';
   return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>Click a category for its drops.</span></p></div>
     <div class="queue-list">${rows || `<div class="empty">${icon('gift')}${f.categories.length ? 'Every drop is collected. Finished ones are in Done.' : 'No active emote or badge drops right now.'}</div>`}</div>`;
 }
@@ -741,7 +749,9 @@ function renderModal() {
 
   const panes = {
     farming: `
-      ${row('Queue order', 'Smart watches whatever expires first and re-sorts as streams go offline and come back. Manual keeps your own drag order.', seg('queue-mode', s.queueMode === 'smart' ? 'smart' : 'manual', [['smart', 'Smart'], ['manual', 'Manual']]))}
+      ${row('Queue order', 'Smart watches whatever is running out of time first, catches drops that are rarely live while they’re on, and re-sorts as streams go offline and come back. Manual keeps your own drag order.', seg('queue-mode', s.queueMode === 'smart' ? 'smart' : 'manual', [['smart', 'Smart'], ['manual', 'Manual']]))}
+      ${s.queueMode === 'smart' ? row('Favour rarely live drops', 'How much Smart order moves up a drop whose category seldom has a stream on, so it’s watched while it’s live. Off sorts by end time alone.', seg('setting-value', ['off', 'some', 'strong'].includes(s.smartRarity) ? s.smartRarity : 'strong', [['off', 'Off'], ['some', 'Some'], ['strong', 'Strong']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="smartRarity"')) : ''}
+      ${s.queueMode === 'smart' ? row('Switch streams for', 'How much sooner another drop must run out of live time before Smart leaves a stream that’s earning.', seg('setting-value', String(s.smartHopMinutes ?? 30), [['15', '15 min'], ['30', '30 min'], ['60', '1 h'], ['120', '2 h']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="smartHopMinutes"')) : ''}
       ${row('Put drops about to expire first', 'In Manual order, a drop that would run out of time where it sits jumps to the top, as long as its next reward can still be earned.', toggle('prioritizeExpiring', s.prioritizeExpiring))}
       ${row('Claim drops automatically', 'Claim each emote or badge the moment it unlocks.', toggle('autoClaim', s.autoClaim))}
       ${row('Include game drops', 'Also farm rewards that need a linked game account.', toggle('includeGameDrops', s.includeGameDrops))}`,
