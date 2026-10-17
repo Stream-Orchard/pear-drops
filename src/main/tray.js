@@ -135,7 +135,8 @@ class TrayController {
     if (win.isVisible()) return this.hidePopover();
     this.position();
     if (process.env.PD_TEST_HIDDEN) {
-      win.setOpacity(0);
+      // Invisible in tests; nearly, on Linux, which stops drawing fully transparent windows.
+      win.setOpacity(process.platform === 'linux' ? 0.01 : 0);
       win.showInactive();
       return;
     }

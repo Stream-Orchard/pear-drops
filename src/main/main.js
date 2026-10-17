@@ -149,8 +149,9 @@ function createMainWindow() {
   mainWindow.webContents.setAudioMuted(HIDDEN);
   mainWindow.once('ready-to-show', () => {
     if (HIDDEN) {
-      // Tests: painted and drivable, but invisible and never focused.
-      mainWindow.setOpacity(0);
+      // Tests: painted and drivable, but invisible and never focused. Linux stops drawing a fully
+      // transparent window (about one frame a second), so there it's only nearly transparent.
+      mainWindow.setOpacity(process.platform === 'linux' ? 0.01 : 0);
       mainWindow.setIgnoreMouseEvents(true);
       mainWindow.showInactive();
       return;
