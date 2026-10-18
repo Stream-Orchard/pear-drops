@@ -8,9 +8,11 @@
 // Electron only touches this file.
 const fs = require('fs');
 const path = require('path');
-const { DatabaseSync } = require('node:sqlite');
+const { DatabaseSync, backup } = require('node:sqlite');
 
 const FILE = 'pear-drops.db';
+// Copies of the database (backups.js makes them; a damaged database is replaced by the newest good one).
+const BACKUPS = 'backups';
 
 // Each step brings the schema up one version (PRAGMA user_version). Never edit a released step:
 // add another.
@@ -39,10 +41,61 @@ const parse = (text) => {
   }
 };
 
+// A backup's file name: when it was made (UTC), and the schema step it was made before, if it was
+// made for an update. pear-drops-2026-10-18T09-12-00Z.db, pear-drops-2026-10-18T09-12-00Z-before-v2.db
+const backupName = (at, before = null) => `pear-drops-${new Date(at).toISOString().slice(0, 19).replace(/:/g, '-')}Z${before ? `-before-v${before}` : ''}.db`;
+const BACKUP_NAME = /^pear-drops-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z(?:-before-v(\d+))?\.db$/;
+
+/** The backups in a backups folder, newest first: { file, name, at, before, size }. */
+function listBackups(dir) {
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {}
+  return names
+    .map((name) => {
+      const m = BACKUP_NAME.exec(name);
+      if (!m) return null;
+      const file = path.join(dir, name);
+      let size = 0;
+      try {
+        size = fs.statSync(file).size;
+      } catch {}
+      return { file, name, at: Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`), before: m[5] ? Number(m[5]) : null, size };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.at - a.at || b.name.localeCompare(a.name));
+}
+
+/** Whether a file is a whole, readable database (SQLite's quick check). */
+function checkFile(file) {
+  let sql = null;
+  try {
+    sql = new DatabaseSync(file, { readOnly: true });
+    return sql.prepare('PRAGMA quick_check').get()?.quick_check === 'ok';
+  } catch {
+    return false;
+  } finally {
+    try {
+      sql?.close();
+    } catch {}
+  }
+}
+
+/** Removes a database file and the two SQLite keeps beside it. */
+function removeDb(file) {
+  for (const suffix of ['', '-wal', '-shm', '-journal']) fs.rmSync(`${file}${suffix}`, { force: true });
+}
+
 class Db {
-  /** file: the database file, or ':memory:' (tests). */
-  constructor(file) {
+  /**
+   * file: the database file, or ':memory:' (tests). backups: the folder for the copy made before
+   * a schema update (none for ':memory:'). migrations: tests only.
+   */
+  constructor(file, { backups = null, migrations = MIGRATIONS } = {}) {
     this.file = file;
+    this.backups = backups;
+    this.migrations = migrations;
     this.sql = new DatabaseSync(file);
     try {
       this.sql.exec('PRAGMA busy_timeout = 2000');
@@ -59,9 +112,15 @@ class Db {
 
   migrate() {
     const at = this.sql.prepare('PRAGMA user_version').get().user_version;
-    for (let v = at; v < MIGRATIONS.length; v++) {
+    // An update that changes the schema: a copy first, so a mistake in the new step can't cost the data.
+    if (at > 0 && at < this.migrations.length && this.backups) {
+      fs.mkdirSync(this.backups, { recursive: true });
+      const copy = path.join(this.backups, backupName(Date.now(), at + 1));
+      this.sql.exec(`VACUUM INTO '${copy.replace(/'/g, "''")}'`);
+    }
+    for (let v = at; v < this.migrations.length; v++) {
       this.transaction(() => {
-        this.sql.exec(MIGRATIONS[v]);
+        this.sql.exec(this.migrations[v]);
         this.sql.exec(`PRAGMA user_version = ${v + 1}`);
       });
     }
@@ -89,6 +148,30 @@ class Db {
 
   get isOpen() {
     return this.sql.isOpen;
+  }
+
+  /**
+   * Copies the database to `file` while the app carries on (a few pages at a time), as one file
+   * that opens on its own, and checks the copy. Returns its size.
+   */
+  async backupTo(file) {
+    const part = `${file}.part`;
+    removeDb(part);
+    try {
+      await backup(this.sql, part, { rate: 256 });
+      const copy = new DatabaseSync(part);
+      try {
+        copy.exec('PRAGMA journal_mode = DELETE'); // the copy is in WAL mode, like the original
+      } finally {
+        copy.close();
+      }
+      if (!checkFile(part)) throw new Error('the copy didn’t pass its check');
+      fs.renameSync(part, file);
+    } catch (err) {
+      removeDb(part);
+      throw err;
+    }
+    return fs.statSync(file).size;
   }
 
   close() {
@@ -276,24 +359,40 @@ class Db {
 
 /**
  * Opens (or creates) the database in the data folder. One that can't be opened (damaged) is
- * moved aside as pear-drops.db.broken-<time> and a new one started, which copies in the older
- * versions' files again if they're still there.
+ * moved aside as pear-drops.db.broken-<time> and replaced by a copy of the newest backup that
+ * passes its check (`db.restored` says which). With no good backup a new one is started, which
+ * copies in the older versions' files again if they're still there (`db.restored.from` is null).
  */
 function openDb(dir, { log = () => {} } = {}) {
   const file = path.join(dir, FILE);
+  const backups = path.join(dir, BACKUPS);
   try {
     fs.mkdirSync(dir, { recursive: true });
-    return new Db(file);
+    return new Db(file, { backups });
   } catch (err) {
-    log(`The data file couldn't be opened (${err.message}): starting a new one`);
     const aside = `${file}.broken-${Date.now()}`;
     for (const suffix of ['', '-wal', '-shm']) {
       try {
         fs.renameSync(`${file}${suffix}`, `${aside}${suffix}`);
       } catch {}
     }
+    for (const b of listBackups(backups)) {
+      if (!checkFile(b.file)) continue;
+      try {
+        fs.copyFileSync(b.file, file);
+        const db = new Db(file, { backups });
+        db.restored = { from: b.name, at: b.at, error: err.message };
+        log(`The data file couldn't be opened (${err.message}): restored the backup from ${new Date(b.at).toISOString()}`);
+        return db;
+      } catch {
+        removeDb(file);
+      }
+    }
+    log(`The data file couldn't be opened (${err.message}): starting a new one`);
     try {
-      return new Db(file);
+      const db = new Db(file, { backups });
+      db.restored = { from: null, at: null, error: err.message };
+      return db;
     } catch (again) {
       // The folder can't be written: this run keeps its data in memory.
       log(`The data file couldn't be created (${again.message}): nothing will be saved this run`);
@@ -302,4 +401,4 @@ function openDb(dir, { log = () => {} } = {}) {
   }
 }
 
-module.exports = { Db, openDb, FILE, OLD_FILES };
+module.exports = { Db, openDb, listBackups, backupName, checkFile, removeDb, FILE, BACKUPS, OLD_FILES, MIGRATIONS };

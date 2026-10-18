@@ -1,6 +1,7 @@
 {
   "src/main/archive.js": 98,
   "src/main/availability.js": 100,
+  "src/main/backups.js": 100,
   "src/main/connected.js": 100,
   "src/main/db.js": 100,
   "src/main/demo.js": 87,

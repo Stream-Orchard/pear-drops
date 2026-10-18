@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('pd', {
     icons: () => ipcRenderer.invoke('connected:icons'),
   },
   notifyTest: () => ipcRenderer.invoke('notify:test'),
+  backups: {
+    run: () => ipcRenderer.invoke('backups:run'),
+    show: () => ipcRenderer.invoke('backups:show'),
+  },
   notifySystemSettings: () => ipcRenderer.invoke('notify:system-settings'),
   onShowView: (callback) => {
     const listener = (_event, view) => callback(view);
