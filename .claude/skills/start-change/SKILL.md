@@ -9,7 +9,7 @@ Every change goes on its own branch in its own worktree and ends as a pull reque
 
 ## 0. Anything to record in Grapevine?
 
-Run `npx grapevine-check`. It looks at every Pear Drops release tag, and at what each one shipped for Connected apps (`package.json`'s `grapevine` field), against Grapevine's record.
+Run `npm run grapevine:check` (after `npm install`, or in the new worktree). Not `npx grapevine-check`: if the package isn't installed, `npx` would fetch whatever has that name from npm. It looks at every Pear Drops release tag, and at what each one shipped for Connected apps (`package.json`'s `grapevine` field), against Grapevine's record.
 
 - **"Nothing to record" or "is recorded":** carry on.
 - **It lists releases:**
