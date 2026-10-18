@@ -2,7 +2,14 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.5 (current)
+## 0.1.6 (current)
+- Done cards keep History and Details beside the drop, and missing artwork shows its placeholder
+- Connected apps: link with Stream Multiview, so its Kick players leave the drop credit to Pear Drops
+- Connected apps: a Test button, and start-change checks every release is recorded in Grapevine
+- Grapevine's check runs as npm run grapevine:check, never npx
+- README: how to install Pear Drops, step by step, before the features
+
+## 0.1.5
 - Rare says how many hours it has seen so far, and counts watch sessions from the history
 - npm install no longer changes package-lock.json: releases keep its version in step
 - A quick restart carries the run on: the stat cards keep counting, and Claimed really counts today
