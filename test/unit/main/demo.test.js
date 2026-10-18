@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createDemo } = require('../../../src/main/demo');
 const { History } = require('../../../src/main/history');
+const { Db } = require('../../../src/main/db');
 
 test('the stand-in server credits only campaigns the watched channel counts for', async () => {
   const { api } = createDemo();
@@ -36,10 +37,9 @@ test('progress and claims follow the stand-in state', async () => {
 
 test('demo history ends at the stand-in progress and never goes backwards', () => {
   const demo = createDemo();
-  const history = new History('/nonexistent-dir-for-tests');
-  history.rewrite = () => {};
+  const history = new History(new Db(':memory:')).load();
   demo.seedHistoryLog(history);
-  const neon = history.events.filter((e) => e.type === 'credit' && e.campaignId === 'c-neon').map((e) => e.units);
+  const neon = history.all().filter((e) => e.type === 'credit' && e.campaignId === 'c-neon').map((e) => e.units);
   assert.ok(neon.length > 50);
   assert.equal(neon[neon.length - 1], demo.api.units['c-neon']);
   for (let i = 1; i < neon.length; i++) assert.ok(neon[i] > neon[i - 1]);
@@ -53,7 +53,7 @@ test('the demo archive has a finished, a missed and a taken-down drop, already g
   const os = require('node:os');
   const path = require('node:path');
   const { DropArchive } = require('../../../src/main/archive');
-  const archive = new DropArchive(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-demo-arch-')), {});
+  const archive = new DropArchive(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-demo-arch-')), new Db(':memory:'), {});
   const demo = createDemo();
   demo.seedArchive(archive);
   const ids = archive.entries().map((e) => e.raw.id).sort();

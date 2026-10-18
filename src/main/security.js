@@ -6,15 +6,14 @@
 //      at the next start if the app closed without getting to (e.g. it crashed).
 //   3. Kick pages get no extra permissions and can't open windows inside the app.
 const { app, session, shell } = require('electron');
-const fs = require('fs');
-const path = require('path');
 const { PARTITION } = require('./kick-api');
 
-const file = () => path.join(app.getPath('userData'), 'security.json');
+// Where its own small state is saved (setupSecurity's `saved`, a db.js slot).
+let saved = { load: () => ({}), save: () => {} };
 
 function load() {
   try {
-    return JSON.parse(fs.readFileSync(file(), 'utf8')) || {};
+    return saved.load() || {};
   } catch {
     return {};
   }
@@ -22,7 +21,7 @@ function load() {
 
 function save(data) {
   try {
-    fs.writeFileSync(file(), JSON.stringify(data));
+    saved.save(data);
   } catch {}
 }
 
@@ -89,9 +88,10 @@ function guardContents(contents) {
 
 /**
  * Call once the app is ready. Returns { encryption, setForget } for main.js.
- * getForget() reads the current "forget my login" setting.
+ * getForget() reads the current "forget my login" setting; `slot` is where its state is saved.
  */
-async function setupSecurity(getForget) {
+async function setupSecurity(getForget, slot) {
+  if (slot) saved = slot;
   const sec = load();
   lockDownSession();
 

@@ -1,6 +1,6 @@
 const { EventEmitter } = require('events');
 const { assetUrl, eventOf } = require('./kick-api');
-const { Availability } = require('./availability');
+const { Availability, HOUR, WEEK_HOURS } = require('./availability');
 
 const MIN = 60_000;
 // After a failed refresh, the first retry (then doubling, up to the normal refresh).
@@ -79,11 +79,11 @@ function fmtSpan(ms) {
 }
 
 class Farmer extends EventEmitter {
-  constructor({ api, watcher, store, history, archive = null, cacheFile = null }) {
+  constructor({ api, watcher, store, history, archive = null, cache = null }) {
     super();
     this.api = api;
     this.archive = archive; // local copies of campaigns and their images (archive.js)
-    this.cacheFile = cacheFile;
+    this.cache = cache; // the startup cache's store, { load(), save(data) } (db.js)
     this.history = history;
     this.seenReady = null; // reward ids already unlocked (null until the first load)
     this.seenComplete = null; // campaign / category ids already complete
@@ -339,10 +339,10 @@ class Farmer extends EventEmitter {
    * so minutes earned while the app was closed aren't counted as this app's credit.
    */
   loadCache() {
-    if (!this.cacheFile) return false;
+    if (!this.cache) return false;
     let c = null;
     try {
-      c = JSON.parse(require('fs').readFileSync(this.cacheFile, 'utf8'));
+      c = this.cache.load();
     } catch {}
     this.availability = new Availability(c?.availability);
     this.availabilityFromHistory();
@@ -370,7 +370,7 @@ class Farmer extends EventEmitter {
       if (Number.isFinite(c.stats[k])) this.stats[k] = c.stats[k];
     }
     // One left without an end (the app crashed) was still on when the cache was last saved.
-    const last = this.history?.sessions?.(this.history.events, now).at(-1);
+    const last = this.history?.lastSession(now);
     if (last && now - (last.end ?? c.savedAt) <= RESUME_MS) this.resumeWatch = { slug: last.slug, start: last.start, campaignIds: last.campaignIds };
   }
 
@@ -381,12 +381,13 @@ class Farmer extends EventEmitter {
 
   /** Saves a moment later, so a burst of changes writes once. Resolves once it's on disk (or the write failed). */
   saveCache() {
-    if (!this.cacheFile || this.cacheTimer) return this.cacheSaved;
+    if (!this.cache || this.cacheTimer) return this.cacheSaved;
     this.cacheSaved = new Promise((resolve) => {
       this.cacheDone = resolve;
       this.cacheTimer = setTimeout(() => {
         this.cacheTimer = null;
-        resolve(require('fs').promises.writeFile(this.cacheFile, JSON.stringify(this.cacheData())).catch(() => {}));
+        this.writeCache();
+        resolve();
       }, 2000);
     });
     return this.cacheSaved;
@@ -394,23 +395,23 @@ class Farmer extends EventEmitter {
 
   /** Saves now, as the app quits, so the next launch can carry the run on. */
   flushCache() {
-    if (!this.cacheFile) return;
+    if (!this.cache) return;
     clearTimeout(this.cacheTimer);
     this.cacheTimer = null;
-    try {
-      require('fs').writeFileSync(this.cacheFile, JSON.stringify(this.cacheData()));
-    } catch {}
+    this.writeCache();
     this.cacheDone?.();
+  }
+
+  writeCache() {
+    try {
+      this.cache.save(this.cacheData());
+    } catch {}
   }
 
   /** Rewards claimed since midnight, from the history, so a restart doesn't zero it. */
   claimsToday(now = Date.now()) {
-    const events = this.history?.events;
-    if (!events) return this.stats.claims;
-    const midnight = new Date(now).setHours(0, 0, 0, 0);
-    let n = 0;
-    for (let i = events.length - 1; i >= 0 && events[i].t >= midnight; i--) if (events[i].type === 'claim') n += 1;
-    return n;
+    if (!this.history) return this.stats.claims;
+    return this.history.count('claim', new Date(now).setHours(0, 0, 0, 0));
   }
 
   /**
@@ -418,8 +419,9 @@ class Farmer extends EventEmitter {
    * as live: including ones from before the live rate was saved, or after the cache was lost.
    */
   availabilityFromHistory(now = Date.now()) {
-    const events = this.history?.events ?? [];
-    for (const s of this.history?.sessions?.(events, now) ?? []) {
+    if (!this.history) return;
+    // The live rate covers a week: a day more catches sessions that started before it.
+    for (const s of this.history.sessions(this.history.range(now - (WEEK_HOURS + 24) * HOUR), now)) {
       if (s.categoryId !== undefined && s.categoryId !== null) this.availability.noteLive(s.categoryId, s.start, s.end ?? now);
     }
   }
@@ -427,9 +429,7 @@ class Farmer extends EventEmitter {
   /** Rebuilds the chart and live monitor's recent past from the saved history. */
   seedFromHistory() {
     if (!this.history) return;
-    const since = Date.now() - HISTORY_MS;
-    for (const e of this.history.events) {
-      if (e.t < since) continue;
+    for (const e of this.history.range(Date.now() - HISTORY_MS)) {
       if (e.type === 'credit' && e.campaignId && e.units !== undefined) {
         this.samples.push({ t: e.t, units: { [e.campaignId]: e.units } });
         this.timeline.push({ t: e.t, type: 'credit', campaignId: e.campaignId, delta: e.delta ?? 0 });

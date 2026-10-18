@@ -22,7 +22,11 @@ An Electron app that farms Kick emote and badge drops. `src/main/` is the Electr
 - All Kick API calls run inside a hidden kick.com page (`kick-api.js`). The login token is read there and never leaves it.
 - The renderer updates the DOM by morphing it (`setHTML` in `format.js`), so ticking numbers don't rebuild images or shift the layout. Charts are drawn at measured sizes and kept out of the layout flow.
 - Kick's campaign list keeps ended drops (`status: "expired"`) for a few months. `archive.js` saves every drop seen (details, progress and images, served to the pages as `pd-img://`), so the Done tab and History outlive Kick's copy.
-- Every notable event goes to `history.js` (`history.jsonl` in the data folder). New features that change farming should record an event and show it in the History view.
+- Every notable event goes to `history.js`. New features that change farming should record an event and show it in the History view.
+- **Data** lives in one SQLite database, `pear-drops.db` in the data folder, through `db.js` (Node's built-in `node:sqlite`). It holds the history, the drop archive, the startup cache and small state (`security`, `updates`). Settings stay in `settings.json`, and drop images stay files.
+  - Only `db.js` touches `node:sqlite`. Other modules get the `Db` (or one of its slots) passed in, and tests use `new Db(':memory:')`.
+  - A schema change is a new step at the end of `MIGRATIONS` in `db.js`. Never edit a released step.
+  - Launch tests read what was saved with `readDb()` from `test/launch/app.js`.
 
 ## Connected apps (Grapevine)
 

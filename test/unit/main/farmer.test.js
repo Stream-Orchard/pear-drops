@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { Farmer, rewardKind } = require('../../../src/main/farmer');
 const { History } = require('../../../src/main/history');
+const { Db, openDb } = require('../../../src/main/db');
 const { DropArchive } = require('../../../src/main/archive');
 
 const MIN = 60_000;
@@ -100,8 +101,7 @@ function store(overrides = {}) {
 function setup(apiOptions, storeOptions, extra = {}) {
   const api = new FakeApi(apiOptions);
   const watcher = new FakeWatcher();
-  const history = new History('/nonexistent-dir-for-tests');
-  history.writing = Promise.resolve();
+  const history = new History(new Db(':memory:')).load();
   const farmer = new Farmer({ api, watcher, store: store(storeOptions), history, ...extra });
   farmer.running = true;
   farmer.schedule = () => {};
@@ -126,7 +126,7 @@ test('picks a followed stream first and records the watch session', async () => 
   await farmer.tick();
   assert.equal(watcher.watching, 'friend');
   assert.equal(farmer.status.code, 'farming');
-  const start = history.events.find((e) => e.type === 'watch-start');
+  const start = history.all().find((e) => e.type === 'watch-start');
   assert.equal(start.slug, 'friend');
   assert.deepEqual(start.campaignIds, ['a']);
 });
@@ -149,7 +149,7 @@ test('channel-restricted campaigns only watch their channels, and skip ineligibl
   api.ineligible.add(2);
   await farmer.tick();
   assert.equal(watcher.watching, 'three');
-  assert.ok(history.events.some((e) => e.type === 'not-eligible' && e.slug === 'two'));
+  assert.ok(history.all().some((e) => e.type === 'not-eligible' && e.slug === 'two'));
 });
 
 test('credits are recorded with running totals and reset the stall clock', async () => {
@@ -158,7 +158,7 @@ test('credits are recorded with running totals and reset the stall clock', async
   farmer.current.lastProgressAt = Date.now() - 10 * MIN;
   api.units.a = 12;
   await farmer.tick();
-  const credit = history.events.find((e) => e.type === 'credit');
+  const credit = history.all().find((e) => e.type === 'credit');
   assert.equal(credit.delta, 2);
   assert.equal(credit.units, 12);
   assert.equal(credit.slug, 's');
@@ -179,10 +179,10 @@ test('a stall reloads first, then switches to another stream', async () => {
   farmer.current.lastProgressAt = Date.now() - 21 * MIN;
   await farmer.tick();
   assert.equal(watcher.watching, 'second');
-  const types = history.events.map((e) => e.type);
+  const types = history.all().map((e) => e.type);
   assert.equal(types.filter((t) => t === 'stall').length, 2);
   assert.ok(types.includes('reload'));
-  const end = history.events.find((e) => e.type === 'watch-end');
+  const end = history.all().find((e) => e.type === 'watch-end');
   assert.match(end.reason, /No progress/);
 });
 
@@ -193,7 +193,7 @@ test('an offline stream is left for the next one', async () => {
   farmer.streams.clear();
   await farmer.tick();
   assert.equal(watcher.watching, 'second');
-  assert.ok(history.events.some((e) => e.type === 'offline' && e.slug === 'first'));
+  assert.ok(history.all().some((e) => e.type === 'offline' && e.slug === 'first'));
 });
 
 test('three uncredited watch events raise a conflict alert once', async () => {
@@ -203,7 +203,7 @@ test('three uncredited watch events raise a conflict alert once', async () => {
   farmer.on('stall-alert', (a) => alerts.push(a));
   for (let i = 0; i < 4; i++) watcher.emit('watch-event', { t: Date.now() });
   assert.equal(alerts.length, 1);
-  assert.equal(history.events.filter((e) => e.type === 'conflict').length, 1);
+  assert.equal(history.all().filter((e) => e.type === 'conflict').length, 1);
 });
 
 test('ready rewards are claimed, and a finished category moves on to the next', async () => {
@@ -217,7 +217,7 @@ test('ready rewards are claimed, and a finished category moves on to the next', 
   await farmer.tick();
   assert.deepEqual(api.calls[0], ['claim', 'a', 'a-r1']);
   assert.equal(watcher.watching, 'two');
-  const types = history.events.map((e) => e.type);
+  const types = history.all().map((e) => e.type);
   for (const t of ['unlock', 'claim', 'campaign-complete', 'category-complete']) assert.ok(types.includes(t), t);
 });
 
@@ -326,7 +326,7 @@ test("a refused claim says why, in Kick's words: a link to connect the game acco
   assert.ok(farmer.claimBackoff.get('a-r1') > Date.now() + 59 * MIN, 'an hour before trying again');
   farmer.claimBackoff.clear();
   await farmer.tick();
-  assert.equal(history.events.filter((e) => e.type === 'claim-failed').length, 1, 'noted once per reason, not at every retry');
+  assert.equal(history.all().filter((e) => e.type === 'claim-failed').length, 1, 'noted once per reason, not at every retry');
   assert.ok(farmer.knownLinks().has('https://games.example/link'));
   assert.ok(farmer.knownLinks().has('https://kick.com/events/safe-zone'), "the drop's About page");
   assert.ok(!farmer.knownLinks().has('https://evil.example/'));
@@ -337,7 +337,7 @@ test("a refused claim says why, in Kick's words: a link to connect the game acco
   const late = farmer.claimRefused(ended, ended.rewards[0], refusal({ type: 'INVALID_CLAIM' }));
   assert.equal(late.text, 'The drop ended before it was claimed');
   assert.equal(farmer.claimBackoff.get('a-r1'), Infinity, 'never retried');
-  assert.ok(history.events.some((e) => e.type === 'claim-failed' && e.text === 'Kick refused the claim: The drop ended before it was claimed'));
+  assert.ok(history.all().some((e) => e.type === 'claim-failed' && e.text === 'Kick refused the claim: The drop ended before it was claimed'));
   farmer.claimBackoff.clear();
   farmer.claimErrors.clear();
 
@@ -392,7 +392,7 @@ test('a raid or the end of a stream (Kick moving the player on) switches to the 
   watcher.emit('left', { from: first, to: 'pixelpete' });
   await new Promise((r) => setImmediate(r));
   assert.ok(watcher.watching && watcher.watching !== first, `moved on from ${first} to ${watcher.watching}`);
-  const ended = history.events.find((e) => e.type === 'offline');
+  const ended = history.all().find((e) => e.type === 'offline');
   assert.match(ended.text, /ended the stream and sent viewers to pixelpete/);
   assert.equal(farmer.notice.kind, 'raid');
   assert.match(farmer.notice.text, new RegExp(`raided pixelpete`));
@@ -412,7 +412,7 @@ test('a sign from the page (the video ended, Kick said it stopped) checks with K
   await new Promise((r) => setTimeout(r, 0));
   for (let i = 0; i < 20 && farmer.checking; i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(watcher.watching, 'second', 'moved on without waiting for the refresh');
-  const ended = history.events.find((e) => e.type === 'offline' && e.slug === 'first');
+  const ended = history.all().find((e) => e.type === 'offline' && e.slug === 'first');
   assert.match(ended.text, /first: Stream went offline \(spotted: the video ended\)/);
   assert.ok(farmer.blacklist.get('first') > Date.now(), 'skipped a while: the stream list can still have it');
   assert.equal(notices.length, 1);
@@ -431,7 +431,7 @@ test('quick checks are spaced out, and a check that finds the stream fine change
   const before = farmer.lastQuickCheckAt;
   await farmer.checkNow('The video ended');
   assert.equal(farmer.lastQuickCheckAt, before, 'a second sign within 15 s waits for the next one');
-  assert.ok(!history.events.some((e) => e.type === 'offline'));
+  assert.ok(!history.all().some((e) => e.type === 'offline'));
   farmer.paused = true;
   farmer.lastQuickCheckAt = 0;
   await farmer.checkNow('The video ended');
@@ -462,7 +462,7 @@ test('the stream health: loading, playing, buffering, paused, frozen; a frozen p
   for (let i = 0; i < 20 && farmer.checking !== null; i++) await new Promise((r) => setTimeout(r, 5));
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(watcher.reloads, 1, 'reloaded without waiting for the refresh');
-  assert.ok(history.events.some((e) => e.type === 'reload' && /Player is not playing/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'reload' && /Player is not playing/.test(e.text)));
   assert.equal(farmer.notice.kind, 'reload');
   assert.equal(watcher.watching, 'first');
 });
@@ -503,7 +503,7 @@ test('Smart order catches a rarely live drop while it is on, ahead of a common o
   assert.equal(second.rarelyLive, false);
   assert.equal(watcher.watching, 'sometimes');
   // Under a week of looks, the reason gives the hours rather than a share of "the past week".
-  assert.ok(history.events.some((e) => e.type === 'decision' && /rarely live \(live [45] of the 4[01] hours checked\)/.test(e.text)), 'the pick says why');
+  assert.ok(history.all().some((e) => e.type === 'decision' && /rarely live \(live [45] of the 4[01] hours checked\)/.test(e.text)), 'the pick says why');
 });
 
 test('after a week of looks, a rarely live drop is given as a share of the past week', async () => {
@@ -513,7 +513,7 @@ test('after a week of looks, a rarely live drop is given as a share of the past 
     farmer.availability.note(2, Date.now() - h * 3600_000, h % 10 === 0);
   }
   await farmer.tick();
-  assert.ok(history.events.some((e) => e.type === 'decision' && /rarely live \(live 1\d% of the past week\)/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'decision' && /rarely live \(live 1\d% of the past week\)/.test(e.text)));
 });
 
 test('watch sessions in the history count as live hours, from before the live rate was saved', () => {
@@ -521,19 +521,19 @@ test('watch sessions in the history count as live hours, from before the live ra
   const { farmer, history } = setup({ campaigns: [], streams: {} });
   const hour = 3600_000;
   const t = Math.floor(Date.now() / hour) * hour - 10 * hour;
-  history.events = [
+  history.addMany([
     { t: t + 10 * MIN, type: 'watch-start', session: 's1', categoryId: 7 },
     { t: t + hour + 50 * MIN, type: 'watch-end', session: 's1' }, // two hours touched
     { t: t + 5 * hour, type: 'watch-start', session: 's2' }, // no category: left out
     { t: t + 5 * hour + MIN, type: 'watch-end', session: 's2' },
-  ];
+  ]);
   farmer.availability = new Availability({ 7: { [Math.floor(t / hour) + 4]: 0 } });
   farmer.availabilityFromHistory();
   assert.deepEqual(farmer.availability.seen(7), { hours: 3, live: 2, since: t });
   assert.deepEqual(Object.keys(farmer.availability.toJSON()), ['7']);
 
   // With no startup cache at all, they're still counted.
-  farmer.cacheFile = '/nonexistent-dir-for-tests/cache.json';
+  farmer.cache = new Db(':memory:').cache;
   assert.equal(farmer.loadCache(), false);
   assert.deepEqual(farmer.availability.seen(7), { hours: 2, live: 2, since: t });
 });
@@ -559,7 +559,7 @@ test('Favour rarely live drops: Some weighs the live rate less, Off sorts by end
   assert.equal(off.farmer.model.categories[0].id, 1, 'Common first: it ends sooner');
   assert.equal(off.watcher.watching, 'everyday');
   assert.equal(off.farmer.model.categories[1].rarelyLive, true, 'still shown as rare');
-  assert.ok(!off.history.events.some((e) => /rarely live/.test(e.text ?? '')), 'but not given as a reason');
+  assert.ok(!off.history.all().some((e) => /rarely live/.test(e.text ?? '')), 'but not given as a reason');
 });
 
 test('Switch streams for: Smart only leaves a working stream for a drop with that much less live time left', async () => {
@@ -617,7 +617,7 @@ test('a drop about to expire jumps the queue, but only if its next reward can st
   await farmer.tick();
   assert.deepEqual(farmer.model.categories.map((c) => c.id), [2, 1, 3]);
   assert.equal(watcher.watching, 'b');
-  assert.ok(history.events.some((e) => e.type === 'priority' && e.campaignId === 's'));
+  assert.ok(history.all().some((e) => e.type === 'priority' && e.campaignId === 's'));
 
   const off = setup({ campaigns: [later, soon], streams: { 1: [live('a', 1)], 2: [live('b', 2)] } }, { categoryOrder: [1, 2], prioritizeExpiring: false });
   await off.farmer.tick();
@@ -634,7 +634,7 @@ test('urgent drops are ordered by slack, and switching for one is recorded as a 
   const { farmer, watcher, api, history } = setup({ campaigns: [roomy], streams: { 1: [live('a', 1)], 2: [live('b', 2)], 3: [live('c', 3)] } });
   await farmer.tick();
   assert.equal(watcher.watching, 'a');
-  const pick = history.events.find((e) => e.type === 'decision');
+  const pick = history.all().find((e) => e.type === 'decision');
   assert.match(pick.text, /^Picked a for Roomy: top of your queue/);
 
   api.list = [roomy, tight, early];
@@ -642,7 +642,7 @@ test('urgent drops are ordered by slack, and switching for one is recorded as a 
   await farmer.tick();
   assert.deepEqual(farmer.model.categories.map((c) => c.id).slice(0, 2), [3, 2]);
   assert.equal(watcher.watching, 'c');
-  const sw = history.events.filter((e) => e.type === 'decision').at(-2);
+  const sw = history.all().filter((e) => e.type === 'decision').at(-2);
   assert.match(sw.text, /^Switching to Early: Campaign e ends in 1h 1[0-2]m with 30 min to go/);
 });
 
@@ -659,7 +659,7 @@ test('a higher category that comes back online takes over, once its stream is co
   api.ineligible.add(1);
   await farmer.tick();
   assert.equal(watcher.watching, 'next');
-  assert.ok(history.events.some((e) => e.type === 'decision' && /^Stayed on next/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'decision' && /^Stayed on next/.test(e.text)));
 
   // Eligible now (after the skip expires): switch up.
   api.ineligible.delete(1);
@@ -667,7 +667,7 @@ test('a higher category that comes back online takes over, once its stream is co
   farmer.streams.clear();
   await farmer.tick();
   assert.equal(watcher.watching, 'top');
-  assert.ok(history.events.some((e) => e.type === 'decision' && /^Switching to Top/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'decision' && /^Switching to Top/.test(e.text)));
 });
 
 test('smart order watches what expires first, re-sorts when it comes online, and ignores small differences', async () => {
@@ -688,7 +688,7 @@ test('smart order watches what expires first, re-sorts when it comes online, and
   farmer.streams.clear();
   await farmer.tick();
   assert.equal(watcher.watching, 's', 'the sooner-expiring drop takes over when it comes online');
-  assert.ok(history.events.some((e) => e.type === 'decision' && /Switching to Short: Short ends sooner/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'decision' && /Switching to Short: Short ends sooner/.test(e.text)));
 
   api.offline.delete('c');
   farmer.streams.clear();
@@ -701,14 +701,14 @@ test('after a restart the Activity tab carries on from history, in the same word
   const { logFromHistory } = require('../../../src/main/farmer');
   const { farmer, history } = setup({ campaigns: [], streams: {} });
   const t = Date.now() - 30 * MIN;
-  history.events = [
+  history.addMany([
     { t: t - 7 * 60 * MIN, type: 'watch-start', text: 'Watching Old for Neon Rush' }, // older than 6 h: left out
     { t, type: 'watch-start', text: 'Watching Arcadia for Neon Rush' },
     { t: t + 2 * MIN, type: 'credit', campaign: 'Neon Rush Launch Week', delta: 2, units: 148, text: '+2 min (148 total)' },
     { t: t + 3 * MIN, type: 'claim', text: 'Claimed Hype Rocket Emote (confirmed by Kick)' },
     { t: t + 4 * MIN, type: 'stall', text: 'No progress for 20 min on Arcadia' },
     { t: t + 5 * MIN, type: 'unlock', text: 'Hype Rocket Emote unlocked at 60 min' }, // not a log line
-  ];
+  ]);
   farmer.seedFromHistory();
   assert.deepEqual(
     farmer.log.map((l) => [l.level, l.text]),
@@ -727,17 +727,19 @@ test('the startup cache shows the last known drops at once, and history rebuilds
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cache-')), 'cache.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cache-'));
   const first = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 20 } });
-  first.farmer.cacheFile = file;
+  const db = openDb(dir);
+  first.farmer.cache = db.cache;
   await first.farmer.tick();
   // The refresh's save, awaited rather than slept on: a slow CI runner can fire the timer late.
   assert.ok(first.farmer.cacheTimer);
   await first.farmer.saveCache();
+  db.close();
 
   const second = setup({ campaigns: [], streams: {} });
-  second.farmer.cacheFile = file;
-  second.history.events = [{ t: Date.now() - 600_000, type: 'credit', campaignId: 'a', delta: 2, units: 18 }];
+  second.farmer.cache = openDb(dir).cache;
+  second.history.addMany([{ t: Date.now() - 600_000, type: 'credit', campaignId: 'a', delta: 2, units: 18 }]);
   second.farmer.seedFromHistory();
   assert.ok(second.farmer.loadCache());
   assert.equal(second.farmer.model.campaigns[0].id, 'a');
@@ -761,14 +763,14 @@ test('leaves a stream whose streamer changes category, or that stops counting fo
   api.streams[1] = api.streams[1].filter((s) => s.channel.slug !== 'first');
   await farmer.tick();
   assert.equal(watcher.watching, 'second');
-  assert.ok(history.events.some((e) => e.type === 'decision' && /^Left first: streamer changed category/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'decision' && /^Left first: streamer changed category/.test(e.text)));
 
   // Five minutes later Kick says this stream no longer counts.
   api.ineligible.add(2);
   farmer.current.eligibleCheckedAt = Date.now() - 6 * MIN;
   await farmer.tick();
   assert.equal(watcher.watching, 'third');
-  assert.ok(history.events.some((e) => e.type === 'decision' && /^Left second: stream no longer counts/.test(e.text)));
+  assert.ok(history.all().some((e) => e.type === 'decision' && /^Left second: stream no longer counts/.test(e.text)));
 });
 
 test('a claim only counts once Kick confirms it; an unconfirmed one is retried', async () => {
@@ -776,14 +778,14 @@ test('a claim only counts once Kick confirms it; an unconfirmed one is retried',
   const real = api.claim.bind(api);
   api.claim = async (cid, rid) => api.calls.push(['claim', cid, rid]); // Kick answers OK but doesn't claim
   await farmer.tick();
-  assert.equal(history.events.filter((e) => e.type === 'claim').length, 0);
-  assert.match(history.events.find((e) => e.type === 'claim-failed').text, /not confirmed/);
+  assert.equal(history.all().filter((e) => e.type === 'claim').length, 0);
+  assert.match(history.all().find((e) => e.type === 'claim-failed').text, /not confirmed/);
   assert.ok(farmer.claimBackoff.get('a-r1') > Date.now());
 
   api.claim = real;
   farmer.claimBackoff.clear();
   await farmer.tick();
-  const ok = history.events.find((e) => e.type === 'claim');
+  const ok = history.all().find((e) => e.type === 'claim');
   assert.ok(ok?.confirmed);
   assert.match(ok.text, /confirmed by Kick/);
   assert.equal(farmer.stats.claims, 1);
@@ -812,7 +814,7 @@ test('an unconfirmed claim does not hold the stream: it moves on and keeps retry
 
 test('finished and missed drops are listed apart from the queue, and kept after Kick removes them', async () => {
   const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'pd-farm-arch-'));
-  const archive = new DropArchive(dir, { fetchImage: async () => ({ buffer: Buffer.from('GIF89a'), type: 'image/gif' }) });
+  const archive = new DropArchive(dir, new Db(':memory:'), { fetchImage: async () => ({ buffer: Buffer.from('GIF89a'), type: 'image/gif' }) });
   const done = campaign('done', { category: { id: 1, name: 'First', image_url: 'https://x/first.png' } });
   const gone = campaign('gone', { category: { id: 2, name: 'Second' }, rewards: [{ id: 'g1', name: 'A Emote', required_units: 30 }, { id: 'g2', name: 'B Badge', required_units: 90 }] });
   const game = campaign('game', { category: { id: 3, name: 'Game' }, org: 'Studio', connect: 'https://link', rewards: [{ id: 'k1', name: 'Skin', required_units: 30 }] });
@@ -840,9 +842,9 @@ test('finished and missed drops are listed apart from the queue, and kept after 
   assert.equal(farmer.dropInfo('gone').status, 'missed');
   assert.equal(farmer.dropInfo('done').status, 'completed');
   assert.equal(farmer.dropInfo('nope'), null);
-  const ended = history.events.find((e) => e.type === 'campaign-ended' && e.campaignId === 'gone');
+  const ended = history.all().find((e) => e.type === 'campaign-ended' && e.campaignId === 'gone');
   assert.match(ended.text, /taken down by Kick: missed 1 of 2 rewards/);
-  assert.equal(history.events.filter((e) => e.type === 'campaign-ended').length, 1, 'game drops are not recorded');
+  assert.equal(history.all().filter((e) => e.type === 'campaign-ended').length, 1, 'game drops are not recorded');
 
   // Images switch to the stored copies once downloaded.
   await archive.pump();
@@ -854,7 +856,7 @@ test('finished and missed drops are listed apart from the queue, and kept after 
   await farmer.tick({ force: true });
   assert.ok(farmer.model.campaigns.some((c) => c.id === 'gone'));
   assert.ok(!farmer.model.past.some((p) => p.id === 'gone'));
-  assert.ok(history.events.some((e) => e.type === 'campaign-back' && e.campaignId === 'gone'));
+  assert.ok(history.all().some((e) => e.type === 'campaign-back' && e.campaignId === 'gone'));
 });
 
 test('following a channel on Kick puts its streams first, and is recorded', async () => {
@@ -869,7 +871,7 @@ test('following a channel on Kick puts its streams first, and is recorded', asyn
   assert.equal(farmer.model.categories[0].streams[0].slug, 'small', 'followed channels sort first');
   await farmer.setFollow('big', false);
   assert.equal(farmer.current.followed, false);
-  assert.deepEqual(history.events.filter((e) => /follow/.test(e.type)).map((e) => [e.type, e.slug]), [['follow', 'small'], ['unfollow', 'big']]);
+  assert.deepEqual(history.all().filter((e) => /follow/.test(e.type)).map((e) => [e.type, e.slug]), [['follow', 'small'], ['unfollow', 'big']]);
   api.follow = async () => {
     throw Object.assign(new Error('nope'), { status: 403 });
   };
@@ -879,7 +881,7 @@ test('following a channel on Kick puts its streams first, and is recorded', asyn
 
 test('a drop rebuilt from history shows as missed, with what was credited', async () => {
   const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'pd-farm-hist-'));
-  const archive = new DropArchive(dir, {});
+  const archive = new DropArchive(dir, new Db(':memory:'), {});
   const { farmer } = setup({ campaigns: [campaign('a')], streams: {}, units: {} }, {}, { archive });
   archive.backfill([{ t: Date.now() - 3600_000, type: 'watch-start', campaignIds: ['gone'], campaigns: ['Brand Risk'], categoryId: 9, category: 'Special Events' }]);
   await farmer.tick();
@@ -894,13 +896,14 @@ test('a quick restart carries the run on: the stat cards, and the stream being w
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-run-')), 'cache.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-run-'));
   const first = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 20 } });
-  first.farmer.cacheFile = file;
+  const db = openDb(dir);
+  first.farmer.cache = db.cache;
   await first.farmer.tick();
   const startedAt = first.farmer.current.startedWatchingAt - 40 * MIN; // as if watched for 40 min
   first.farmer.current.startedWatchingAt = startedAt;
-  first.history.events.find((e) => e.type === 'watch-start').t = startedAt;
+  first.history.db.sql.prepare("UPDATE events SET t = ?, data = json_set(data, '$.t', ?) WHERE type = 'watch-start'").run(startedAt, startedAt);
   Object.assign(first.farmer.stats, { sessionStart: startedAt - MIN, watchMs: 40 * MIN, earned: 38, claims: 1 });
   first.watcher.emit('watch-event', { t: Date.now() });
   assert.ok(first.farmer.cacheTimer, 'a watch event saves the count');
@@ -908,10 +911,12 @@ test('a quick restart carries the run on: the stat cards, and the stream being w
   first.farmer.flushCache();
   assert.equal(first.farmer.cacheTimer, null);
   await first.farmer.cacheSaved; // the pending save resolves too
+  db.close();
 
   const second = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 22 } });
-  second.farmer.cacheFile = file;
-  second.history.events = [...first.history.events];
+  const db2 = openDb(dir);
+  second.farmer.cache = db2.cache;
+  second.history.addMany(first.history.all());
   assert.ok(second.farmer.loadCache());
   const { stats } = second.farmer;
   assert.equal(stats.sessionStart, startedAt - MIN);
@@ -922,16 +927,16 @@ test('a quick restart carries the run on: the stat cards, and the stream being w
   assert.equal(second.farmer.current.startedWatchingAt, startedAt, 'the same stream, watched since before the restart');
   assert.equal(second.farmer.current.campaignSince.a, startedAt);
   second.farmer.stop();
-  const end = second.history.events.at(-1);
+  const end = second.history.all().at(-1);
   assert.equal(end.type, 'watch-end');
   assert.equal(end.minutes, 0, 'History counts each launch\'s own session');
 
   // A restart long after: a new run, from zero, and the stream starts afresh.
-  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-  fs.writeFileSync(file, JSON.stringify({ ...saved, savedAt: Date.now() - 20 * MIN }));
+  db2.set('cache.savedAt', Date.now() - 20 * MIN);
+  db2.close();
   const third = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 22 } });
-  third.farmer.cacheFile = file;
-  third.history.events = [...first.history.events];
+  third.farmer.cache = openDb(dir).cache;
+  third.history.addMany(first.history.all());
   third.farmer.loadCache();
   assert.equal(third.farmer.stats.earned, 0);
   assert.equal(third.farmer.resumeWatch, undefined);
@@ -939,10 +944,10 @@ test('a quick restart carries the run on: the stat cards, and the stream being w
 
 test('a different stream after a quick restart starts its own watch time', async () => {
   const { farmer, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('other', 1)] } });
-  history.events = [
+  history.addMany([
     { t: Date.now() - 30 * MIN, type: 'watch-start', session: 'x', slug: 'gone', campaignIds: ['a'] },
     { t: Date.now() - 2 * MIN, type: 'watch-end', session: 'x', reason: 'App closed or signed out' },
-  ];
+  ]);
   farmer.resumeRun({ savedAt: Date.now() - 2 * MIN, stats: { earned: 5, watchMs: 'bad' } });
   assert.equal(farmer.stats.earned, 5);
   assert.equal(farmer.stats.watchMs, 0, 'a bad saved value is left at zero');
@@ -955,12 +960,12 @@ test('a different stream after a quick restart starts its own watch time', async
 test('Claimed today counts the history\'s claims since midnight, so a restart keeps it', () => {
   const { farmer, history } = setup({ campaigns: [], streams: {} });
   const midnight = new Date().setHours(0, 0, 0, 0);
-  history.events = [
+  history.addMany([
     { t: midnight - MIN, type: 'claim' },
     { t: midnight + MIN, type: 'claim' },
     { t: midnight + 2 * MIN, type: 'credit' },
     { t: midnight + 3 * MIN, type: 'claim' },
-  ];
+  ]);
   assert.equal(farmer.claimsToday(midnight + 4 * MIN), 2);
   assert.equal(farmer.snapshot().stats.claimsToday, farmer.claimsToday());
   farmer.history = null;

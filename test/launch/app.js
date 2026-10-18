@@ -22,7 +22,7 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-test-'));
   if (settings) fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify(settings));
   // Other files to start with in the data folder, e.g. { 'updates.json': {...} }.
-  for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(data, name), typeof content === 'string' ? content : JSON.stringify(content));
+  for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(data, name), typeof content === 'string' || Buffer.isBuffer(content) ? content : JSON.stringify(content));
   const env = {
     ...process.env,
     PD_DEMO: '1',
@@ -84,6 +84,20 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
   };
 }
 
+/**
+ * Reads the app's database (db.js) in a data folder, while it runs or after: fn(db) gets a
+ * read-only Db, so tests check what was saved the way the app reads it.
+ */
+function readDb(data, fn) {
+  const { Db, FILE } = require('../../src/main/db');
+  const db = new Db(path.join(data, FILE));
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
 /** Waits until fn(page) is truthy (polling), or fails with `what`. */
 async function until(page, fn, what, timeout = 15000, arg) {
   const end = Date.now() + timeout;
@@ -95,4 +109,4 @@ async function until(page, fn, what, timeout = 15000, arg) {
   }
 }
 
-module.exports = { launchApp, until, ROOT };
+module.exports = { launchApp, until, readDb, ROOT };

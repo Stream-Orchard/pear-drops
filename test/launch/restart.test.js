@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { launchApp, until } = require('./app');
+const { FILE } = require('../../src/main/db');
 
 const stats = (a) => a.app.evaluate(() => {
   const { farmer } = global.pdDebug;
@@ -20,7 +21,9 @@ test('a quick restart keeps the stat cards counting and the stream it was watchi
   const before = await stats(first);
   assert.ok(before.eventsSent > 0 && before.slug, 'watching, with a watch event sent');
   await first.app.close(); // quits the app, which saves the run
-  const files = Object.fromEntries(['cache.json', 'history.jsonl', 'settings.json'].map((f) => [f, fs.readFileSync(path.join(first.data, f), 'utf8')]));
+  // The database (closed as the app quit, so it's all in the one file) and the settings.
+  const files = Object.fromEntries([FILE, 'settings.json'].map((f) => [f, fs.readFileSync(path.join(first.data, f))]));
+  assert.ok(!fs.existsSync(path.join(first.data, `${FILE}-wal`)), 'nothing left only in the write-ahead log');
   fs.rmSync(first.data, { recursive: true, force: true });
 
   const second = await launchApp({ seed: false, eventSeconds: 600, files });

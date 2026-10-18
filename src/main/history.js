@@ -1,19 +1,17 @@
 // Permanent, granular history of everything the farmer does: credits, claims,
 // unlocks, stalls, reloads, crashes, stream switches, conflicts, completions and
-// app events. Stored as one JSON object per line in the app's data folder and
-// aggregated here for the History view and its overview dashboard.
-const fs = require('fs');
-const path = require('path');
-
+// app events. Stored in the app's database (db.js) and aggregated here for the
+// History view and its overview dashboard.
 const DAY = 86_400_000;
 const KEEP_DAYS = 400;
-const COMPACT_BYTES = 25 * 1024 * 1024;
 // A watch session left without an end stops this long after the last thing heard from it
 // (credits come about every 2 minutes).
 const CUT_GRACE_MS = 5 * 60_000;
 const HOUR = 3_600_000;
 // Shorter than this (the history so far, or the range picked), the activity chart is by hour.
 const HOURLY_SPAN = 3 * 86_400_000;
+// The History view's range is kept in memory between its refreshes, and let go once it's closed.
+const VIEW_IDLE_MS = 2 * 60_000;
 
 // Event types, grouped for filtering in the UI.
 const GROUPS = {
@@ -26,73 +24,109 @@ const GROUPS = {
 const GROUP_OF = Object.fromEntries(Object.entries(GROUPS).flatMap(([g, types]) => types.map((t) => [t, g])));
 
 class History {
-  constructor(dir) {
-    this.file = path.join(dir, 'history.jsonl');
-    this.events = [];
+  /** db: the app's database (db.js). */
+  constructor(db) {
+    this.db = db;
     this.seq = 0;
-    this.writing = Promise.resolve();
     this.listeners = new Set();
+    this.memo = null; // the History view's range: { since, after, events }
   }
 
-  load() {
-    let text = '';
+  /** Forgets events over a year old. */
+  load(now = Date.now()) {
     try {
-      text = fs.readFileSync(this.file, 'utf8');
-    } catch {
-      return this;
-    }
-    const cutoff = Date.now() - KEEP_DAYS * DAY;
-    for (const line of text.split('\n')) {
-      if (!line) continue;
-      try {
-        const e = JSON.parse(line);
-        if (e.t >= cutoff) this.events.push(e);
-      } catch {}
-    }
-    this.events.sort((a, b) => a.t - b.t);
-    this.seq = this.events.length;
-    if (text.length > COMPACT_BYTES) this.rewrite();
-    return this;
-  }
-
-  rewrite() {
-    try {
-      fs.writeFileSync(this.file, this.events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+      this.db.pruneEvents(now - KEEP_DAYS * DAY);
+      this.seq = this.db.lastSeq();
     } catch {}
-  }
-
-  /** The app is quitting: what's recorded from now on (the last watch session's end) is written at once, not lost. */
-  shutdown() {
-    this.sync = true;
+    return this;
   }
 
   /** Records one event. `data` holds whatever context applies (campaign, channel, delta…). */
   add(type, data = {}) {
     const e = { id: `${Date.now().toString(36)}-${(this.seq++).toString(36)}`, t: data.t ?? Date.now(), type, ...data };
     if (data.t === undefined) e.t = Date.now();
-    this.events.push(e);
-    const line = JSON.stringify(e) + '\n';
-    if (this.sync && !this.pending) {
-      try {
-        fs.appendFileSync(this.file, line);
-      } catch {}
-    } else {
-      this.pending = (this.pending ?? 0) + 1;
-      this.writing = this.writing.then(() => fs.promises.appendFile(this.file, line).catch(() => {})).then(() => (this.pending -= 1));
-    }
+    try {
+      this.db.addEvent(e);
+    } catch {}
     this.listeners.forEach((fn) => fn(e));
     return e;
   }
 
-  /** Adds many events at once (demo history), keeping order. */
+  /** Adds many events at once (demo history). */
   addMany(list) {
-    this.events.push(...list.map((e) => ({ id: `${e.t.toString(36)}-${(this.seq++).toString(36)}`, ...e })));
-    this.events.sort((a, b) => a.t - b.t);
-    this.rewrite();
+    try {
+      this.db.addEvents(list.map((e) => ({ id: `${e.t.toString(36)}-${(this.seq++).toString(36)}`, ...e })));
+    } catch {}
   }
 
   onAdd(fn) {
     this.listeners.add(fn);
+  }
+
+  /** Events from `since` to `until`, in time order. */
+  range(since = 0, until = undefined) {
+    try {
+      return this.db.events({ since, until }).map((r) => r.e);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Every event (tests, and copying old history into the archive once). */
+  all() {
+    return this.range();
+  }
+
+  /** How many events of a type since a time. */
+  count(type, since = 0) {
+    try {
+      return this.db.countEvents(type, since);
+    } catch {
+      return 0;
+    }
+  }
+
+  isEmpty() {
+    return this.firstAt() === null;
+  }
+
+  firstAt() {
+    try {
+      return this.db.firstEventAt();
+    } catch {
+      return null;
+    }
+  }
+
+  /** The last watch session, ended or not. */
+  lastSession(now = Date.now()) {
+    let from = null;
+    try {
+      from = this.db.lastEventAt('watch-start');
+    } catch {}
+    return from === null ? null : (this.sessions(this.range(from, now), now).at(-1) ?? null);
+  }
+
+  /**
+   * The events the History view shows from `since`: read once, then only what's new since, so
+   * refreshing a long range doesn't read it all again. Let go a while after the view stops asking.
+   */
+  viewEvents(since) {
+    clearTimeout(this.memoTimer);
+    this.memoTimer = setTimeout(() => (this.memo = null), VIEW_IDLE_MS);
+    this.memoTimer.unref?.();
+    let rows = [];
+    try {
+      rows = this.db.events({ since, after: this.memo?.since === since ? this.memo.after : 0 });
+    } catch {}
+    if (this.memo?.since !== since) this.memo = { since, after: 0, events: [] };
+    if (!rows.length) return this.memo.events;
+    const last = this.memo.events.at(-1)?.t ?? -Infinity;
+    this.memo.events.push(...rows.map((r) => r.e));
+    // Something recorded with an earlier time (rare): back in order.
+    if (rows[0].e.t < last) this.memo.events.sort((a, b) => a.t - b.t);
+    this.memo.after = rows.reduce((max, r) => Math.max(max, r.seq), this.memo.after);
+    return this.memo.events;
   }
 
   // ------------------------------------------------------------------ views
@@ -102,7 +136,7 @@ class History {
    * opts: { since, campaignId, groups: [..], text, limit, now }
    */
   view({ since = 0, campaignId = null, groups = null, text = '', limit = 400, now = Date.now() } = {}) {
-    const inRange = this.events.filter((e) => e.t >= since && e.t <= now);
+    const inRange = this.viewEvents(since).filter((e) => e.t <= now);
     const forCampaign = (e) => !campaignId || e.campaignId === campaignId || (e.campaignIds ?? []).includes(campaignId);
     const scoped = inRange.filter(forCampaign);
     const sessions = this.sessions(inRange, now).filter((s) => !campaignId || s.campaignIds.includes(campaignId));
@@ -115,9 +149,9 @@ class History {
       campaigns: this.campaigns(inRange, this.sessions(inRange, now)),
       channels: this.channels(sessions),
       sessions: sessions.slice(-200).reverse(),
-      series: campaignId ? this.series(campaignId, since) : null,
+      series: campaignId ? this.series(campaignId, inRange) : null,
       events: this.timeline(scoped, { groups, text, limit }),
-      first: this.events[0]?.t ?? null,
+      first: this.firstAt(),
     };
   }
 
@@ -203,7 +237,7 @@ class History {
 
   /** Per day: credited minutes and watched minutes (for the activity chart). */
   daily(events, sessions, since, now) {
-    const start = new Date(Math.max(since || 0, now - 60 * DAY, this.events[0]?.t ?? now));
+    const start = new Date(Math.max(since || 0, now - 60 * DAY, this.firstAt() ?? now));
     start.setHours(0, 0, 0, 0);
     const days = [];
     for (let d = start.getTime(); d <= now; d += DAY) days.push({ day: d, credited: 0, watched: 0, claims: 0 });
@@ -235,8 +269,9 @@ class History {
    * under three days, which a chart of one or two days would say nothing about.
    */
   activity(events, sessions, since, now) {
-    const from = Math.max(since || 0, this.events[0]?.t ?? now, now - HOURLY_SPAN);
-    if (now - Math.max(since || 0, this.events[0]?.t ?? now) > HOURLY_SPAN) return { unit: 'day', bars: this.daily(events, sessions, since, now) };
+    const first = this.firstAt() ?? now;
+    const from = Math.max(since || 0, first, now - HOURLY_SPAN);
+    if (now - Math.max(since || 0, first) > HOURLY_SPAN) return { unit: 'day', bars: this.daily(events, sessions, since, now) };
     const start = new Date(from);
     start.setMinutes(0, 0, 0);
     const bars = [];
@@ -334,8 +369,8 @@ class History {
   }
 
   /** A campaign's progress units over time, from its credit events. */
-  series(campaignId, since = 0) {
-    return this.events.filter((e) => e.campaignId === campaignId && e.type === 'credit' && e.t >= since && e.units !== undefined).map((e) => [e.t, e.units]);
+  series(campaignId, events) {
+    return events.filter((e) => e.campaignId === campaignId && e.type === 'credit' && e.units !== undefined).map((e) => [e.t, e.units]);
   }
 
   timeline(events, { groups, text, limit }) {
