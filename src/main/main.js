@@ -11,6 +11,7 @@ const { setupSecurity, guardContents } = require('./security');
 const { createDemo } = require('./demo');
 const { TrayController } = require('./tray');
 const { History } = require('./history');
+const { openDb, OLD_FILES } = require('./db');
 const { Updates, parseChangelog } = require('./updates');
 const { Connected } = require('./connected');
 const { fileKeyStore } = require('@streamorchard/grapevine');
@@ -58,6 +59,7 @@ let auth = { status: 'checking', user: null };
 let powerBlocker = null;
 let security = { encryption: 'unknown', setForget: () => {} };
 let tray = null;
+let db = null; // the app's data: history, drop archive, startup cache, small state (db.js)
 let history = null;
 let archive = null;
 let updates = null;
@@ -601,6 +603,7 @@ function setupUpdates() {
     platform: process.platform,
     appRoot,
     dataDir: app.getPath('userData'),
+    saved: db.slot('updates'),
     tempDir: app.getPath('temp'),
     downloadsDir: app.getPath('downloads'),
     execPath: process.execPath,
@@ -650,13 +653,16 @@ app.whenReady().then(async () => {
   });
 
   store = new Store();
-  security = await setupSecurity(() => store.get().forgetOnQuit);
+  db = openDb(app.getPath('userData'), { log: (text) => console.warn(text) });
+  // Once, from an older version's files.
+  const imported = db.importFiles(app.getPath('userData'));
+  security = await setupSecurity(() => store.get().forgetOnQuit, db.slot('security'));
   api = DEMO ? demo.api : new KickApi();
   if (DEMO) demo.installStage(session.fromPartition(PARTITION), { eventSeconds: Number(process.env.PD_DEMO_EVENT_SECONDS) || 120 });
   createMainWindow();
   watcher = new Watcher(() => mainWindow, () => store.get());
-  history = new History(app.getPath('userData')).load();
-  archive = new DropArchive(app.getPath('userData'), {
+  history = new History(db).load();
+  archive = new DropArchive(app.getPath('userData'), db, {
     resolveUrl: assetUrl,
     // Downloaded in the Kick session, as the site itself would load them.
     fetchImage: async (url) => {
@@ -668,8 +674,9 @@ app.whenReady().then(async () => {
     },
   }).load();
   if (DEMO) demo.seedArchive(archive);
-  // Drops from before the archive existed, rebuilt from what the history recorded.
-  archive.backfill(history.events);
+  // Drops from before the archive existed, rebuilt from what the history recorded (once: since
+  // then, the archive has every drop the history mentions).
+  if (imported.includes(OLD_FILES.history)) archive.backfill(history.all());
   protocol.handle(IMAGE_SCHEME, async (request) => {
     const file = archive.fileFor(request.url);
     if (!file) return new Response(null, { status: 404 });
@@ -679,9 +686,9 @@ app.whenReady().then(async () => {
       return new Response(null, { status: 404 });
     }
   });
-  if (DEMO && process.env.PD_DEMO_SEED && !history.events.length) demo.seedHistoryLog(history);
+  if (DEMO && process.env.PD_DEMO_SEED && history.isEmpty()) demo.seedHistoryLog(history);
   createNotifier();
-  farmer = new Farmer({ api, watcher, store, history, archive, cacheFile: path.join(app.getPath('userData'), 'cache.json') });
+  farmer = new Farmer({ api, watcher, store, history, archive, cache: db.cache });
   notifyFarming();
   farmer.seedFromHistory();
   farmer.loadCache();
@@ -760,17 +767,20 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
-  history?.shutdown();
   connected?.stop(); // says goodbye, so the other app knows at once
   archive?.flush();
   updates?.stop();
 });
 
-// Last, after farming has stopped: saves the run's numbers so a restart carries them on.
-app.on('will-quit', () => farmer?.flushCache());
+// Last, after farming has stopped: saves the run's numbers so a restart carries them on, and
+// closes the database.
+app.on('will-quit', () => {
+  farmer?.flushCache();
+  archive?.flush();
+  db?.close();
+});
 
 app.on('window-all-closed', () => {
-  history?.shutdown();
   stopFarming();
   app.quit();
 });

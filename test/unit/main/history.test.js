@@ -4,12 +4,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { History, GROUP_OF } = require('../../../src/main/history');
+const { Db, openDb } = require('../../../src/main/db');
 
 const MIN = 60_000;
 
 function fresh() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-hist-'));
-  return { dir, history: new History(dir) };
+  return { history: new History(new Db(':memory:')).load() };
 }
 
 function session(h, { start, minutes, slug = 'pixelpear', campaignId = 'c1', credits = minutes / 2, reason = 'Stream went offline', stall = false }) {
@@ -29,7 +29,7 @@ test('sessions pair starts and ends, with credits, stalls and efficiency', () =>
   const { history } = fresh();
   const t = Date.now() - 5 * 3600_000;
   session(history, { start: t, minutes: 60, credits: 15, stall: true });
-  const [s] = history.sessions(history.events);
+  const [s] = history.sessions(history.all());
   assert.equal(s.slug, 'pixelpear');
   assert.equal(s.credited, 30);
   assert.equal(s.stalls, 1);
@@ -42,7 +42,7 @@ test('an unfinished session counts up to now and is marked open', () => {
   const { history } = fresh();
   const now = Date.now();
   history.add('watch-start', { t: now - 10 * MIN, session: 'x', slug: 'a', campaignIds: ['c1'] });
-  const [s] = history.sessions(history.events, now);
+  const [s] = history.sessions(history.all(), now);
   assert.ok(s.open);
   assert.equal(s.ms, 10 * MIN);
 });
@@ -65,7 +65,7 @@ test('a session left without an end (the app quit by force or restarted) stops a
   history.add('start', { t: now - 20 * MIN });
   history.add('watch-start', { t: now - 19 * MIN, session: 'd', slug: 'd', campaignIds: ['c1'] });
 
-  const s = Object.fromEntries(history.sessions(history.events, now).map((x) => [x.session, x]));
+  const s = Object.fromEntries(history.sessions(history.all(), now).map((x) => [x.session, x]));
   assert.equal(s.a.ms, 35 * MIN, "a: to 5 min after its last credit, not to the next launch two hours later");
   assert.equal(s.a.reason, 'App closed');
   assert.ok(s.a.cut);
@@ -104,7 +104,7 @@ test('the activity chart is by hour on a first day or the last 24 hours, and by 
   assert.equal(v.activity.bars.reduce((n, b) => n + b.claims, 0), 2);
 
   // Weeks of history: by day, unless the last 24 hours are picked.
-  history.events.unshift({ t: t - 20 * 86_400_000, type: 'start' });
+  history.addMany([{ t: t - 20 * 86_400_000, type: 'start' }]); // recorded later, with an earlier time
   assert.equal(history.view({ now: t }).activity.unit, 'day');
   const day = history.view({ now: t, since: t - 86_400_000 });
   assert.equal(day.activity.unit, 'hour');
@@ -160,29 +160,71 @@ test('view(): range, drop focus, groups and text search filter the timeline', ()
   assert.ok(search.events.length > 0 && search.events.every((e) => e.channel === 'nightowl' || e.text?.includes('nightowl')));
 });
 
-test('events are saved to disk and loaded back in order', async () => {
-  const { dir, history } = fresh();
+test('events are saved in the database and read back in time order', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-hist-'));
+  const db = openDb(dir);
+  const history = new History(db).load();
   history.add('start', { t: Date.now() - 1000, text: 'b' });
   history.add('pause', { t: Date.now() - 2000, text: 'a' });
-  await history.writing;
-  const again = new History(dir).load();
-  assert.deepEqual(again.events.map((e) => e.text), ['a', 'b']);
+  db.close();
+  const again = new History(openDb(dir)).load();
+  assert.deepEqual(again.all().map((e) => e.text), ['a', 'b']);
+  assert.equal(again.seq, 2, 'new ids carry on from the saved ones');
+  again.db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('once the app is quitting, events are on disk at once, after any still being written', async () => {
-  const { dir, history } = fresh();
-  history.add('start', { text: 'a' });
-  history.shutdown();
-  history.add('pause', { text: 'b' }); // the first write is still going: this one waits its turn
-  await history.writing;
-  history.add('watch-end', { text: 'c' });
-  assert.deepEqual(new History(dir).load().events.map((e) => e.text), ['a', 'b', 'c'], 'c without waiting');
-  history.file = path.join(dir, 'missing', 'history.jsonl');
-  assert.doesNotThrow(() => history.add('pause', { text: 'd' }), 'a failed write is ignored');
+test('events over a year old are forgotten when loading', () => {
+  const db = new Db(':memory:');
+  const now = Date.now();
+  db.addEvents([
+    { t: now - 401 * 86_400_000, type: 'start', text: 'old' },
+    { t: now - 1000, type: 'start', text: 'new' },
+  ]);
+  assert.deepEqual(new History(db).load(now).all().map((e) => e.text), ['new']);
 });
 
-test('lines that are not JSON are skipped when loading', () => {
-  const { dir } = fresh();
-  fs.writeFileSync(path.join(dir, 'history.jsonl'), `{"t":${Date.now()},"type":"start"}\nnot json\n`);
-  assert.equal(new History(dir).load().events.length, 1);
+test('a write that fails (the database closed as the app quit) is ignored', () => {
+  const { history } = fresh();
+  history.db.close();
+  assert.doesNotThrow(() => history.add('pause', { text: 'd' }));
+  assert.doesNotThrow(() => history.addMany([{ t: Date.now(), type: 'pause' }]));
+  assert.deepEqual(history.all(), []);
+  assert.equal(history.count('claim'), 0);
+  assert.equal(history.firstAt(), null);
+  assert.equal(history.lastSession(), null);
+  assert.equal(history.view().totals.sessions, 0);
+});
+
+test('count(), isEmpty() and lastSession() read the database directly', () => {
+  const { history } = fresh();
+  assert.ok(history.isEmpty());
+  const now = Date.now();
+  session(history, { start: now - 5 * 3600_000, minutes: 30, slug: 'a' });
+  history.add('claim', { t: now - 4 * 3600_000 });
+  history.add('claim', { t: now - 1000 });
+  history.add('watch-start', { t: now - 10 * MIN, session: 'open', slug: 'b', campaignIds: ['c1'] });
+  history.add('credit', { t: now - 8 * MIN, session: 'open', slug: 'b', campaignId: 'c1', delta: 2 });
+  assert.ok(!history.isEmpty());
+  assert.equal(history.count('claim'), 2);
+  assert.equal(history.count('claim', now - 3600_000), 1);
+  const last = history.lastSession(now);
+  assert.equal(last.slug, 'b');
+  assert.ok(last.open);
+  assert.equal(last.credited, 2);
+});
+
+test('the History view reads its range once, then only what was recorded since', () => {
+  const { history } = fresh();
+  const now = Date.now();
+  session(history, { start: now - 3600_000, minutes: 10 });
+  assert.equal(history.view({ now }).totals.credited, 10);
+  const read = [];
+  const events = history.db.events.bind(history.db);
+  history.db.events = (opts) => (read.push(opts), events(opts));
+  history.add('credit', { t: now - 1000, campaignId: 'c1', delta: 2 });
+  assert.equal(history.view({ now }).totals.credited, 12, 'the new credit counts');
+  assert.ok(read[0].after > 0, 'only rows after the ones already read');
+  assert.equal(history.view({ now, since: now - 30 * MIN }).totals.credited, 2, 'another range is read afresh');
+  assert.equal(read.at(-1).after, 0);
 });

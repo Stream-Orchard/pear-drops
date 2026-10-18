@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { launchApp, until } = require('./app');
+const { launchApp, until, readDb } = require('./app');
 
 let a;
 test.before(async () => {
@@ -15,12 +15,7 @@ test.after(async () => {
 });
 
 const pastNames = () => a.win.evaluate(() => [...document.querySelectorAll('.past')].map((p) => [p.querySelector('.cat-name span').textContent, p.className.includes('completed') ? 'completed' : 'missed']));
-const historyTypes = () =>
-  fs
-    .readFileSync(path.join(a.data, 'history.jsonl'), 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+const historyTypes = () => readDb(a.data, (db) => db.events().map((r) => r.e));
 
 test('the Done tab lists finished and missed drops, with stored images', async () => {
   await a.win.click('[data-action="side-tab"][data-id="done"]');

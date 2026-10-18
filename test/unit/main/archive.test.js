@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { DropArchive, slim, decodeData } = require('../../../src/main/archive');
+const { Db, openDb } = require('../../../src/main/db');
 
 const DAY = 86_400_000;
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
@@ -25,13 +26,14 @@ function camp(id, { ends = 2, image = `https://files.example/${id}.png` } = {}) 
 function fresh(fetchImage = async () => ({ buffer: PNG, type: 'image/png' })) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-arch-'));
   const fetched = [];
-  const archive = new DropArchive(dir, {
+  const db = openDb(dir);
+  const archive = new DropArchive(dir, db, {
     fetchImage: async (url) => {
       fetched.push(url);
       return fetchImage(url);
     },
   });
-  return { dir, archive, fetched };
+  return { dir, db, archive, fetched };
 }
 
 test('slim keeps what the app shows, not the channel list', () => {
@@ -51,7 +53,7 @@ test('data: images decode, both base64 and percent-encoded', () => {
 });
 
 test('images are stored once and then served from the app, surviving a reload', async () => {
-  const { dir, archive, fetched } = fresh();
+  const { dir, db, archive, fetched } = fresh();
   archive.update([camp('a')], [], Date.now());
   await archive.pump();
   assert.deepEqual(fetched.sort(), ['https://files.example/a.png', 'https://files.example/cat.png']);
@@ -67,9 +69,40 @@ test('images are stored once and then served from the app, surviving a reload', 
   await archive.pump();
   assert.equal(fetched.length, 2, 'nothing is downloaded twice');
   archive.flush();
-  const again = new DropArchive(dir, {}).load();
+  db.close();
+  const again = new DropArchive(dir, openDb(dir), {}).load();
   assert.equal(again.img('https://files.example/a.png'), local);
   assert.equal(again.get('a').raw.name, 'Campaign a');
+  again.db.close();
+});
+
+test('saving writes only the drops and images that changed, and removes pruned ones', () => {
+  const db = new Db(':memory:');
+  const archive = new DropArchive(os.tmpdir(), db, {}).load();
+  const writes = [];
+  const save = db.saveDrops.bind(db);
+  db.saveDrops = (drops, images) => (writes.push([Object.keys(drops), Object.keys(images)]), save(drops, images));
+  const now = Date.now();
+  const listed = [camp('a'), camp('b')];
+  archive.update(listed, [], now);
+  archive.flush();
+  assert.deepEqual(writes.pop()[0].sort(), ['a', 'b']);
+  archive.update(listed, [{ id: 'b', progress_units: 30, rewards: [] }], now);
+  archive.flush();
+  assert.deepEqual(writes.pop()[0], ['b'], 'only the drop whose progress moved');
+  archive.flush();
+  archive.write();
+  assert.equal(writes.length, 0, 'nothing changed, nothing written');
+  archive.images['https://files.example/a.png'] = 'aaaaaaaaaaaaaaaaaaaaaaaa.png';
+  delete archive.campaigns.a;
+  archive.write();
+  assert.deepEqual(writes.pop(), [['a'], ['https://files.example/a.png']]);
+  const back = db.loadDrops();
+  assert.deepEqual(Object.keys(back.drops), ['b']);
+  assert.equal(back.drops.b.progress.units, 30);
+  assert.deepEqual(back.images, { 'https://files.example/a.png': 'aaaaaaaaaaaaaaaaaaaaaaaa.png' });
+  db.close();
+  assert.doesNotThrow(() => archive.update([camp('c')], [], Date.now()) && archive.flush(), 'a closed database is ignored');
 });
 
 test('a failed download keeps Kick’s link and waits before trying again', async () => {

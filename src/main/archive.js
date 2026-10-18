@@ -1,8 +1,8 @@
 // A local copy of every drop campaign the app has seen: its details, your last
 // known progress and its images. Kick's campaign list keeps ended drops (status
 // "expired") for a few months and then drops them, and your progress on them may
-// go sooner, so the Done tab and the History view read them from here. Stored as
-// drops.json in the app's data folder, with the images in drop-images/.
+// go sooner, so the Done tab and the History view read them from here. Stored in the
+// app's database (db.js), one row per drop, with the images in drop-images/.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -43,13 +43,14 @@ function decodeData(url) {
 
 class DropArchive extends EventEmitter {
   /**
-   * dir: the data folder. fetchImage(url) -> { buffer, type } downloads one image
+   * dir: the data folder (for drop-images/), db: the app's database (db.js).
+   * fetchImage(url) -> { buffer, type } downloads one image
    * (main.js uses the Kick session, so it looks like the site loading it).
    * resolveUrl turns a Kick image path into a full URL.
    */
-  constructor(dir, { fetchImage, resolveUrl = (u) => u } = {}) {
+  constructor(dir, db, { fetchImage, resolveUrl = (u) => u } = {}) {
     super();
-    this.file = path.join(dir, 'drops.json');
+    this.db = db;
     this.imageDir = path.join(dir, 'drop-images');
     this.fetchImage = fetchImage;
     this.resolveUrl = resolveUrl;
@@ -59,27 +60,27 @@ class DropArchive extends EventEmitter {
     this.queue = [];
     this.pumping = null;
     this.saveTimer = null;
+    this.saved = { campaigns: new Map(), images: new Map() }; // what the database has, as written
   }
 
   load() {
     try {
-      const data = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      this.campaigns = data.campaigns ?? {};
-      this.images = data.images ?? {};
+      const { drops, images } = this.db.loadDrops();
+      this.campaigns = drops;
+      this.images = images;
+      for (const [id, entry] of Object.entries(drops)) this.saved.campaigns.set(id, JSON.stringify(entry));
+      for (const [url, name] of Object.entries(images)) this.saved.images.set(url, name);
     } catch {}
     this.prune();
+    this.write();
     return this;
-  }
-
-  get json() {
-    return JSON.stringify({ version: 1, campaigns: this.campaigns, images: this.images });
   }
 
   save() {
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      fs.promises.writeFile(this.file, this.json).catch(() => {});
+      this.write();
     }, 2000);
   }
 
@@ -88,8 +89,22 @@ class DropArchive extends EventEmitter {
     if (!this.saveTimer) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
+    this.write();
+  }
+
+  /** Writes the drops and images that changed since the last write, together. */
+  write() {
+    const drops = {};
+    const images = {};
+    const current = new Map(Object.entries(this.campaigns).map(([id, entry]) => [id, JSON.stringify(entry)]));
+    for (const [id, json] of current) if (this.saved.campaigns.get(id) !== json) drops[id] = this.campaigns[id];
+    for (const id of this.saved.campaigns.keys()) if (!current.has(id)) drops[id] = null;
+    for (const [url, name] of Object.entries(this.images)) if (this.saved.images.get(url) !== name) images[url] = name;
+    for (const url of this.saved.images.keys()) if (!(url in this.images)) images[url] = null;
+    if (!Object.keys(drops).length && !Object.keys(images).length) return;
     try {
-      fs.writeFileSync(this.file, this.json);
+      this.db.saveDrops(drops, images);
+      this.saved = { campaigns: current, images: new Map(Object.entries(this.images)) };
     } catch {}
   }
 

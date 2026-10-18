@@ -23,7 +23,8 @@ function parseChangelog(text) {
 
 class Updates extends EventEmitter {
   /**
-   * deps: version, installed (a packaged app), platform, appRoot, dataDir, execPath, pid,
+   * deps: version, installed (a packaged app), platform, appRoot, dataDir, saved (where its
+   * settings are kept: { load(), save(value) }, a db.js slot), execPath, pid,
    * pkgRepo, devCopy (a git checkout or dev copy: check only, never install), and the
    * side effects: fetch, runTool, spawn, openExternal, openPath, quit, relaunch, tempDir,
    * downloadsDir.
@@ -31,7 +32,6 @@ class Updates extends EventEmitter {
   constructor(deps) {
     super();
     this.d = deps;
-    this.file = path.join(deps.dataDir, 'updates.json');
     this.cfg = { repo: '', auto: true, lastCheck: 0, seenVersion: null };
     this.st = { state: 'idle', latest: null, notes: '', notesHtml: '', error: '', installed: null, needsInstall: false, progress: null };
     this.justUpdated = null;
@@ -41,7 +41,7 @@ class Updates extends EventEmitter {
   load() {
     let saved = {};
     try {
-      saved = JSON.parse(fs.readFileSync(this.file, 'utf8')) || {};
+      saved = this.d.saved.load() || {};
     } catch {}
     const ok = (r) => updater.REPO_RE.test(r || '');
     this.cfg = {
@@ -59,7 +59,7 @@ class Updates extends EventEmitter {
 
   save() {
     try {
-      fs.writeFileSync(this.file, JSON.stringify(this.cfg));
+      this.d.saved.save(this.cfg);
     } catch {}
   }
 

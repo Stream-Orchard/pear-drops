@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { launchApp, until } = require('./app');
+const { launchApp, until, readDb } = require('./app');
 const { makeZip, standInGitHub } = require('./github');
 
 const REPO = 'pearfarmer/pear-drops';
@@ -37,7 +37,7 @@ test.before(async () => {
   });
   a = await launchApp({
     size: { width: 1512, height: 944 },
-    // An older version ran before: this start is the first of a new version.
+    // An older version ran before (it kept this in a file, copied into the database): this start is the first of a new version.
     files: { 'updates.json': { seenVersion: '0.0.9', auto: false } },
     env: { PD_UPDATE_API: gh.url, PD_UPDATE_APP_ROOT: appRoot },
   });
@@ -56,7 +56,7 @@ test('the first start of a new version shows what’s new, once', async () => {
   await a.win.screenshot({ path: path.join(os.tmpdir(), 'pd-whatsnew.png') });
   await a.win.click('.modal.whatsnew [data-action="close-whatsnew"].btn');
   await until(a.win, () => !document.querySelector('.modal.whatsnew'), 'the card to close');
-  const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'updates.json'), 'utf8'));
+  const saved = readDb(a.data, (db) => db.get('updates'));
   assert.equal(saved.seenVersion, require('../../package.json').version, 'the version that is running');
 });
 

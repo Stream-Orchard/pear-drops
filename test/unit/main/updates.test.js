@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { Updates, parseChangelog } = require('../../../src/main/updates');
 const { makeZip } = require('../../launch/github');
+const { Db } = require('../../../src/main/db');
 
 const PKG = { name: 'pear-drops', version: '0.1.0', main: 'src/main/main.js' };
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
@@ -20,7 +21,8 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
   const appRoot = tmp('pd-app-');
   fs.writeFileSync(path.join(appRoot, 'package.json'), JSON.stringify(PKG));
   const dataDir = tmp('pd-data-');
-  if (saved) fs.writeFileSync(path.join(dataDir, 'updates.json'), JSON.stringify(saved));
+  const db = new Db(':memory:');
+  if (saved) db.set('updates', saved);
   const zip = makeZip(
     Object.entries(
       files ?? {
@@ -44,6 +46,7 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
     platform,
     appRoot,
     dataDir,
+    saved: db.slot('updates'),
     tempDir: tmp('pd-tmp-'),
     downloadsDir: tmp('pd-dl-'),
     execPath: '/usr/bin/pear-drops',
@@ -60,7 +63,7 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
   }).load();
   const states = [];
   updates.on('status', (s) => states.push(s.state));
-  return { updates, appRoot, dataDir, calls, states };
+  return { updates, appRoot, dataDir, db, calls, states };
 }
 
 const RELEASE = { tag_name: 'v0.2.0', name: 'v0.2.0', body: '- Done tab', zipball_url: 'https://api.github.com/zip', html_url: 'https://github.com/me/pear-drops/releases/tag/v0.2.0', assets: [] };
@@ -75,11 +78,11 @@ test('parseChangelog reads versions, the current one and their items', () => {
 });
 
 test('the repository comes from package.json until one is saved; a new version is noticed once', () => {
-  const { updates, dataDir } = setup({ saved: { seenVersion: '0.0.9', auto: false } });
+  const { updates, db } = setup({ saved: { seenVersion: '0.0.9', auto: false } });
   assert.equal(updates.status().repo, 'me/pear-drops');
   assert.equal(updates.status().auto, false);
   assert.deepEqual(updates.status().justUpdated, { from: '0.0.9', to: '0.1.0' });
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'updates.json'), 'utf8')).seenVersion, '0.1.0');
+  assert.equal(db.get('updates').seenVersion, '0.1.0');
   updates.dismissJustUpdated();
   assert.equal(updates.status().justUpdated, null);
   assert.equal(setup().updates.status().justUpdated, null, 'a first run isn’t an update');

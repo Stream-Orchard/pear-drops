@@ -460,7 +460,7 @@ test('a raid sends the player to another channel: it moves on to the next stream
     now = await main(() => global.pdDebug.farmer.current?.slug);
   }
   assert.ok(now && now !== before, `moved on from ${before} (now ${now})`);
-  const ended = await main(() => global.pdDebug.farmer.history.events.filter((e) => e.type === 'offline').map((e) => e.text));
+  const ended = await main(() => global.pdDebug.farmer.history.all().filter((e) => e.type === 'offline').map((e) => e.text));
   assert.ok(ended.some((t) => /sent viewers to raidtarget/.test(t)), JSON.stringify(ended));
   const opened = await main(() => global.pdOpened);
   assert.deepEqual(opened.filter((u) => /player\.kick\.com|\/popout\//.test(u)), [], 'the raid target never opens in the browser');
@@ -477,7 +477,7 @@ test("a stream ending sends the player to its offline screen: it moves on to the
     now = await main(() => global.pdDebug.farmer.current?.slug);
   }
   assert.ok(now && now !== before, `moved on from ${before} (now ${now})`);
-  const ended = await main(() => global.pdDebug.farmer.history.events.filter((e) => e.type === 'offline').map((e) => e.text));
+  const ended = await main(() => global.pdDebug.farmer.history.all().filter((e) => e.type === 'offline').map((e) => e.text));
   assert.ok(ended.some((t) => t.endsWith(' ended the stream')), JSON.stringify(ended));
   const opened = await main(() => global.pdOpened);
   assert.deepEqual(opened.filter((u) => /player\.kick\.com/.test(u)), [], 'the offline screen never opens in the browser');
@@ -503,7 +503,7 @@ for (const [how, spotted] of [
     assert.ok(Date.now() - t0 < 5000, `shown and moved on in ${Date.now() - t0} ms`);
     const now = await main(() => global.pdDebug.farmer.current?.slug);
     assert.ok(now && now !== before, `moved on from ${before} (now ${now})`);
-    const ended = await main((_e, slug) => global.pdDebug.farmer.history.events.filter((e) => e.type === 'offline' && e.slug === slug).map((e) => e.text), before);
+    const ended = await main((_e, slug) => global.pdDebug.farmer.history.all().filter((e) => e.type === 'offline' && e.slug === slug).map((e) => e.text), before);
     assert.ok(ended.some((t) => spotted.test(t)), JSON.stringify(ended));
   });
 }
