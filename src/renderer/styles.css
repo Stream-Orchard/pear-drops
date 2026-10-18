@@ -5713,6 +5713,13 @@ input[type='range']::-webkit-slider-thumb {
   font-size: 11px;
   font-style: normal;
   text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+/* The heartbeat's numbers: the words after them stay put as they count. */
+.act-num {
+  display: inline-block;
+  min-width: 2ch;
+  text-align: right;
 }
 .act-chart-card {
   padding: 10px 12px 6px;

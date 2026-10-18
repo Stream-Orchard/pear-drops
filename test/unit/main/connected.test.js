@@ -141,6 +141,20 @@ test('changes are published at once, the same state only once, and at most every
   cleanup();
 });
 
+test('a heartbeat heard tells the Activity view, so its tile is current', async () => {
+  const { c, cleanup } = setup();
+  let told = 0;
+  c.on('activity', () => told++);
+  c.link.emit('message', { at: Date.now(), app: MV, dir: 'out', kind: 'request', method: 'link.ping', id: 1 });
+  assert.equal(told, 0, 'one sent: nothing new to show');
+  c.link.emit('message', { at: Date.now(), app: MV, dir: 'in', kind: 'reply', method: 'link.ping', id: 1, ms: 2 });
+  assert.equal(told, 1);
+  assert.equal(c.activityPage(MV).totals.ping.ms, 2);
+  assert.equal(c.activityPage(MV).total, 0, 'still not an entry');
+  await c.stop();
+  cleanup();
+});
+
 test('switched on, it links with Stream Multiview, hears about its players, and records it in History', async () => {
   const { c, dir, store, history, cleanup } = setup();
   const changes = [];

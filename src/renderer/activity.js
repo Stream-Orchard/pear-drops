@@ -32,6 +32,8 @@ const kb = (bytes) => {
   return `${bytes} B`;
 };
 const millis = (ms) => (ms < 1 ? '<1 ms' : `${ms} ms`);
+/** A number in a box two digits wide, so the words after it stay put as it counts (styles.css .act-num). */
+const num = (n) => `<span class="act-num">${n}</span>`;
 const actTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const list = (names) => (names?.length ? names.join(', ') : 'nothing');
 
@@ -192,7 +194,7 @@ function activityPane(peer) {
   const stats = `<div class="act-stats">
     ${stat('out', 'arrowRight', 'Sent', t.sent, kb(t.bytesOut))}
     ${stat('in', 'arrowLeft', 'Received', t.received, kb(t.bytesIn))}
-    ${stat('beat', 'pulse', 'Heartbeat', t.ping?.ms != null ? millis(t.ping.ms) : t.ping ? 'OK' : '—', ago === null ? '' : ago < 60 ? `${ago}s ago` : `${Math.round(ago / 60)}m ago`)}
+    ${stat('beat', 'pulse', 'Heartbeat', t.ping?.ms != null ? (t.ping.ms < 1 ? '&lt;1 ms' : `${num(t.ping.ms)} ms`) : t.ping ? 'OK' : '—', ago === null ? '' : ago < 60 ? `${num(ago)}s ago` : `${num(Math.round(ago / 60))}m ago`)}
     ${stat(d?.problems ? 'bad' : 'calm', 'alert', 'Problems', d?.problems ?? 0, '')}
   </div>`;
   const chartEl = $('.act-chart');

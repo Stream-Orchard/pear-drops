@@ -72,7 +72,8 @@ class Connected extends EventEmitter {
       log,
     });
     this.link.on('message', (m) => {
-      if (this.activity.add(m)) this.emit('activity');
+      // A heartbeat heard isn't an entry, but the Heartbeat tile shows it.
+      if (this.activity.add(m) || (m.method === 'link.ping' && m.dir === 'in')) this.emit('activity');
     });
     // What Grapevine refused or dropped, in the log of the app it was about.
     this.link.on('log', (level, text) => {
