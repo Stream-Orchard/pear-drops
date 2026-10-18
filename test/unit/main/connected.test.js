@@ -141,6 +141,53 @@ test('changes are published at once, the same state only once, and at most every
   cleanup();
 });
 
+test('farming stops while its Kick players are out on Auto: the wait to sign them back in, in the log and on the card', async () => {
+  const { c, farmer, cleanup } = setup();
+  c.link.publish = () => {};
+  const kick = (k) => ({ platforms: { kick: { signedIn: false, mode: 'auto', account: null, open: [{ platform: 'kick', slug: 'pixelpear' }], ...k } } });
+  const hear = (k) => c.link.emit('event', MV, 'players.changed', kick(k));
+  const notes = () => c.activityPage(MV, { limit: 50 }).entries.filter((e) => e.about === 'players').map((e) => e.text);
+  const waiting = () => c.state().peers.find((p) => p.id === MV).waiting;
+  const set = (code) => {
+    farmer.status.code = code;
+    c.update();
+  };
+  let told = 0;
+  c.on('activity', () => told++);
+  hear({});
+  c.update(); // farming: nothing to say
+  assert.deepEqual(notes(), []);
+  set('paused');
+  assert.deepEqual(notes(), ['Farming stopped · Kick players sign back in after a few minutes']);
+  assert.equal(c.activityPage(MV).problems, 0, 'not a problem');
+  assert.equal(waiting(), true, 'the card says so too');
+  assert.equal(told, 1);
+  set('farming');
+  assert.deepEqual(notes(), ['Farming again · Kick players stay signed out', 'Farming stopped · Kick players sign back in after a few minutes']);
+  assert.equal(waiting(), false);
+  set('paused');
+  hear({ open: [{ platform: 'kick', slug: 'pixelpear' }, { platform: 'kick', slug: 'moonlitmaple' }] });
+  assert.equal(waiting(), true, 'another player opened, still signed out: still waiting');
+  hear({ signedIn: true });
+  assert.equal(waiting(), false, 'signed back in: the wait is over');
+  set('farming');
+  assert.equal(notes().length, 3, 'nothing was waiting, so no "Farming again"');
+  hear({ signedIn: false });
+  set('signed-out');
+  assert.equal(notes().length, 4, 'any stop counts');
+  c.link.emit('disconnected', MV, 'quit');
+  assert.equal(waiting(), false, 'gone with the link');
+  // Players that don't sign out for farming, or none open: nothing to wait for.
+  for (const k of [{ mode: 'signed-in', signedIn: true }, { mode: 'signed-out' }, { open: [] }]) {
+    set('farming');
+    hear(k);
+    set('paused');
+  }
+  assert.equal(notes().length, 4);
+  await c.stop();
+  cleanup();
+});
+
 test('a heartbeat heard tells the Activity view, so its tile is current', async () => {
   const { c, cleanup } = setup();
   let told = 0;

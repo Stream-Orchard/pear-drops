@@ -961,6 +961,7 @@ const CAPABILITIES = {
         return [`Its Kick players stay signed in, so they can take your drop credit. In ${name}, turn on <b>Sign Kick players out while Pear Drops is farming</b>.`, 'warn'];
       if (k.mode === 'signed-in') return [`Its Kick players stay signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> in ${name} to keep your credit.`, ''];
       if (k.mode === 'signed-out') return ['Its Kick players are always signed out, so your drop credit is safe.', ''];
+      if (p.waiting) return ['Its Kick players sign back in a few minutes after farming stops, in case it starts again.', ''];
       return [k.signedIn ? 'Its Kick players are signed in, and sign out as soon as you farm.' : 'Its Kick players are signed out while you farm, so the credit stays here.', ''];
     },
   },

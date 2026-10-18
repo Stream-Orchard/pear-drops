@@ -223,8 +223,9 @@ function activityPane(peer) {
     const w = describeActivity(e, peer?.name ?? act.app);
     const time = `<span class="act-time">${actTime(e.at)}</span>`;
     if (e.kind === 'status' || e.kind === 'note') {
+      const ic = e.kind === 'note' ? 'alert' : e.about === 'players' ? 'clock' : 'link';
       return `<div class="act-row act-marker tone-${e.tone || 'plain'} ${fresh(e) ? 'fresh' : ''}" data-n="${e.n}">${time}<span class="act-marker-line"></span>
-        <span class="act-pill">${icon(e.kind === 'note' ? 'alert' : 'link')}<span>${esc(w.text)}</span></span><span class="act-marker-line"></span></div>`;
+        <span class="act-pill">${icon(ic)}<span>${esc(w.text)}</span></span><span class="act-marker-line"></span></div>`;
     }
     const cap = (e.method ?? '').startsWith('link.') ? 'link' : (e.method ?? '').startsWith('players.') ? 'players' : 'drops';
     const meta = [e.ms != null ? millis(e.ms) : '', e.bytes ? kb(e.bytes) : ''].filter(Boolean);

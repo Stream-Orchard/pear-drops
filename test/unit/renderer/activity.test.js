@@ -58,6 +58,28 @@ test('each message in plain words, either way', () => {
   assert.deepEqual({ ...say({ kind: 'status', tone: 'ok', text: 'Connected to Stream Multiview' }) }, { title: 'Link', kind: 'status', text: 'Connected to Stream Multiview' });
 });
 
+test('the wait to sign Kick players back in is a marker with a clock; the heartbeat’s numbers sit in boxes', () => {
+  const at = new Date(2026, 9, 18, 17, 0, 0).getTime();
+  const entries = [
+    { n: 2, at: at + 50, app: 'mv', dir: null, kind: 'status', method: null, tone: '', about: 'players', text: 'Farming stopped · Kick players sign back in after a few minutes' },
+    { n: 1, at, app: 'mv', dir: null, kind: 'status', method: null, tone: 'ok', text: 'Connected to Stream Multiview' },
+  ];
+  const data = (ping) => ({ entries, total: 2, newer: 0, problems: 0, latest: 2, started: at, minutes: Array.from({ length: 30 }, () => ({ out: 0, in: 0, bad: 0 })), totals: { sent: 1, received: 1, bytesOut: 10, bytesIn: 10, ping } });
+  const pane = (ping) => {
+    run('act.app = "mv"; act.data = d; act.seen = Infinity', { d: data(ping), $: () => null, ui: {}, state: null });
+    return run('activityPane({ name: "Stream Multiview", status: "connected" })');
+  };
+  const html = pane({ at: Date.now() - 8000, ms: 3 });
+  const [wait, link] = html.match(/<span class="act-pill">[^]*?<\/span><\/span>/g);
+  assert.match(wait, /Farming stopped · Kick players sign back in after a few minutes/);
+  assert.match(wait, new RegExp(run('icon("clock")').replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')), 'a clock');
+  assert.match(link, new RegExp(run('icon("link")').replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')), 'the link');
+  assert.match(html, /<b><span class="act-num">3<\/span> ms<\/b><em><span class="act-num">8<\/span>s ago<\/em>/, 'the round trip and the seconds, two digits wide');
+  assert.match(pane({ at: Date.now() - 125_000, ms: 0.4 }), /<b>&lt;1 ms<\/b><em><span class="act-num">2<\/span>m ago<\/em>/);
+  assert.match(pane(null), /<b>—<\/b><\/span>/, 'none yet');
+  run('act.app = null; act.data = null');
+});
+
 test('an open message lists its fields by path, arrays by their length', () => {
   const r = run('activityFields(d, 4)', { d: { state: 'farming', channel: { slug: 'pixelpear', name: null }, drop: { rewards: { items: [1, 2] } }, extra: 1 } });
   assert.deepEqual(JSON.parse(JSON.stringify(r)), { fields: [['state', 'farming'], ['channel.slug', 'pixelpear'], ['channel.name', 'null'], ['drop.rewards.items', '2 items']], more: 1 });

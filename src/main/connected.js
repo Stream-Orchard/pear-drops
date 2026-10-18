@@ -14,12 +14,20 @@ const DECLARED = require('../../package.json').grapevine;
 const APP_ID = DECLARED.app;
 const PUBLISH_MS = 2000; // at most one drops.farming.changed this often
 const MIN = 60_000;
+const STOPPED = 'Farming stopped · Kick players sign back in after a few minutes';
+const AGAIN = 'Farming again · Kick players stay signed out';
 
 /** Kick's own https address for a picture (never pd-img://, which only Pear Drops can open), or undefined. */
 const https = (url) => (typeof url === 'string' && url.startsWith('https://') ? url : undefined);
 const iso = (t) => (Number.isFinite(t) ? new Date(t).toISOString() : null);
 /** An object without its undefined fields: the schema treats a field that's there as one to check. */
 const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+/** Kick players an app keeps signed out only while Pear Drops farms (Auto), and signed out now. */
+const autoOut = (players) => {
+  const k = players?.platforms?.kick;
+  return k?.mode === 'auto' && !k.signedIn && k.open?.length > 0;
+};
 
 /** Pear Drops' farming status as drops.farming's state. */
 function farmingState(code, signedIn) {
@@ -51,6 +59,10 @@ class Connected extends EventEmitter {
     this.history = history;
     this.knownApps = knownApps;
     this.heard = new Map(); // app id -> { [event]: its last params }, for every capability it provides
+    // Apps whose Kick players are still signed out after farming stopped: Stream Multiview waits a
+    // few minutes before signing them back in, in case farming starts again.
+    this.waiting = new Set();
+    this.lastState = null; // the drops.farming state last sent
     this.running = false;
     this.error = null;
     this.lastKey = null;
@@ -84,11 +96,13 @@ class Connected extends EventEmitter {
     });
     this.link.on('event', (from, name, params) => {
       this.heard.set(from, { ...this.heard.get(from), [name]: params });
+      if (name === 'players.changed' && !autoOut(params)) this.waiting.delete(from);
       this.changed();
     });
     this.link.on('connected', (id) => this.record('link-connected', id, (name) => `Connected to ${name}`, 'ok'));
     this.link.on('disconnected', (id, reason) => {
       this.heard.delete(id);
+      this.waiting.delete(id);
       this.activity.ended(id);
       this.record('link-disconnected', id, (name) => `Disconnected from ${name}: ${reason}`, '');
     });
@@ -246,6 +260,7 @@ class Connected extends EventEmitter {
       this.lastKey = JSON.stringify([this.lastWhat, Math.floor(latest.drop?.progress.done ?? 0)]);
       this.lastAt = Date.now();
       this.link.publish('drops.farming.changed', latest);
+      this.noteWait(latest.state);
     };
     const wait = urgent ? 0 : Math.max(0, this.lastAt + PUBLISH_MS - now);
     if (wait === 0) return go();
@@ -253,13 +268,42 @@ class Connected extends EventEmitter {
     this.timer.unref?.();
   }
 
+  /**
+   * In the Activity log: farming stopped while an app's Kick players were signed out on Auto, so
+   * they sign back in only after a few minutes (the players.changed that follows); or farming
+   * started again before they did, so they stay out.
+   */
+  noteWait(state) {
+    const was = this.lastState;
+    this.lastState = state;
+    const ids = [];
+    if (was === 'farming' && state !== 'farming') {
+      for (const [id, heard] of this.heard) {
+        if (!autoOut(heard['players.changed'])) continue;
+        this.waiting.add(id);
+        this.activity.note(id, { about: 'players', text: STOPPED });
+        ids.push(id);
+      }
+    } else if (state === 'farming' && was !== 'farming') {
+      for (const id of this.waiting) {
+        this.activity.note(id, { about: 'players', text: AGAIN });
+        ids.push(id);
+      }
+      this.waiting.clear();
+    }
+    if (!ids.length) return;
+    this.emit('activity');
+    this.changed();
+  }
+
   /** For the Settings card and the credit banner. Logos come separately (icons()), once. */
   state() {
     return {
       running: this.running,
       error: this.error,
-      // Each app's card: what it is, what the two share (shares), and the last of each event it sent (heard).
-      peers: this.link.peers().map(({ icon: _icon, ...p }) => ({ ...p, heard: this.heard.get(p.id) ?? {} })),
+      // Each app's card: what it is, what the two share (shares), the last of each event it sent
+      // (heard), and whether its Kick players are waiting to sign back in after farming stopped.
+      peers: this.link.peers().map(({ icon: _icon, ...p }) => ({ ...p, heard: this.heard.get(p.id) ?? {}, waiting: this.waiting.has(p.id) })),
     };
   }
 
