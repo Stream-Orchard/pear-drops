@@ -2,7 +2,13 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.6 (current)
+## 0.1.7 (current)
+- History, drops and the startup cache are kept in one database: quicker to start as history grows, and nothing half-saved after a crash
+- Back up your data every day or week, and put the newest good copy back if it's ever damaged
+- Connected apps: an Activity log of every message between Pear Drops and the linked app
+- Dashboard: with nothing playing, the chart shows why: what resuming would bring, a radar while it waits, or the rewards collected
+
+## 0.1.6
 - Done cards keep History and Details beside the drop, and missing artwork shows its placeholder
 - Connected apps: link with Stream Multiview, so its Kick players leave the drop credit to Pear Drops
 - Connected apps: a Test button, and start-change checks every release is recorded in Grapevine
