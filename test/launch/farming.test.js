@@ -427,6 +427,27 @@ test('the tray popover shows the current drop and controls', async () => {
   assert.equal(await pop.evaluate(() => document.querySelector('.tray :focus')), null, 'no button starts focused');
 });
 
+test('a notice of any kind is a full-width box on the dashboard and tray (a "switch" notice once drew as a toggle)', async () => {
+  const pop = a.app.windows().find((x) => x.url().endsWith('tray.html'));
+  assert.ok(pop, 'the tray popover from the test before');
+  const box = ([sel, kind]) => {
+    const n = document.querySelector(sel);
+    if (n?.dataset.kind !== kind) return null;
+    const [o, t] = [n, n.querySelector('span')].map((x) => x.getBoundingClientRect());
+    return { kind: n.dataset.kind, cls: n.className, width: o.width, inside: t.left >= o.left && t.right <= o.right && t.top >= o.top && t.bottom <= o.bottom };
+  };
+  for (const kind of ['switch', 'reload', 'raid', 'ended']) {
+    await a.app.evaluate((_e, k) => global.pdDebug.farmer.setNotice(k, 'Left Arcadia: drops for this stream are done'), kind);
+    for (const [page, sel, min] of [[a.win, '#hero .hero-notice', 260], [pop, '.tray-notice', 300]]) {
+      const n = await until(page, box, `the ${kind} notice`, 5000, [sel, kind]);
+      assert.equal(n.kind, kind);
+      assert.ok(!n.cls.includes(kind), `the kind isn't a class (it can clash with a component's): ${n.cls}`);
+      assert.ok(n.width >= min && n.inside, `${sel} (${kind}) is ${Math.round(n.width)} px wide with its text inside`);
+    }
+  }
+  await a.app.evaluate(() => { global.pdDebug.farmer.notice = null; global.pdDebug.farmer.changed(); });
+});
+
 test('the player header follows and unfollows the channel', async () => {
   await until(a.win, () => document.querySelector('#player-head .follow-btn'), 'the follow button');
   const slug = await a.win.getAttribute('#player-head .follow-btn', 'data-slug');

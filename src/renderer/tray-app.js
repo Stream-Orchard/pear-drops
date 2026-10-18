@@ -31,7 +31,7 @@ function healthMark(f) {
 /** What just happened to the stream (it ended, a raid, a reload), for a minute. */
 function noticeLine(f) {
   const n = streamNotice(f);
-  return n ? `<div class="tray-notice ${n.kind}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>` : '';
+  return n ? `<div class="tray-notice" data-kind="${n.kind}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>` : '';
 }
 
 function render() {
