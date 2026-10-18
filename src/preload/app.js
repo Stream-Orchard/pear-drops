@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld('pd', {
     pairAgain: (id) => ipcRenderer.invoke('connected:pair-again', id),
     test: (id) => ipcRenderer.invoke('connected:test', id),
     icons: () => ipcRenderer.invoke('connected:icons'),
+    activity: (id, opts) => ipcRenderer.invoke('connected:activity', id, opts),
+    onActivity: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on('connected:activity', listener);
+      return () => ipcRenderer.removeListener('connected:activity', listener);
+    },
   },
   notifyTest: () => ipcRenderer.invoke('notify:test'),
   backups: {

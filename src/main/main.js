@@ -557,6 +557,14 @@ function registerIpc() {
   ipcMain.handle('connected:pair-again', (_e, id) => connected.pairAgain(String(id)));
   ipcMain.handle('connected:test', (_e, id) => connected.test(String(id)));
   ipcMain.handle('connected:icons', () => connected.icons());
+  ipcMain.handle('connected:activity', (_e, id, opts) => {
+    const o = opts && typeof opts === 'object' ? opts : {};
+    return connected.activityPage(String(id), {
+      filter: ['all', 'out', 'in', 'problems'].includes(o.filter) ? o.filter : 'all',
+      before: Number.isInteger(o.before) ? o.before : null,
+      limit: Math.min(50, Math.max(1, Number(o.limit) || 10)),
+    });
+  });
   ipcMain.handle('notify:test', () => notifier.test());
   // Settings › Privacy: back up now, and show where the copies are.
   ipcMain.handle('backups:run', async () => !!(await backups.run()));
@@ -748,6 +756,15 @@ app.whenReady().then(async () => {
     appDataDir: DEMO ? path.join(app.getPath('userData'), 'demo-apps') : app.getPath('appData'),
   });
   connected.on('change', sendState);
+  // The Activity view refetches its page when there's something new (at most a few times a second).
+  let activityTimer = null;
+  connected.on('activity', () => {
+    if (activityTimer) return;
+    activityTimer = setTimeout(() => {
+      activityTimer = null;
+      sendTo(mainWindow, 'connected:activity');
+    }, 300);
+  });
   farmer.on('update', () => connected.update());
   connected.sync();
   // Stored images replace Kick's links as they arrive.

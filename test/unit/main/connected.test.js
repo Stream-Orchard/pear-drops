@@ -186,6 +186,51 @@ test('switched on, it links with Stream Multiview, hears about its players, and 
   }
 });
 
+test('Activity: every message each way, the link coming and going, a test, and what Grapevine dropped', async () => {
+  const { c, dir, cleanup } = setup({ enabled: true });
+  let pushes = 0;
+  c.on('activity', () => (pushes += 1));
+  const peer = await standInPeer({ as: MV, dir, version: '0.4.0', provides: { players: '1.0' }, uses: { 'drops.farming': '1.0' }, timing: { pollMs: 40 } });
+  try {
+    await c.sync();
+    c.update();
+    await until(() => c.state().peers[0].status === 'connected', 'connected');
+    peer.link.publish('players.changed', { platforms: { kick: { signedIn: false, mode: 'auto', account: null, open: [] } } });
+    await until(() => c.activityPage(MV, { limit: 50 }).entries.some((e) => e.method === 'players.changed'), 'its players, received');
+    await peer.link.request(APP_ID, 'drops.farming.show');
+    await c.test(MV);
+    const page = c.activityPage(MV, { limit: 50 });
+    const seen = page.entries.map((e) => [e.dir, e.kind, e.method ?? e.text]);
+    for (const want of [
+      ['out', 'request', 'link.hello'],
+      ['in', 'reply', 'link.hello'],
+      ['out', 'event', 'drops.farming.changed'],
+      ['in', 'event', 'players.changed'],
+      ['in', 'request', 'drops.farming.show'],
+      ['out', 'reply', 'drops.farming.show'],
+      [null, 'status', 'Connected to Stream Multiview'],
+    ])
+      assert.ok(seen.some((s) => JSON.stringify(s) === JSON.stringify(want)), `${want.join(' ')} in ${JSON.stringify(seen)}`);
+    assert.ok(seen.some(([, kind, text]) => kind === 'status' && /^Test: Stream Multiview 0\.4\.0 answered in \d+ ms$/.test(text)), 'the test');
+    assert.equal(page.entries.find((e) => e.method === 'link.hello').data, undefined, 'the hello holds the pairing’s secrets: not kept');
+    assert.ok(page.entries.find((e) => e.method === 'drops.farming.show' && e.kind === 'reply').ms >= 0);
+    assert.ok(page.totals.sent > 0 && page.totals.received > 0 && page.totals.bytesOut > 0);
+    assert.ok(!seen.some(([, , m]) => m === 'link.ping'), 'the heartbeat is counted, not listed');
+    assert.ok(pushes > 0, 'the view is told');
+    // Something Grapevine refused, in the log of the app it was about.
+    c.link.emit('log', 'warn', 'Dropped an invalid players.changed from Stream Multiview: platforms is required');
+    c.link.emit('log', 'info', 'Connected to Stream Multiview 0.4.0');
+    const problems = c.activityPage(MV, { filter: 'problems' });
+    assert.deepEqual(problems.entries.map((e) => [e.kind, e.tone, e.app]), [['note', 'warn', MV]]);
+    await peer.stop();
+    await until(() => c.activityPage(MV).entries.some((e) => /^Disconnected from Stream Multiview/.test(e.text ?? '')), 'disconnected, in the log');
+  } finally {
+    await peer.stop().catch(() => {});
+    await c.stop();
+    cleanup();
+  }
+});
+
 test('Disconnect forgets the pairing on both sides and switches it off; the last switch off stops listening', async () => {
   const { c, dir, store, history, cleanup } = setup({ enabled: true });
   const peer = await standInPeer({ as: MV, dir, provides: { players: '1.0' }, uses: { 'drops.farming': '1.0' }, timing: { pollMs: 40 } });

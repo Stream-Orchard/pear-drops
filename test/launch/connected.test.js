@@ -99,6 +99,58 @@ test('players that stay signed in: a warning on the card, and the credit banner 
   await until(a.win, () => !document.querySelector('#banner .banner'), 'the banner to clear', 10000);
 });
 
+test('Activity: every message between the two this run, in words, a page at a time that fits', async () => {
+  await openTab();
+  await until(a.win, () => document.querySelector('.app-card.connected'), 'connected', 15000);
+  await a.win.click('.app-card [data-action="act-open-app"]');
+  await until(a.win, () => document.querySelectorAll('.act-row').length >= 3, 'the log');
+  const text = () => a.win.textContent('.act-list');
+  // What Pear Drops told it, what it said back, and the link itself.
+  await until(a.win, () => /drops\.farming\.changed/.test(document.querySelector('.act-list').textContent), 'what was farmed, sent');
+  assert.match(await a.win.textContent('.act-who'), /Stream Multiview/);
+  assert.match(await a.win.textContent('.modal-head h3'), /^Activity$/);
+  const totals = await a.win.textContent('.act-stats');
+  assert.match(totals, /Sent[^]*\d/);
+  assert.ok(await a.win.locator('.act-chart svg .act-bar-out').count(), 'sent messages in the chart');
+  // Received only: Stream Multiview's players, from this run.
+  await a.win.click('[data-action="act-filter"][data-id="in"]');
+  await until(a.win, () => [...document.querySelectorAll('.act-row:not(.act-marker)')].every((r) => r.classList.contains('in')), 'only received');
+  await until(a.win, () => /players\.changed/.test(document.querySelector('.act-list').textContent), 'its players');
+  assert.match(await text(), /Kick players? open/);
+  // A message's fields.
+  await a.win.click('.act-row.in >> nth=0');
+  await until(a.win, () => document.querySelector('.act-detail .act-fields dt, .act-detail .act-hidden'), 'its fields');
+  // Never more than fits, and the page doesn't scroll.
+  const [content, box] = await a.win.evaluate(() => {
+    const p = document.querySelector('.settings-pane');
+    return [p.scrollHeight, p.clientHeight];
+  });
+  assert.ok(content <= box + 1, `the Activity view needs ${content - box}px of scrolling`);
+  const list = await a.win.evaluate(() => {
+    const l = document.querySelector('.act-list');
+    return l.scrollHeight - l.clientHeight;
+  });
+  assert.ok(list <= 1, `the log's rows fit (${list}px over)`);
+  // All, and Older pages back in time when there's more than a page.
+  await a.win.click('[data-action="act-filter"][data-id="all"]');
+  await until(a.win, () => /of \d+/.test(document.querySelector('.act-range')?.textContent ?? ''), 'the range');
+  const [shown, total] = await a.win.evaluate(() => document.querySelector('.act-range').textContent.match(/(\d+)–(\d+) of (\d+)/).slice(2).map(Number));
+  if (total > shown) {
+    await a.win.click('[data-action="act-older"]');
+    await until(a.win, () => /^\d+–/.test(document.querySelector('.act-range').textContent) && !document.querySelector('.act-range').textContent.startsWith('1–'), 'the next page');
+    await a.win.click('[data-action="act-newest"]');
+    await until(a.win, () => document.querySelector('.act-range').textContent.startsWith('1–'), 'back to the newest');
+  }
+  // Esc goes back to the cards, then closes Settings.
+  await a.win.keyboard.press('Escape');
+  await until(a.win, () => document.querySelector('.app-card') && !document.querySelector('.act-list'), 'the cards again');
+  await a.win.click('.app-card [data-action="act-open-app"]');
+  await until(a.win, () => document.querySelector('.act-list'), 'the log again');
+  await a.win.click('.modal-head [data-action="act-close"]');
+  await until(a.win, () => document.querySelector('.app-card'), 'back by the arrow');
+  assert.deepEqual(a.errors, []);
+});
+
 test('Disconnect forgets the pairing and switches it off; History has the link coming and going', async () => {
   await openTab();
   await until(a.win, () => document.querySelector('.app-card [data-action="connected-disconnect"]'), 'Disconnect');

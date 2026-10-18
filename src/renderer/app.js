@@ -1,4 +1,4 @@
-/* global previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -933,6 +933,7 @@ const signedInPlayers = (c) =>
  */
 function connectedPane() {
   const c = state.connected;
+  if (act.app) return activityPane(c?.peers?.find((p) => p.id === act.app));
   if (!ui.appIcons) {
     ui.appIcons = {};
     window.pd.connected
@@ -999,6 +1000,8 @@ function connectedPane() {
     const test = p.enabled
       ? `<button class="btn sm" data-action="connected-test" data-id="${esc(p.id)}" ${tested?.running ? 'disabled' : ''}>${icon('pulse')} ${tested?.running ? 'Testing…' : 'Test'}</button>`
       : '';
+    // Every message between the two this run (activity.js).
+    const activity = p.enabled ? `<button class="btn sm" data-action="act-open-app" data-id="${esc(p.id)}">${icon('list')} Activity</button>` : '';
     const paired = p.pairedAt ? `<span class="app-paired">Paired ${new Date(p.pairedAt).toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>` : '';
     return `<div class="app-card ${p.status}">
       <div class="app-head">
@@ -1012,7 +1015,7 @@ function connectedPane() {
         <span class="switch ${p.enabled ? 'on' : ''}"></span>
       </button>
       ${flows ? `<div class="app-flows">${flows}</div>` : ''}
-      <div class="app-foot ${tone}"><span class="app-line">${line}</span>${paired}${test}${action}</div>
+      <div class="app-foot ${tone}"><span class="app-line">${line}</span>${paired}${activity}${test}${action}</div>
     </div>`;
   };
   const error = c?.error ? `<div class="security-row off">${icon('alert')} ${esc(c.error)}</div>` : '';
@@ -1121,6 +1124,7 @@ function renderModal() {
     updates: ui.settingsTab === 'updates' ? updatesPane() : '',
   };
 
+  const activityOpen = ui.settingsTab === 'apps' && !!act.app;
   setHTML(
     root,
     `<div class="modal-backdrop" data-action="close-modal">
@@ -1130,12 +1134,13 @@ function renderModal() {
           ${SETTINGS_TABS.map(([id, ic, label]) => `<button class="settings-tab ${ui.settingsTab === id ? 'active' : ''}" data-action="settings-tab" data-id="${id}">${icon(ic)}${label}</button>`).join('')}
         </nav>
         <section class="settings-pane">
-          <div class="modal-head"><h3>${SETTINGS_TABS.find(([id]) => id === ui.settingsTab)[2]}</h3><button class="btn sm icon-only ghost" data-action="close-modal" data-tip="Close (Esc)">${icon('x')}</button></div>
-          <div class="modal-section pane-${ui.settingsTab}">${panes[ui.settingsTab]}</div>
+          <div class="modal-head"><h3>${activityOpen ? `<button class="btn sm icon-only ghost act-back" data-action="act-close" data-tip="Back to Connected apps">${icon('chevronLeft')}</button>Activity` : SETTINGS_TABS.find(([id]) => id === ui.settingsTab)[2]}</h3><button class="btn sm icon-only ghost" data-action="close-modal" data-tip="Close (Esc)">${icon('x')}</button></div>
+          <div class="modal-section pane-${ui.settingsTab}${activityOpen ? ' activity' : ''}">${panes[ui.settingsTab]}</div>
         </section>
       </div>
     </div>`,
   );
+  if (activityOpen) fitActivity();
 }
 
 function openModal(name) {
@@ -1148,6 +1153,7 @@ function closeModal() {
   // The "Updated" card is shown once.
   if (ui.modal === 'whatsnew') window.pd.updates.seen();
   ui.modal = null;
+  act.app = null;
   window.pd.suspendPlayer(false);
   render();
 }
@@ -1282,6 +1288,7 @@ function categoryOrder() {
 
 const actions = {
   ...historyActions,
+  ...activityActions,
   ...updateActions,
   view: (el) => {
     ui.view = el.dataset.id;
@@ -1324,6 +1331,7 @@ const actions = {
   },
   'settings-tab': (el) => {
     ui.settingsTab = el.dataset.id;
+    act.app = null; // Connected apps opens on its cards
     render();
   },
   'side-tab': (el) => {
@@ -1574,7 +1582,8 @@ document.addEventListener('change', (event) => {
   if (key) window.pd.setSettings({ [key]: Number(event.target.value) });
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && ui.modal) closeModal();
+  if (event.key === 'Escape' && ui.modal === 'settings' && ui.settingsTab === 'apps' && act.app) closeActivity();
+  else if (event.key === 'Escape' && ui.modal) closeModal();
 });
 
 new ResizeObserver(() => syncPlayerBounds()).observe($('#player-slot'));
