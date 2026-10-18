@@ -1,5 +1,5 @@
 // Run by the release workflow when a release is published.
-// Sets the app's version from the release tag and adds the release notes to CHANGELOG.md,
+// Sets the app's version (package.json and package-lock.json) from the release tag and adds the release notes to CHANGELOG.md,
 // so the installers (and the app's What's new in Settings › Updates) match the release.
 //   node scripts/prepare-release.js v0.2.11 notes.md
 // Pull requests never need to touch the version or the changelog.
@@ -15,11 +15,18 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 }
 const notes = process.argv[3] && fs.existsSync(process.argv[3]) ? fs.readFileSync(process.argv[3], 'utf8') : '';
 
-// 1. package.json version
+// 1. package.json version, and package-lock.json's copy of it, so npm install doesn't change the lock later.
 const pkgFile = path.join(root, 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
 pkg.version = version;
 fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
+const lockFile = path.join(root, 'package-lock.json');
+if (fs.existsSync(lockFile)) {
+  const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+  lock.version = version;
+  if (lock.packages?.['']) lock.packages[''].version = version;
+  fs.writeFileSync(lockFile, JSON.stringify(lock, null, 2) + '\n');
+}
 
 // 2. Release notes -> What's new lines.
 // GitHub's "Generate release notes" gives lines like
