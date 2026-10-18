@@ -52,7 +52,7 @@ test('switched on: waiting, then connected to Stream Multiview, with its players
   await until(a.win, () => document.querySelector('.app-card.connected'), 'connected', 15000);
   await until(a.win, () => /signed out while you farm/.test(document.querySelector('.app-card').textContent), 'its players');
   assert.match(await card(), /Connected · 0\.4\.0/);
-  assert.match(await card(), /Paired \d+ \w+/);
+  assert.match(await card(), /Paired (\d+ \w+|\w+ \d+)/, 'the date in the computer’s own order (18 Oct, Oct 18)');
   // The stand-in heard what's being farmed, made-up channel and all.
   const heard = await until(
     a.win,
