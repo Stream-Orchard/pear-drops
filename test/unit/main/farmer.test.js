@@ -367,6 +367,31 @@ test('a 401 from Kick signs out instead of retrying forever', async () => {
   assert.ok(lost);
 });
 
+test('each refresh is a check: with nothing playing it goes on the live monitor, failed ones marked', async () => {
+  const { farmer, api } = setup({ campaigns: [campaign('a')], streams: { 1: [] } });
+  await farmer.tick();
+  assert.equal(farmer.status.code, 'waiting');
+  assert.ok(Date.now() - farmer.snapshot().checkedAt < 1000, 'the snapshot says when');
+  api.progressError = new Error('offline');
+  await farmer.tick();
+  const checks = farmer.timeline.filter((e) => e.type === 'check');
+  assert.deepEqual(
+    checks.map((e) => e.ok),
+    [true, false],
+  );
+
+  // The one that finds a stream shows as the switch to it, and while it plays the monitor has
+  // its watch events: no more checks.
+  api.progressError = null;
+  api.streams[1] = [live('s', 1)];
+  farmer.streams.clear();
+  await farmer.tick();
+  assert.equal(farmer.current?.slug, 's');
+  await farmer.tick();
+  assert.equal(farmer.timeline.filter((e) => e.type === 'check').length, 2);
+  assert.ok(farmer.timeline.some((e) => e.type === 'switch'));
+});
+
 test('a failed refresh retries soon, backing off up to the normal refresh, and resets once Kick answers', async () => {
   const { farmer, api } = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] } }, { refreshSeconds: 30 });
   const waits = [];
