@@ -21,8 +21,11 @@ function playwright() {
 async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hidden = !process.env.PD_TEST_VISIBLE, mirror = false, settings, files = {}, env: extraEnv = {}, scale, size = { width: 1480, height: 940 } } = {}) {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-test-'));
   if (settings) fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify(settings));
-  // Other files to start with in the data folder, e.g. { 'updates.json': {...} }.
-  for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(data, name), typeof content === 'string' || Buffer.isBuffer(content) ? content : JSON.stringify(content));
+  // Other files to start with in the data folder, e.g. { 'updates.json': {...} } or { 'backups/x.db': buffer }.
+  for (const [name, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(data, name)), { recursive: true });
+    fs.writeFileSync(path.join(data, name), typeof content === 'string' || Buffer.isBuffer(content) ? content : JSON.stringify(content));
+  }
   const env = {
     ...process.env,
     PD_DEMO: '1',

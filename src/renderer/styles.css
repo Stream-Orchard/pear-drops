@@ -4031,6 +4031,10 @@ input[type='range']::-webkit-slider-thumb {
 .notify-result.sent {
   color: var(--amber);
 }
+/* Settings › Privacy & data › Backups: the last one, or what went wrong. */
+.setting .backup-status.bad {
+  color: var(--red);
+}
 .pane-note {
   margin: 4px 0 6px;
   color: var(--muted);

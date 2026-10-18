@@ -95,6 +95,7 @@ The app never sends watch events itself. It runs the real kick.com channel page,
 - The login token is read inside the kick.com page and never passes through the app's own code or IPC.
 - *Settings › Forget my login when I quit* signs you out on every quit. If the app crashed, it does this at the next start instead.
 - Everything the app keeps stays on your computer, in its data folder: settings in `settings.json`, the history, the drop archive and the startup cache in one database, `pear-drops.db`, and drop artwork in `drop-images/`. Versions up to 0.1.5 kept files instead (`history.jsonl`, `drops.json`, `cache.json`); the first start of a newer one copies them in and leaves them as they were.
+- The database is backed up to `backups/` in the data folder every day (or week, or not at all: **Settings › Privacy & data**), keeping the last 3 copies (or 7 or 14), and before any update that changes how it's stored. If it's ever damaged, the app puts the newest good copy back by itself and says so in History.
 - Connected apps talk only on this computer, through a private local socket (a named pipe on Windows), after you've switched the link on in both. Pear Drops tells them what it's farming, never your login. Pairing keys are kept in `grapevine.json`, encrypted with your system keychain.
 
 ## Development
@@ -119,6 +120,7 @@ src/main/        Electron main process
   kick-api.js    Kick API calls, made from a hidden kick.com page
   watcher.js     the docked kick.com channel page (and offscreen mirror for captures)
   db.js          the database (Node's built-in SQLite): history, drop archive, startup cache, small state
+  backups.js     its daily or weekly backups, and how many are kept
   history.js     permanent event log and its aggregations
   archive.js     saved copies of every drop seen (details, progress, images)
   updates.js     update checks, downloads and installs (updater.js: GitHub, zips, signatures)

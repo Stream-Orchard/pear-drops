@@ -39,6 +39,10 @@ const EVENT_KIND = {
   priority: ['Moved up', 'up', 'amber'],
   decision: ['Decision', 'target', 'blue'],
   error: ['Error', 'alert', 'red'],
+  // The app's data (backups.js).
+  'data-restored': ['Data restored', 'reload', 'amber'],
+  'data-reset': ['Data lost', 'alert', 'red'],
+  'backup-failed': ['Backup failed', 'alert', 'red'],
   start: ['App', 'pulse', 'muted'],
   pause: ['Paused', 'pause', 'muted'],
   resume: ['Resumed', 'play', 'muted'],
