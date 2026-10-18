@@ -6,6 +6,7 @@
 const { EventEmitter } = require('events');
 const { createLink, KNOWN_APPS, iconDataUrl } = require('@streamorchard/grapevine');
 const { assetUrl } = require('./kick-api');
+const { ActivityLog } = require('./activity');
 // What Pear Drops speaks, from package.json's "grapevine" field: written once there, and kept by every
 // release tag, so `npm run grapevine:check` can tell what each release shipped.
 const DECLARED = require('../../package.json').grapevine;
@@ -56,6 +57,8 @@ class Connected extends EventEmitter {
     this.lastWhat = null;
     this.lastAt = 0;
     this.timer = null;
+    // Settings › Connected apps › Activity: every message each way, this run (activity.js).
+    this.activity = new ActivityLog();
     const self = KNOWN_APPS.find((a) => a.id === APP_ID);
     this.link = make({
       app: { id: APP_ID, slug: self.slug, name: self.name, version, summary: self.summary, homepage: self.homepage, download: self.download, icon: self.icon },
@@ -68,16 +71,27 @@ class Connected extends EventEmitter {
       appDataDir,
       log,
     });
+    this.link.on('message', (m) => {
+      if (this.activity.add(m)) this.emit('activity');
+    });
+    // What Grapevine refused or dropped, in the log of the app it was about.
+    this.link.on('log', (level, text) => {
+      if (level === 'info') return;
+      const app = this.knownApps.find((a) => a.id !== APP_ID && text.includes(a.name));
+      this.activity.note(app?.id, { kind: 'note', tone: level === 'error' ? 'bad' : 'warn', text });
+      this.emit('activity');
+    });
     this.link.on('event', (from, name, params) => {
       this.heard.set(from, { ...this.heard.get(from), [name]: params });
       this.changed();
     });
-    this.link.on('connected', (id) => this.record('link-connected', id, (name) => `Connected to ${name}`));
+    this.link.on('connected', (id) => this.record('link-connected', id, (name) => `Connected to ${name}`, 'ok'));
     this.link.on('disconnected', (id, reason) => {
       this.heard.delete(id);
-      this.record('link-disconnected', id, (name) => `Disconnected from ${name}: ${reason}`);
+      this.activity.ended(id);
+      this.record('link-disconnected', id, (name) => `Disconnected from ${name}: ${reason}`, '');
     });
-    this.link.on('unpaired', (id) => this.record('link-unpaired', id, (name) => `${name} disconnected: both apps forgot the pairing`));
+    this.link.on('unpaired', (id) => this.record('link-unpaired', id, (name) => `${name} disconnected: both apps forgot the pairing`, 'warn'));
     this.link.on('change', () => this.changed());
     // A click on another app's farming widget.
     this.link.handle('drops.farming.show', () => {
@@ -90,8 +104,10 @@ class Connected extends EventEmitter {
     return this.knownApps.find((a) => a.id === id)?.name ?? id;
   }
 
-  record(type, id, text) {
+  record(type, id, text, tone) {
     this.history?.add(type, { app: id, appName: this.nameOf(id), text: text(this.nameOf(id)) });
+    this.activity.note(id, { tone, text: text(this.nameOf(id)) });
+    this.emit('activity');
     this.changed();
   }
 
@@ -134,7 +150,10 @@ class Connected extends EventEmitter {
   /** Disconnect on the card: both apps forget the pairing, and the switch goes off. */
   async disconnect(id) {
     await this.link.disconnect(id);
-    this.history?.add('link-unpaired', { app: id, appName: this.nameOf(id), text: `Disconnected from ${this.nameOf(id)}: both apps forgot the pairing` });
+    const text = `Disconnected from ${this.nameOf(id)}: both apps forgot the pairing`;
+    this.history?.add('link-unpaired', { app: id, appName: this.nameOf(id), text });
+    this.activity.note(id, { tone: 'warn', text });
+    this.emit('activity');
     await this.setEnabled(id, false);
   }
 
@@ -147,7 +166,15 @@ class Connected extends EventEmitter {
     if (!this.enabled(id)) return { ok: false, reason: 'off', text: `Switch on Connect with ${this.nameOf(id)} first` };
     if (!this.running) await this.sync();
     if (!this.running) return { ok: false, reason: 'not-started', text: this.error ?? 'Connected apps couldn’t start' };
-    return this.link.test(id);
+    const result = await this.link.test(id);
+    this.activity.note(id, { tone: result.ok ? 'ok' : 'warn', text: `Test: ${result.text}` });
+    this.emit('activity');
+    return result;
+  }
+
+  /** Settings › Connected apps › Activity: a page of one app's log (activity.js). */
+  activityPage(id, opts = {}) {
+    return this.activity.page(id, opts);
   }
 
   /**
