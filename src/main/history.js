@@ -21,7 +21,7 @@ const GROUPS = {
   rewards: ['unlock', 'claim', 'claim-failed', 'campaign-complete', 'category-complete', 'campaign-ended', 'campaign-back'],
   watching: ['watch-start', 'watch-end', 'priority', 'decision'],
   problems: ['stall', 'reload', 'crash', 'offline', 'conflict', 'error', 'not-eligible'],
-  app: ['start', 'pause', 'resume', 'login', 'logout', 'wake', 'follow', 'unfollow'],
+  app: ['start', 'pause', 'resume', 'login', 'logout', 'wake', 'follow', 'unfollow', 'link-connected', 'link-disconnected', 'link-unpaired'],
 };
 const GROUP_OF = Object.fromEntries(Object.entries(GROUPS).flatMap(([g, types]) => types.map((t) => [t, g])));
 

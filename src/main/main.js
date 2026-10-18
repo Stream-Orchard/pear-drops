@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, Notification, powerSaveBlocker, powerMonitor, nativeImage, screen, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Notification, powerSaveBlocker, powerMonitor, nativeImage, screen, protocol, safeStorage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { KickApi, PARTITION, KICK, assetUrl } = require('./kick-api');
@@ -12,6 +12,8 @@ const { createDemo } = require('./demo');
 const { TrayController } = require('./tray');
 const { History } = require('./history');
 const { Updates, parseChangelog } = require('./updates');
+const { Connected } = require('./connected');
+const { fileKeyStore } = require('@streamorchard/grapevine');
 
 // Errors are logged, never shown as Electron's own error dialog.
 process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
@@ -59,6 +61,8 @@ let tray = null;
 let history = null;
 let archive = null;
 let updates = null;
+let connected = null; // Settings › Connected apps (connected.js)
+let linkDir = null; // where it finds other apps: a folder of its own in demo mode and dev copies
 let quitting = false;
 // The app's own folder (package.json, CHANGELOG.md): the source folder, or inside the installed app.
 const APP_ROOT = path.join(__dirname, '..', '..');
@@ -69,6 +73,7 @@ function appState() {
     settings: store.get(),
     security: { encryption: security.encryption },
     farm: auth.status === 'signed-in' ? farmer.snapshot() : null,
+    connected: connected?.state() ?? null,
   };
 }
 
@@ -107,6 +112,7 @@ function hideToTray() {
 
 function setAuth(next) {
   auth = { ...auth, ...next };
+  connected?.update();
   sendState();
 }
 
@@ -376,6 +382,35 @@ function setupDemo() {
       while (farmer.ticking) await sleep(50);
       await farmer.tick();
     },
+    /**
+     * A stand-in Stream Multiview, linked through Grapevine the way the real one is: it uses
+     * drops.farming and says whether its Kick players are signed in. Off with { stop: true }.
+     */
+    multiview: async ({ signedIn = false, mode = 'auto', open = ['pixelpear', 'moonlitmaple'], installed = true, stop = false } = {}) => {
+      const { standInPeer } = require('@streamorchard/grapevine/stand-in-peer');
+      await global.pdDemo.multiviewPeer?.stop();
+      global.pdDemo.multiviewPeer = null;
+      const folder = path.join(app.getPath('userData'), 'demo-apps', 'Stream Multiview');
+      if (installed) fs.mkdirSync(folder, { recursive: true });
+      else fs.rmSync(folder, { recursive: true, force: true });
+      connected.changed();
+      if (stop) return false;
+      const peer = await standInPeer({
+        as: 'com.glowingpear.streammultiview',
+        dir: linkDir,
+        version: '0.4.0',
+        provides: { players: '1.0' },
+        uses: { 'drops.farming': '1.0' },
+        keys: fileKeyStore(path.join(app.getPath('userData'), 'demo-multiview-keys.json')),
+        timing: { pollMs: 300, backoffMs: [200, 500, 1000] },
+      });
+      const user = auth.user?.username;
+      peer.link.publish('players.changed', {
+        platforms: { kick: { signedIn, mode, account: user ? { platform: 'kick', user } : null, open: open.map((slug) => ({ platform: 'kick', slug })) } },
+      });
+      global.pdDemo.multiviewPeer = peer;
+      return true;
+    },
     /** Another session "takes" the credit: events keep going, credit stops. */
     conflict: (on = true) => {
       demo.api.conflict = on;
@@ -506,6 +541,11 @@ function registerIpc() {
     }
     sendState();
   });
+  // Settings › Connected apps.
+  ipcMain.handle('connected:set', (_e, id, on) => connected.setEnabled(String(id), !!on));
+  ipcMain.handle('connected:disconnect', (_e, id) => connected.disconnect(String(id)));
+  ipcMain.handle('connected:pair-again', (_e, id) => connected.pairAgain(String(id)));
+  ipcMain.handle('connected:icons', () => connected.icons());
   ipcMain.handle('notify:test', () => notifier.test());
   ipcMain.handle('notify:system-settings', () => {
     const url = systemSettingsUrl();
@@ -653,13 +693,35 @@ app.whenReady().then(async () => {
     }, 1000);
   });
   farmer.on('update', sendState);
+  // Connected apps, through Grapevine. Demo mode and developer copies get a folder of their own, so
+  // they never see (or pair with) the apps you really use; GRAPEVINE_DIR still wins, to try one
+  // with a developer copy of Stream Multiview.
+  linkDir = process.env.GRAPEVINE_DIR || (DEMO || process.env.PD_DEV_DATA ? path.join(app.getPath('userData'), 'grapevine') : null);
+  const crypt = safeStorage.isEncryptionAvailable()
+    ? { encrypt: (t) => safeStorage.encryptString(t).toString('base64'), decrypt: (t) => safeStorage.decryptString(Buffer.from(t, 'base64')) }
+    : {};
+  connected = new Connected({
+    store,
+    farmer,
+    auth: () => auth,
+    version: app.getVersion(),
+    history,
+    show: showMain, // a click on Stream Multiview's farming widget
+    keys: fileKeyStore(path.join(app.getPath('userData'), 'grapevine.json'), crypt),
+    place: linkDir ? { env: { ...process.env, GRAPEVINE_DIR: linkDir } } : undefined,
+    // Demo mode: "installed" means a folder the stand-in makes, not the real Stream Multiview.
+    appDataDir: DEMO ? path.join(app.getPath('userData'), 'demo-apps') : app.getPath('appData'),
+  });
+  connected.on('change', sendState);
+  farmer.on('update', () => connected.update());
+  connected.sync();
   // Stored images replace Kick's links as they arrive.
   archive.on('images', () => {
     farmer.buildModel();
     farmer.changed();
   });
   // Dev copies and tests (own data folder) can reach the engine from Playwright.
-  if (process.env.PD_DEV_DATA) global.pdDebug = { api, farmer, watcher, store };
+  if (process.env.PD_DEV_DATA) global.pdDebug = { api, farmer, watcher, store, connected };
   tray = new TrayController({
     preload: path.join(__dirname, '..', 'preload', 'app.js'),
     onShowMain: showMain,
@@ -698,6 +760,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   quitting = true;
   history?.shutdown();
+  connected?.stop(); // says goodbye, so the other app knows at once
   archive?.flush();
   updates?.stop();
 });
