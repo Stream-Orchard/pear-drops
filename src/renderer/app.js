@@ -988,6 +988,12 @@ function connectedPane() {
       return `<div class="app-flow ${way}">${icon(way === 'out' ? 'arrowRight' : 'arrowLeft')}<span><b>${title}</b>${text}</span></div>`;
     };
     const flows = [...p.shares.out.map((cap) => tile(cap, 'out')), ...p.shares.in.map((cap) => tile(cap, 'in'))].join('');
+    // A Test just run: its answer stands in for the line for a moment.
+    const tested = ui.appTests?.[p.id];
+    if (tested?.result && Date.now() - tested.at < 15_000) [line, tone] = [esc(tested.result.text), tested.result.ok ? 'ok' : 'warn'];
+    const test = p.enabled
+      ? `<button class="btn sm" data-action="connected-test" data-id="${esc(p.id)}" ${tested?.running ? 'disabled' : ''}>${icon('pulse')} ${tested?.running ? 'Testing…' : 'Test'}</button>`
+      : '';
     const paired = p.pairedAt ? `<span class="app-paired">Paired ${new Date(p.pairedAt).toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>` : '';
     return `<div class="app-card ${p.status}">
       <div class="app-head">
@@ -1001,7 +1007,7 @@ function connectedPane() {
         <span class="switch ${p.enabled ? 'on' : ''}"></span>
       </button>
       ${flows ? `<div class="app-flows">${flows}</div>` : ''}
-      <div class="app-foot ${tone}"><span class="app-line">${line}</span>${paired}${action}</div>
+      <div class="app-foot ${tone}"><span class="app-line">${line}</span>${paired}${test}${action}</div>
     </div>`;
   };
   const error = c?.error ? `<div class="security-row off">${icon('alert')} ${esc(c.error)}</div>` : '';
@@ -1346,6 +1352,16 @@ const actions = {
   },
   'connected-disconnect': (el) => window.pd.connected.disconnect(el.dataset.id),
   'connected-pair-again': (el) => window.pd.connected.pairAgain(el.dataset.id),
+  'connected-test': async (el) => {
+    const id = el.dataset.id;
+    ui.appTests = { ...ui.appTests, [id]: { running: true, at: Date.now() } };
+    render();
+    const result = await window.pd.connected.test(id).catch(() => ({ ok: false, text: 'The test couldn’t run' }));
+    ui.appTests = { ...ui.appTests, [id]: { result, at: Date.now() } };
+    render();
+    // Back to the usual line once its moment is up.
+    setTimeout(render, 15_100);
+  },
   'open-connected-apps': () => {
     ui.settingsTab = 'apps';
     openModal('settings');

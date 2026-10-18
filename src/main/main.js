@@ -545,6 +545,7 @@ function registerIpc() {
   ipcMain.handle('connected:set', (_e, id, on) => connected.setEnabled(String(id), !!on));
   ipcMain.handle('connected:disconnect', (_e, id) => connected.disconnect(String(id)));
   ipcMain.handle('connected:pair-again', (_e, id) => connected.pairAgain(String(id)));
+  ipcMain.handle('connected:test', (_e, id) => connected.test(String(id)));
   ipcMain.handle('connected:icons', () => connected.icons());
   ipcMain.handle('notify:test', () => notifier.test());
   ipcMain.handle('notify:system-settings', () => {

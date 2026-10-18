@@ -68,6 +68,11 @@ test('switched on: waiting, then connected to Stream Multiview, with its players
   const order = heard.drop.rewards.items.map((r) => r.required);
   assert.deepEqual(order, [...order].sort((x, y) => x - y));
   for (const pic of [heard.channel.avatar, heard.drop.image, ...heard.drop.rewards.items.map((r) => r.image)].filter(Boolean)) assert.match(pic, /^https:\/\//, 'pictures as Kick gives them');
+  // Test: a round trip, said on the card for a moment.
+  await openTab();
+  await a.win.click('.app-card [data-action="connected-test"]');
+  await until(a.win, () => document.querySelector('.app-foot.ok'), 'the test result', 10000);
+  assert.match(await a.win.textContent('.app-foot .app-line'), /^Stream Multiview 0\.4\.0 answered in \d+ ms$/);
   // A click on its widget brings Pear Drops forward.
   assert.deepEqual(await a.app.evaluate(() => global.pdDemo.multiviewPeer.link.request('com.streamorchard.peardrops', 'drops.farming.show')), { shown: true });
 });

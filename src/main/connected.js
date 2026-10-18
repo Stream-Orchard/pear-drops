@@ -142,6 +142,14 @@ class Connected extends EventEmitter {
     this.link.pairAgain(id);
   }
 
+  /** Test on the card: a round trip, or in words why not (Grapevine's link.test). */
+  async test(id) {
+    if (!this.enabled(id)) return { ok: false, reason: 'off', text: `Switch on Connect with ${this.nameOf(id)} first` };
+    if (!this.running) await this.sync();
+    if (!this.running) return { ok: false, reason: 'not-started', text: this.error ?? 'Connected apps couldn’t start' };
+    return this.link.test(id);
+  }
+
   /**
    * What Pear Drops is farming right now, as drops.farming's fields: enough for another app to
    * show it (a top-bar widget, say), with the stream, the drop's picture and every reward's state.
