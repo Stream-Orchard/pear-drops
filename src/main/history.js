@@ -61,13 +61,25 @@ class History {
     } catch {}
   }
 
+  /** The app is quitting: what's recorded from now on (the last watch session's end) is written at once, not lost. */
+  shutdown() {
+    this.sync = true;
+  }
+
   /** Records one event. `data` holds whatever context applies (campaign, channel, delta…). */
   add(type, data = {}) {
     const e = { id: `${Date.now().toString(36)}-${(this.seq++).toString(36)}`, t: data.t ?? Date.now(), type, ...data };
     if (data.t === undefined) e.t = Date.now();
     this.events.push(e);
     const line = JSON.stringify(e) + '\n';
-    this.writing = this.writing.then(() => fs.promises.appendFile(this.file, line).catch(() => {}));
+    if (this.sync && !this.pending) {
+      try {
+        fs.appendFileSync(this.file, line);
+      } catch {}
+    } else {
+      this.pending = (this.pending ?? 0) + 1;
+      this.writing = this.writing.then(() => fs.promises.appendFile(this.file, line).catch(() => {})).then(() => (this.pending -= 1));
+    }
     this.listeners.forEach((fn) => fn(e));
     return e;
   }

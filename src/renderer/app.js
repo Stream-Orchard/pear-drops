@@ -360,7 +360,7 @@ function renderStats() {
         sparkBars(creditBuckets(), { width: 64, height: 24 }),
       ),
       card('pulse', 'blue', 'Credit rate', fc ? `${fc.rate.toFixed(2)}<small>×</small>` : '—', fc?.observed ? 'measured<span class="opt">, last 30 min</span>' : 'estimated'),
-      card('gift', 'gold', 'Claimed', `${s.claims}<small>today</small>`, `${claimedAll} of ${tracked.length} collected`),
+      card('gift', 'gold', 'Claimed', `${s.claimsToday ?? s.claims}<small>today</small>`, `${claimedAll} of ${tracked.length} collected`),
       card(
         'users',
         'violet',
