@@ -29,6 +29,7 @@ Game drops that need a linked game account are skipped unless you turn them on.
 - **Menu bar / tray:** closing or minimizing keeps it farming. The tray icon is a progress ring, and its popover shows the current drop, ETAs and quick controls.
 - **Stream and chat** dock beside the dashboard. You can collapse them, and stream sound is always muted at the window. Its header has a Follow / Following button (the same Kick calls as kick.com's own button); followed channels are watched first.
 - **Updates from GitHub** (Settings › Updates): checks the project's latest release, with its notes and a What's new timeline. Installed copies download the new installer (on a Mac, the app swaps itself in on restart); copies run from source get the new files, keeping a backup. After an update, the app shows what changed once.
+- **Connected apps** (Settings › Connected apps): links Pear Drops with [Stream Multiview](https://github.com/GlowingPear/stream-window-multiview) on the same computer, through [Grapevine](https://github.com/Stream-Orchard/grapevine). Off until you switch it on in both apps. While you farm, multiview can sign its Kick players out so they don't take the drop credit, and show what you're farming. If its signed-in players do take the credit, the banner says so. Each app's card shows its logo, what it is, where to get it, what the two share and how the link is going.
 - **Desktop notifications** (Settings › Notifications): pick which ones you want, all off to start with. They cover a drop claimed or ready to claim, a stream ending or raiding, stream problems, credit going to another stream, signing in again, everything collected or nothing live, and new drops on Kick. They can be limited to when Pear Drops isn't in front. "Send a test" checks your computer allows them, and a button opens its notification settings.
 - **Font** (Settings › App): your computer's own font on macOS and Windows, or Inter, which comes with the app and looks the same everywhere. Linux uses Inter by default.
 
@@ -65,6 +66,7 @@ The app never sends watch events itself. It runs the real kick.com channel page,
 - The login token is read inside the kick.com page and never passes through the app's own code or IPC.
 - *Settings › Forget my login when I quit* signs you out on every quit. If the app crashed, it does this at the next start instead.
 - Settings, history and the drop archive are plain files in the app's data folder (`settings.json`, `history.jsonl`, `drops.json` and `drop-images/`) and never leave your computer.
+- Connected apps talk only on this computer, through a private local socket (a named pipe on Windows), after you've switched the link on in both. Pear Drops tells them what it's farming, never your login. Pairing keys are kept in `grapevine.json`, encrypted with your system keychain.
 
 ## Development
 
@@ -92,6 +94,7 @@ src/main/        Electron main process
   updates.js     update checks, downloads and installs (updater.js: GitHub, zips, signatures)
   tray.js        menu bar / tray icon and popover
   notifier.js    desktop notifications: which kinds are on, repeats, Send a test
+  connected.js   Settings › Connected apps: the Grapevine link with other apps, what Pear Drops tells them
   security.js    login encryption migration, forget-on-quit, session lock-down
   demo.js        stand-in Kick for tests, demos and the trailer
 src/preload/     bridges for the app pages and the channel page

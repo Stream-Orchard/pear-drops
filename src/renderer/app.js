@@ -172,18 +172,18 @@ function renderBanner() {
   }
   alarm.sawConflict = true;
   // A linked Stream Multiview whose Kick players are signed in is the likely culprit: say so.
-  const multiview = state.connected?.peers?.find((p) => p.status === 'connected' && p.kick?.signedIn && p.kick.open?.length);
+  const linked = signedInPlayers(state.connected);
   setHTML(
     $('#banner'),
     `<div class="banner">
       <div class="icon-wrap">${icon('alert')}</div>
       <div class="text"><b>Another Kick stream is taking your drop credit</b>
       <span>${f.eventsSinceCredit} watch events sent with no credit. ${
-        multiview
-          ? `${esc(multiview.name)} has Kick players open that are signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> there, or close them.`
+        linked
+          ? `${esc(linked.name)} has Kick players open that are signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> there, or close them.`
           : 'Kick credits only one stream per account, so close any other streams to continue progressing drops.'
       }</span></div>
-      ${multiview ? `<button class="btn sm" data-action="open-connected-apps">${icon('link')} Connected apps</button>` : ''}
+      ${linked ? `<button class="btn sm" data-action="open-connected-apps">${icon('link')} Connected apps</button>` : ''}
       ${alarm.timer ? `<button class="btn sm stop-alarm" data-action="stop-alarm">${icon('volumeOff')} Stop alarm</button>` : ''}
     </div>`,
   );
@@ -897,6 +897,37 @@ const SETTINGS_TABS = [
 ];
 
 /**
+ * What each Grapevine capability means on a Connected apps card. Any app Grapevine knows gets a tile
+ * for each capability it and Pear Drops share (peers().shares): `out` when Pear Drops provides it,
+ * `in` when the other app does. `status` gives the card's line while connected, from what the app
+ * last sent (heard). A capability that isn't here gets a plain tile with its name.
+ */
+const CAPABILITIES = {
+  'drops.farming': {
+    out: ['Pear Drops tells it', 'what you’re farming, so its Kick players can leave the drop credit here, and it can show your progress.'],
+  },
+  players: {
+    in: ['It tells Pear Drops', 'whether its Kick players are signed in right now.'],
+    status: (p, name, farming) => {
+      const k = p.heard['players.changed']?.platforms?.kick;
+      if (!k) return [`Linked. Waiting to hear about ${name}’s players.`, ''];
+      if (k.mode === 'signed-in' && farming)
+        return [`Its Kick players stay signed in, so they can take your drop credit. In ${name}, turn on <b>Sign Kick players out while Pear Drops is farming</b>.`, 'warn'];
+      if (k.mode === 'signed-in') return [`Its Kick players stay signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> in ${name} to keep your credit.`, ''];
+      if (k.mode === 'signed-out') return ['Its Kick players are always signed out, so your drop credit is safe.', ''];
+      return [k.signedIn ? 'Its Kick players are signed in, and sign out as soon as you farm.' : 'Its Kick players are signed out while you farm, so the credit stays here.', ''];
+    },
+  },
+};
+
+/** A linked app with signed-in Kick players open: the likely reason credit goes elsewhere. */
+const signedInPlayers = (c) =>
+  c?.peers?.find((p) => {
+    const k = p.status === 'connected' && p.heard?.['players.changed']?.platforms?.kick;
+    return k?.signedIn && k.open?.length;
+  });
+
+/**
  * Settings › Connected apps: one card per app Pear Drops can link with (connected.js), with its
  * logo, what it is, where to get it, its Connect switch, what the two apps share, and how it's going.
  */
@@ -933,14 +964,8 @@ function connectedPane() {
       line = 'Free for Windows, macOS and Linux.';
       action = `<button class="btn sm primary" data-action="open-link" data-url="${esc(p.download)}">${icon('download')} Download</button>`;
     } else if (p.status === 'connected') {
-      const k = p.kick;
       if (p.report?.state === 'limited') [line, tone] = [esc(p.report.text), 'warn'];
-      else if (!k) line = `Linked. Waiting to hear about ${name}’s players.`;
-      else if (k.mode === 'signed-in' && farming)
-        [line, tone] = [`Its Kick players stay signed in, so they can take your drop credit. In ${name}, turn on <b>Sign Kick players out while Pear Drops is farming</b>.`, 'warn'];
-      else if (k.mode === 'signed-in') line = `Its Kick players stay signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> in ${name} to keep your credit.`;
-      else if (k.mode === 'signed-out') line = 'Its Kick players are always signed out, so your drop credit is safe.';
-      else line = k.signedIn ? 'Its Kick players are signed in, and sign out as soon as you farm.' : 'Its Kick players are signed out while you farm, so the credit stays here.';
+      else [line, tone] = p.shares.in.map((cap) => CAPABILITIES[cap]?.status?.(p, name, farming)).find(Boolean) ?? ['Linked.', ''];
       action = `<button class="btn sm" data-action="connected-disconnect" data-id="${esc(p.id)}">Disconnect</button>`;
     } else if (p.status === 'pair-again') {
       tone = 'warn';
@@ -957,6 +982,12 @@ function connectedPane() {
             ? `Disconnected in ${name}. Switch it on there to link again.`
             : `${name} isn’t open, or its Connect switch is off.`;
     else line = 'Off. Nothing listens until you switch it on.';
+    // A tile for each capability the two share: what Pear Drops tells it, and what it tells Pear Drops.
+    const tile = (cap, way) => {
+      const [title, text] = CAPABILITIES[cap]?.[way] ?? [way === 'out' ? 'Pear Drops tells it' : 'It tells Pear Drops', `“${esc(cap)}”`];
+      return `<div class="app-flow ${way}">${icon(way === 'out' ? 'arrowRight' : 'arrowLeft')}<span><b>${title}</b>${text}</span></div>`;
+    };
+    const flows = [...p.shares.out.map((cap) => tile(cap, 'out')), ...p.shares.in.map((cap) => tile(cap, 'in'))].join('');
     const paired = p.pairedAt ? `<span class="app-paired">Paired ${new Date(p.pairedAt).toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>` : '';
     return `<div class="app-card ${p.status}">
       <div class="app-head">
@@ -969,10 +1000,7 @@ function connectedPane() {
         <span class="text"><b>Connect with ${name}</b><span>Both apps need this switched on.</span></span>
         <span class="switch ${p.enabled ? 'on' : ''}"></span>
       </button>
-      <div class="app-flows">
-        <div class="app-flow">${icon('arrowRight')}<span><b>Pear Drops tells it</b>when you’re farming, so its Kick players sign out and leave the drop credit here.</span></div>
-        <div class="app-flow in">${icon('arrowLeft')}<span><b>It tells Pear Drops</b>whether its Kick players are signed in right now.</span></div>
-      </div>
+      ${flows ? `<div class="app-flows">${flows}</div>` : ''}
       <div class="app-foot ${tone}"><span class="app-line">${line}</span>${paired}${action}</div>
     </div>`;
   };

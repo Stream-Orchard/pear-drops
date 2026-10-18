@@ -160,10 +160,11 @@ test('switched on, it links with Stream Multiview, hears about its players, and 
     await until(() => c.state().peers[0].status === 'connected', 'connected');
     assert.deepEqual(await heard, ['drops.farming.changed', 'farming']);
     peer.link.publish('players.changed', { platforms: { kick: { signedIn: false, mode: 'auto', account: null, open: [{ platform: 'kick', slug: 'pixelpear' }] } } });
-    await until(() => c.state().peers[0].kick, 'its players');
+    await until(() => c.state().peers[0].heard['players.changed'], 'its players');
     const [p] = c.state().peers;
     assert.equal(p.version, '0.4.0');
-    assert.equal(p.kick.mode, 'auto');
+    assert.equal(p.heard['players.changed'].platforms.kick.mode, 'auto');
+    assert.deepEqual(p.shares, { out: ['drops.farming'], in: ['players'] }, 'what the two share');
     assert.equal(p.icon, undefined, 'logos come separately');
     assert.match(c.icons()[MV], /^data:image\/png;base64,/);
     assert.equal(c.icons(), c.icons(), 'read once');
@@ -175,7 +176,7 @@ test('switched on, it links with Stream Multiview, hears about its players, and 
     // It quits: noticed at once, and its players are forgotten.
     await peer.stop();
     await until(() => c.state().peers[0].status === 'waiting', 'waiting again');
-    assert.equal(c.state().peers[0].kick, null);
+    assert.deepEqual(c.state().peers[0].heard, {}, 'what it said is forgotten');
     assert.ok(history.events.some((e) => e.type === 'link-disconnected' && /^Disconnected from Stream Multiview: /.test(e.text)));
   } finally {
     await peer.stop().catch(() => {});
@@ -242,4 +243,24 @@ test('a switch saved under an id the app had before a rename still counts', () =
   assert.equal(c.enabled(MV), true);
   assert.equal(c.nameOf('com.nobody'), 'com.nobody');
   cleanup();
+});
+
+test('any app Grapevine knows gets its own card and switch, with what the two would share', () => {
+  const { KNOWN_APPS } = require('@streamorchard/grapevine');
+  const mv = KNOWN_APPS.find((a) => a.id === MV);
+  const overlay = { ...mv, id: 'com.example.overlay', slug: 'stream-overlay', name: 'Stream Overlay', dataFolder: 'Stream Overlay', provides: ['clips'], uses: ['drops.farming'] };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-link-'));
+  let settings = { connectedApps: {} };
+  const store = { get: () => settings, set: (patch) => (settings = { ...settings, ...patch }) };
+  const c = new Connected({ store, farmer: { status: {}, model: { campaigns: [] } }, auth: () => ({ status: 'signed-out' }), version: '0.1.5', knownApps: [...KNOWN_APPS, overlay], place: { env: { GRAPEVINE_DIR: dir } }, appDataDir: dir });
+  const card = c.state().peers.find((p) => p.id === 'com.example.overlay');
+  assert.equal(card.name, 'Stream Overlay');
+  assert.equal(card.status, 'off');
+  assert.deepEqual(card.shares, { out: ['drops.farming'], in: [] }, 'it uses what Pear Drops provides; Pear Drops has no use for clips');
+  assert.match(c.icons()['com.example.overlay'], /^data:image\/png/);
+  c.setEnabled('com.example.overlay', true);
+  assert.equal(settings.connectedApps['com.example.overlay'].enabled, true, 'its own switch');
+  assert.equal(c.nameOf('com.example.overlay'), 'Stream Overlay');
+  fs.rmSync(dir, { recursive: true, force: true });
+  return c.stop();
 });

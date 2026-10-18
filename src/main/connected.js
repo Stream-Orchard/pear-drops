@@ -36,15 +36,17 @@ class Connected extends EventEmitter {
    * @param {{add(type: string, data: object): void}} [o.history]
    * @param {(level: string, text: string) => void} [o.log]
    * @param {() => void} [o.show] brings Pear Drops' window to the front (drops.farming.show)
+   * @param {typeof KNOWN_APPS} [o.knownApps] the apps it can link with (Grapevine's list; tests add their own)
    * @param {typeof createLink} [o.make]
    */
-  constructor({ store, farmer, auth, version, keys, place, appDataDir, history = null, show = () => {}, log = () => {}, make = createLink }) {
+  constructor({ store, farmer, auth, version, keys, place, appDataDir, history = null, show = () => {}, knownApps = KNOWN_APPS, log = () => {}, make = createLink }) {
     super();
     this.store = store;
     this.farmer = farmer;
     this.auth = auth;
     this.history = history;
-    this.players = new Map(); // app id -> its last players.changed
+    this.knownApps = knownApps;
+    this.heard = new Map(); // app id -> { [event]: its last params }, for every capability it provides
     this.running = false;
     this.error = null;
     this.lastKey = null;
@@ -57,19 +59,19 @@ class Connected extends EventEmitter {
       provides: { 'drops.farming': '1.0' },
       uses: { players: '1.0' },
       allowed: (id) => this.enabled(id),
+      knownApps,
       keys,
       place,
       appDataDir,
       log,
     });
     this.link.on('event', (from, name, params) => {
-      if (name !== 'players.changed') return;
-      this.players.set(from, params);
+      this.heard.set(from, { ...this.heard.get(from), [name]: params });
       this.changed();
     });
     this.link.on('connected', (id) => this.record('link-connected', id, (name) => `Connected to ${name}`));
     this.link.on('disconnected', (id, reason) => {
-      this.players.delete(id);
+      this.heard.delete(id);
       this.record('link-disconnected', id, (name) => `Disconnected from ${name}: ${reason}`);
     });
     this.link.on('unpaired', (id) => this.record('link-unpaired', id, (name) => `${name} disconnected: both apps forgot the pairing`));
@@ -82,7 +84,7 @@ class Connected extends EventEmitter {
   }
 
   nameOf(id) {
-    return KNOWN_APPS.find((a) => a.id === id)?.name ?? id;
+    return this.knownApps.find((a) => a.id === id)?.name ?? id;
   }
 
   record(type, id, text) {
@@ -119,7 +121,7 @@ class Connected extends EventEmitter {
   }
 
   async setEnabled(id, on) {
-    if (!KNOWN_APPS.some((a) => a.id === id) || id === APP_ID) return;
+    if (!this.knownApps.some((a) => a.id === id) || id === APP_ID) return;
     const apps = { ...(this.store.get().connectedApps ?? {}) };
     apps[id] = { ...apps[id], enabled: !!on };
     this.store.set({ connectedApps: apps });
@@ -217,13 +219,14 @@ class Connected extends EventEmitter {
     return {
       running: this.running,
       error: this.error,
-      peers: this.link.peers().map(({ icon: _icon, ...p }) => ({ ...p, kick: this.players.get(p.id)?.platforms?.kick ?? null })),
+      // Each app's card: what it is, what the two share (shares), and the last of each event it sent (heard).
+      peers: this.link.peers().map(({ icon: _icon, ...p }) => ({ ...p, heard: this.heard.get(p.id) ?? {} })),
     };
   }
 
   /** Every known app's logo, as a data URL, by id. */
   icons() {
-    this.icons_ ??= Object.fromEntries(KNOWN_APPS.filter((a) => a.id !== APP_ID).map((a) => [a.id, iconDataUrl(a.icon)]));
+    this.icons_ ??= Object.fromEntries(this.knownApps.filter((a) => a.id !== APP_ID).map((a) => [a.id, iconDataUrl(a.icon)]));
     return this.icons_;
   }
 

@@ -23,3 +23,15 @@ An Electron app that farms Kick emote and badge drops. `src/main/` is the Electr
 - The renderer updates the DOM by morphing it (`setHTML` in `format.js`), so ticking numbers don't rebuild images or shift the layout. Charts are drawn at measured sizes and kept out of the layout flow.
 - Kick's campaign list keeps ended drops (`status: "expired"`) for a few months. `archive.js` saves every drop seen (details, progress and images, served to the pages as `pd-img://`), so the Done tab and History outlive Kick's copy.
 - Every notable event goes to `history.js` (`history.jsonl` in the data folder). New features that change farming should record an event and show it in the History view.
+
+## Connected apps (Grapevine)
+
+- **How it works.** `connected.js` links Pear Drops with other StreamOrchard apps (Stream Multiview) through `@streamorchard/grapevine`. That package (repo `Stream-Orchard/grapevine`) owns:
+  - the protocol and the capability schemas (`drops.farming`, which Pear Drops provides, and `players`, which it uses)
+  - the list of apps that can link
+- **What goes where:**
+  - **Changing what's sent** (a new field, event or method) starts in Grapevine (its `change-capability` skill), then a Grapevine release, then `npm install @streamorchard/grapevine@^<version>` here. Never edit `node_modules`, and never send fields the schema doesn't have.
+  - **A new app** is added in Grapevine's known-apps list. The cards here come from it, so it needs no code here.
+  - **A new capability Pear Drops uses** needs its wording in `CAPABILITIES` in `src/renderer/app.js`. A capability without wording still gets a plain tile.
+- **Tests** use demo mode's stand-in Stream Multiview (`pdDemo.multiview()`), in a Grapevine folder of the data folder's own. Never the real app.
+- **After a Pear Drops release** that adds or changes what's sent, record it in Grapevine (its `app-shipped` skill, `npm run released -- com.streamorchard.peardrops <version>`). That fixes those capability versions and lets other apps say "update Pear Drops to <version>".
