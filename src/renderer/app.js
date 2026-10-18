@@ -223,6 +223,14 @@ function noticeHTML(f) {
   return `<div class="hero-notice ${n.kind}" data-at="${n.at}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>`;
 }
 
+/** The time to the next check with Kick, as a ring that empties. */
+function checkRing(f) {
+  const span = Math.max(1, f.nextTickAt - (f.checkedAt ?? f.nextTickAt - state.settings.refreshSeconds * 1000));
+  const left = Math.max(0, Math.min(1, (f.nextTickAt - Date.now()) / span));
+  const c = 2 * Math.PI * 6;
+  return `<svg class="check-ring" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="6" class="left" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - left)).toFixed(2)}"/></svg>`;
+}
+
 function renderHero() {
   const f = farm();
   const hero = $('#hero');
@@ -248,7 +256,13 @@ function renderHero() {
     }[f.status.code] ?? [icon('clock'), f.status.message, '', ''];
     // What comes next, so a pause or a wait still shows where things stand.
     const upNext = f.categories.filter((c) => c.enabled && c.needsWatching).slice(0, 3);
-    const nextCheck = f.status.code === 'waiting' && f.nextTickAt ? `<span class="hero-next-check">${icon('refresh')} Checking again in ${fmtDur(Math.max(0, f.nextTickAt - Date.now()))}</span>` : '';
+    const nextCheck = f.status.code === 'waiting' && f.nextTickAt ? `<span class="hero-next-check">${checkRing(f)} Checking again in ${fmtDur(Math.max(0, f.nextTickAt - Date.now()))}</span>` : '';
+    // Each check with Kick pulses the orb and runs a line of light along the top. Keyed by the
+    // check, so each plays once, and only while it's new (not again on every redraw).
+    const tone = { paused: 'paused', done: 'done', error: 'warn' }[f.status.code] ?? 'scan';
+    const fresh = f.checkedAt && Date.now() - f.checkedAt < 10_000;
+    const ping = fresh ? `<span class="orb-ping" data-key="ping-${f.checkedAt}"></span><span class="orb-ping late" data-key="ping-late-${f.checkedAt}"></span>` : '';
+    const sweep = fresh ? `<span class="hero-sweep" data-key="sweep-${f.checkedAt}"></span>` : '';
     const nextList = upNext.length
       ? `<div class="hero-next"><div class="eyebrow">Up next</div>${upNext
           .map(
@@ -258,8 +272,8 @@ function renderHero() {
       : '';
     return setHTML(
       hero,
-      `<div class="hero-bg" style="${next?.image ? `background-image:url('${esc(next.image)}')` : ''}"></div>
-      <div class="hero-empty"><div class="orb" style="color:${f.status.code === 'done' ? 'var(--gold)' : 'var(--muted)'}">${copy[0]}</div>
+      `<div class="hero-bg" style="${next?.image ? `background-image:url('${esc(next.image)}')` : ''}"></div>${sweep}
+      <div class="hero-empty hero-${tone}"><div class="orb" style="color:${f.status.code === 'done' ? 'var(--gold)' : 'var(--muted)'}">${copy[0]}${ping}</div>
       <div style="flex:1"><div class="eyebrow" style="margin-bottom:8px">${f.paused ? 'Paused' : 'Standing by'}</div><h2>${copy[1]}</h2><p>${copy[2]}</p>${copy[3] ? `<div class="hero-empty-action">${copy[3]}</div>` : ''}</div>${nextList}</div>
       ${noticeHTML(f)}`,
     );
@@ -386,14 +400,42 @@ function renderStats() {
 // The chart and live monitor redraw when their data changes, and otherwise every
 // 15 s for the moving time axis: not on every one-second tick.
 let chartStamp = '';
+
+/**
+ * What the chart shows with nothing playing. Paused with a channel live to go back to, the
+ * campaigns Pear Drops would farm on resuming. Otherwise a scene: a radar over the categories
+ * still to go, or the rewards collected once there's nothing left.
+ */
+function idleChart(f) {
+  const left = f.categories.filter((c) => c.enabled && c.needsWatching && !c.complete);
+  if (f.paused) {
+    const live = left.find((c) => c.streamCount > 0);
+    if (live) return { resume: live.campaigns.filter((c) => c.needsWatching) };
+  }
+  if (!left.length) {
+    const collected = f.categories.flatMap(trackedRewards).filter((r) => r.claimed);
+    return { mode: 'done', items: collected.map((r) => ({ name: r.name, image: r.image })), sub: 'Nothing left to farm' };
+  }
+  const items = left.map((c) => ({ name: c.name, image: c.image }));
+  if (f.paused) return { mode: 'paused', items, sub: 'None of the remaining drops’ channels are live' };
+  if (f.status.code === 'error') return { mode: 'scan', tone: 'warn', items, sub: 'Waiting for Kick to answer' };
+  return { mode: 'scan', items, sub: `Looking for a live channel in ${left.length} ${left.length === 1 ? 'category' : 'categories'}` };
+}
+
 function renderChart() {
   const f = farm();
   const el = $('#chart');
-  const stamp = f ? [ui.chartCampaign, f.current?.slug, f.samples.length, f.timeline.length, f.samples.at(-1)?.t, Math.floor(Date.now() / 15000), el.clientWidth, el.clientHeight].join('|') : '';
+  const idle = f && !f.current ? idleChart(f) : null;
+  const stamp = f
+    ? [ui.chartCampaign, f.current?.slug, f.paused, f.status.code, f.checkedAt, f.samples.length, f.timeline.length, f.samples.at(-1)?.t, Math.floor(Date.now() / 15000), el.clientWidth, el.clientHeight].join('|')
+    : '';
   if (f && stamp === chartStamp) return;
   chartStamp = stamp;
   if (!f) return setHTML(el, '<div class="card-body"><div class="skeleton" style="height:100%"></div></div>');
-  const candidates = currentCampaigns().length ? currentCampaigns() : allCampaigns().filter((c) => c.needsWatching).slice(0, 4);
+  const now = Date.now();
+  const checks = f.timeline.some((e) => e.type === 'check' && e.t > now - 60 * MIN);
+  // With nothing playing, the monitor says what it's showing instead.
+  const quiet = !idle ? '' : f.paused ? 'Paused · watch events start again when you resume' : idle.mode === 'done' ? 'Each check for new campaigns shows here' : 'Each check for a live channel shows here';
   const monitor = `<div class="monitor">
       <div class="monitor-head"><span class="card-title">${icon('pulse')} Live monitor</span>
         <div class="legend">
@@ -401,32 +443,36 @@ function renderChart() {
           <span><i style="background:var(--green)"></i>Credit</span>
           <span><i style="background:var(--blue)"></i>Switch</span>
           <span><i style="background:var(--gold);border-radius:50%"></i>Claim</span>
+          ${checks ? '<span><i class="legend-check"></i>Check</span>' : ''}
         </div><span class="card-sub">last 60 min</span></div>
-      ${heartbeatStrip(f.timeline, Date.now(), { width: widthOf(el, 600) - 36, height: 78 })}
+      ${heartbeatStrip(f.timeline, now, { width: widthOf(el, 600) - 36, height: 78, idle: quiet })}
     </div>`;
-  if (!candidates.length) {
-    return setHTML(el, `<div class="card-head"><div class="card-title">${icon('pulse')} Progress</div></div><div class="empty grow">${icon('trophy')}Nothing left to track right now.</div>${monitor}`);
+  const wrap = el.querySelector('.chart-wrap');
+  const height = Math.max(140, Math.round((wrap?.clientHeight || 270) - 12));
+  const width = Math.max(240, Math.round((wrap?.clientWidth || 720) - 12));
+  const head = (sub, tabs = '') => `<div class="card-head">
+      <div class="card-title">${icon('target')} Progress &amp; forecast</div>
+      <span class="card-sub">${sub}</span>
+      <div class="spacer"></div>${tabs}
+    </div>`;
+  if (idle && !idle.resume) {
+    return setHTML(el, `${head(esc(idle.sub))}<div class="chart-wrap">${idleScene({ ...idle, width, height, checkedAt: f.checkedAt, now })}</div>${monitor}`);
   }
+  const candidates = idle?.resume ?? currentCampaigns();
   if (!candidates.some((c) => c.id === ui.chartCampaign)) ui.chartCampaign = (primaryCampaign() ?? candidates[0]).id;
   const camp = candidates.find((c) => c.id === ui.chartCampaign);
   const fc = f.forecast[camp.id];
   const points = f.samples.filter((s) => s.units[camp.id] !== undefined).map((s) => [s.t, s.units[camp.id]]);
-  if (!points.length) points.push([Date.now(), camp.units]);
+  if (!points.length) points.push([now, camp.units]);
   const tabs =
     candidates.length > 1
       ? `<div class="tabs">${candidates.map((c) => `<button class="tab ${c.id === camp.id ? 'active' : ''}" data-action="chart-campaign" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('')}</div>`
       : '';
-  const wrap = el.querySelector('.chart-wrap');
-  const height = Math.max(140, Math.round((wrap?.clientHeight || 270) - 12));
-  const width = Math.max(240, Math.round((wrap?.clientWidth || 720) - 12));
+  const sub = idle ? `${esc(camp.name)} · ${camp.units}/${camp.targetUnits} min · ${fmtMin(fc?.doneMinutes)} to go once you resume` : `${esc(camp.name)} · ${camp.units}/${camp.targetUnits} min · done ${fmtEta(fc?.doneMinutes)}`;
   setHTML(
     el,
-    `<div class="card-head">
-      <div class="card-title">${icon('target')} Progress &amp; forecast</div>
-      <span class="card-sub">${esc(camp.name)} · ${camp.units}/${camp.targetUnits} min · done ${fmtEta(fc?.doneMinutes)}</span>
-      <div class="spacer"></div>${tabs}
-    </div>
-    <div class="chart-wrap">${progressChart({ points, rewards: camp.rewards, target: camp.targetUnits, now: Date.now(), rate: fc?.rate ?? 1, width, height })}</div>
+    `${head(sub, tabs)}
+    <div class="chart-wrap">${progressChart({ points, rewards: camp.rewards, target: camp.targetUnits, now, rate: fc?.rate ?? 1, resume: !!idle, width, height })}</div>
     ${monitor}`,
   );
 }

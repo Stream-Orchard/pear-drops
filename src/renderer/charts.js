@@ -50,7 +50,7 @@ const MAX_FORECAST_MIN = 14 * 1440;
  * Progress over time for one campaign: credited history, a forecast band and
  * projection, and each upcoming reward marked (with its picture) where it unlocks.
  */
-function progressChart({ points, rewards, target, now, rate = 1, width = 720, height = 260, forecast: showForecast = true, idPrefix = 'pc' }) {
+function progressChart({ points, rewards, target, now, rate = 1, width = 720, height = 260, forecast: showForecast = true, resume = false, idPrefix = 'pc' }) {
   // Stable ids: an unchanged chart produces identical markup and isn't touched.
   const id = idPrefix;
   const pad = { l: 42, r: 18, t: 34, b: 26 };
@@ -146,7 +146,8 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
     const tHit = now + ((rw.required - units) / r) * CHART_MIN;
     if (tHit > t1) {
       // Done further out than the chart reaches: say when, at its edge.
-      if (rw === last) labels.push(pill(pad.l + w, y(uAt(t1)) - 22, `Done in ${durLabel((tHit - now) / CHART_MIN)}`, { cls: 'p-final', anchor: 'end', ...bounds }));
+      const text = resume ? `Done ${durLabel((tHit - now) / CHART_MIN)} after resuming` : `Done in ${durLabel((tHit - now) / CHART_MIN)}`;
+      if (rw === last) labels.push(pill(pad.l + w, y(uAt(t1)) - 22, text, { cls: 'p-final', anchor: 'end', ...bounds }));
       return;
     }
     const xx = x(tHit);
@@ -160,11 +161,13 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
     let ly = yy - 27;
     if (prevLabel && Math.abs(prevLabel.x - xx) < 150 && Math.abs(prevLabel.y - ly) < 24) ly = yy + 27;
     prevLabel = { x: xx, y: ly };
-    const text = final ? `Done ${clockLabel(tHit)} · ${durLabel((tHit - now) / CHART_MIN)}` : `${rw.name} · ${clockLabel(tHit)}`;
+    // Paused, there's no telling when: say how long after resuming instead.
+    const after = durLabel((tHit - now) / CHART_MIN);
+    const text = resume ? (final ? `Done ${after} after resuming` : `${rw.name} · ${after} in`) : final ? `Done ${clockLabel(tHit)} · ${after}` : `${rw.name} · ${clockLabel(tHit)}`;
     labels.push(pill(xx, ly, text, { cls: final ? 'p-final' : 'p-next', ...bounds }));
   });
 
-  return `<svg class="chart progress-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+  return `<svg class="chart progress-chart${resume ? ' resume' : ''}" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
     <defs>
       <linearGradient id="${id}-area" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#53fc18" stop-opacity=".30"/><stop offset="1" stop-color="#53fc18" stop-opacity="0"/>
@@ -180,7 +183,7 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
       </linearGradient>
     </defs>
     ${showForecast ? `<rect x="${xNow}" y="${pad.t - 14}" width="${Math.max(0, pad.l + w - xNow)}" height="${h + 14}" rx="10" fill="url(#${id}-future)"/>
-    <text x="${xNow + 12}" y="${pad.t - 1}" class="region">FORECAST</text>` : ''}
+    <text x="${xNow + 12}" y="${pad.t - 1}" class="region">${resume ? 'IF YOU RESUME' : 'FORECAST'}</text>` : ''}
     ${xNow - pad.l > 90 ? `<text x="${pad.l + 4}" y="${pad.t - 1}" class="region">CREDITED</text>` : ''}
     ${grid.join('')}
     <path d="${area}" fill="url(#${id}-area)"/>
@@ -198,9 +201,11 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
 
 /**
  * Last `minutes` of activity in two lanes: credits Kick gave (bars) and watch
- * events the player sent (dots), with stream switches and claims.
+ * events the player sent (dots), with stream switches and claims. With nothing
+ * playing (`idle` is what to say), each check with Kick is a ring on the events
+ * lane, the newest pulsing, and a glow runs along the empty lanes.
  */
-function heartbeatStrip(timeline, now, { minutes = 60, width = 600, height = 78 } = {}) {
+function heartbeatStrip(timeline, now, { minutes = 60, width = 600, height = 78, idle = '' } = {}) {
   const t0 = now - minutes * CHART_MIN;
   const pad = { l: 62, r: 10 };
   const w = Math.max(100, width - pad.l - pad.r);
@@ -225,8 +230,132 @@ function heartbeatStrip(timeline, now, { minutes = 60, width = 600, height = 78 
       parts.push(`<rect x="${xx - 2.5}" y="${creditBase - hgt}" width="5" height="${hgt}" rx="2.5" class="hb-credit"/>`);
     } else if (e.type === 'switch') parts.push(`<line x1="${xx}" x2="${xx}" y1="6" y2="${eventY + 6}" class="hb-switch"/><circle cx="${xx}" cy="6" r="3" class="hb-switch-dot"/>`);
     else if (e.type === 'claim') parts.push(`<circle cx="${xx}" cy="8" r="5" class="hb-claim"/>`);
+    else if (e.type === 'check') parts.push(`<circle cx="${xx}" cy="${eventY}" r="3.2" class="hb-check${e.ok === false ? ' bad' : ''}"/>`);
+  }
+  const last = timeline.findLast((e) => e.type === 'check' && e.t >= t0);
+  if (last && now - last.t < 10_000) {
+    // Keyed by the check, so each new one pulses once and a redraw doesn't start it again.
+    const xx = x(last.t).toFixed(1);
+    parts.push(`<circle data-key="hb-ping-${last.t}" cx="${xx}" cy="${eventY}" r="14" class="hb-ping${last.ok === false ? ' bad' : ''}" style="transform-origin:${xx}px ${eventY}px"/>`);
+  }
+  // What it's showing, while there's nothing else in the lanes to read.
+  const busy = timeline.some((e) => e.t >= t0 && (e.type === 'sent' || e.type === 'credit'));
+  if (idle) {
+    const lanes = 'hb-lanes';
+    const mx = pad.l + w * 0.6;
+    const bw = Math.round(idle.length * 5.7 + 26);
+    parts.push(
+      `<defs><linearGradient id="hb-glow-fill" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2ee6c5" stop-opacity="0"/><stop offset=".8" stop-color="#2ee6c5" stop-opacity=".7"/><stop offset="1" stop-color="#fff" stop-opacity=".95"/></linearGradient>
+        <clipPath id="${lanes}"><rect x="${pad.l}" y="0" width="${w}" height="${height}"/></clipPath></defs>
+      <g clip-path="url(#${lanes})">${[creditBase, eventY]
+        .map((yy, i) => `<rect x="${pad.l - 120}" y="${yy - 1}" width="120" height="2" rx="1" fill="url(#hb-glow-fill)" class="hb-glow${i ? ' late' : ''}" style="--run:${w + 120}px"/>`)
+        .join('')}</g>
+      ${busy ? '' : `<g class="hb-idle"><rect x="${(mx - bw / 2).toFixed(1)}" y="${eventY - 29}" width="${bw}" height="20" rx="10"/><text x="${mx.toFixed(1)}" y="${eventY - 15}" text-anchor="middle">${escapeHtml(idle)}</text></g>`}`,
+    );
   }
   return `<svg class="chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${parts.join('')}</svg>`;
+}
+
+/**
+ * What the progress chart shows while nothing is playing, under a dome:
+ * - 'scan': a radar beam sweeps over the categories still to go (`items`), each lighting up
+ *   with its name as the beam passes. `tone: 'warn'` while Kick isn't answering.
+ * - 'paused': the same categories, still and dimmed.
+ * - 'done': the rewards collected (`items`), in an arc, with a shimmer running along them.
+ * Each check with Kick (`checkedAt`) sends a ripple out from the centre. All of it is CSS
+ * animation, so the system's reduce-motion setting stills it, and a redraw with the same
+ * things to show leaves the markup, and so the animation, alone.
+ */
+function idleScene({ mode, items = [], width = 720, height = 260, checkedAt = null, tone = '', now = Date.now(), idPrefix = 'is' }) {
+  const id = idPrefix;
+  const cx = width / 2;
+  const cy = height - 20;
+  const R = Math.max(60, Math.min(width / 2 - 34, height - 44));
+  const cls = tone === 'warn' ? 'warn' : mode;
+  const arc = (r) => `M${(cx - r).toFixed(1)},${cy} A${r.toFixed(1)},${r.toFixed(1)} 0 0 1 ${(cx + r).toFixed(1)},${cy}`;
+  const origin = `transform-origin:${cx.toFixed(1)}px ${cy}px`;
+  const parts = [];
+
+  // The dome: a glow, rings and spokes.
+  parts.push(`<path d="${arc(R)} Z" fill="url(#${id}-dome)"/>`);
+  for (const k of [0.25, 0.5, 0.75, 1]) parts.push(`<path d="${arc(R * k)}" class="is-ring${k === 1 ? ' edge' : ''}"/>`);
+  for (const a of [30, 60, 90, 120, 150]) {
+    const r = (a * Math.PI) / 180;
+    parts.push(`<line x1="${cx.toFixed(1)}" y1="${cy}" x2="${(cx - Math.cos(r) * R).toFixed(1)}" y2="${(cy - Math.sin(r) * R).toFixed(1)}" class="is-spoke"/>`);
+  }
+  parts.push(`<line x1="${(cx - R - 14).toFixed(1)}" x2="${(cx + R + 14).toFixed(1)}" y1="${cy}" y2="${cy}" class="is-base"/>`);
+
+  const inside = [];
+  const SWEEP_S = 6; // one pass of the beam, left to right (keep in step with idle-sweep in styles.css)
+  if (mode === 'scan') {
+    // A wedge trailing the beam, fading out behind it.
+    const wedge = [];
+    for (let i = 0; i < 12; i++) {
+      const a0 = ((-60 + i * 5) * Math.PI) / 180;
+      const a1 = ((-55 + i * 5) * Math.PI) / 180;
+      const r = R * 1.1;
+      wedge.push(
+        `<path d="M${cx.toFixed(1)},${cy} L${(cx + Math.cos(a0) * r).toFixed(1)},${(cy + Math.sin(a0) * r).toFixed(1)} A${r.toFixed(1)},${r.toFixed(1)} 0 0 1 ${(cx + Math.cos(a1) * r).toFixed(1)},${(cy + Math.sin(a1) * r).toFixed(1)} Z" opacity="${(0.008 + i * i * 0.0014).toFixed(3)}"/>`,
+      );
+    }
+    inside.push(`<g class="is-beam" style="${origin}">${wedge.join('')}<line x1="${cx.toFixed(1)}" y1="${cy}" x2="${(cx + R * 1.1).toFixed(1)}" y2="${cy}"/></g>`);
+  }
+  if (checkedAt && now - checkedAt < 10_000) {
+    // Keyed by the check: each new one ripples once.
+    inside.push(
+      `<g data-key="is-ripple-${checkedAt}">${[0, 1].map((k) => `<circle cx="${cx.toFixed(1)}" cy="${cy}" r="${R.toFixed(1)}" class="is-ripple${k ? ' late' : ''}" style="${origin}"/>`).join('')}</g>`,
+    );
+  }
+
+  const marks = [];
+  const defs = [];
+  if (mode === 'done') {
+    const list = items.slice(0, 12);
+    const ar = R * 0.74;
+    list.forEach((it, i) => {
+      const a = (Math.PI * (i + 0.5)) / list.length;
+      const x = cx - Math.cos(a) * ar;
+      const y = cy - Math.sin(a) * ar;
+      defs.push(`<clipPath id="${id}-c${i}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13"/></clipPath>`);
+      marks.push(`<g class="is-reward"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="16.5" class="is-disc"/>
+        ${it.image ? `<image href="${escapeHtml(it.image)}" x="${(x - 13).toFixed(1)}" y="${(y - 13).toFixed(1)}" width="26" height="26" clip-path="url(#${id}-c${i})" preserveAspectRatio="xMidYMid slice"><title>${escapeHtml(it.name)}</title></image>` : ''}
+        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="16.5" class="is-shine" style="animation-delay:${((i / list.length) * 2.4).toFixed(2)}s"/></g>`);
+    });
+    // A trophy at the centre.
+    marks.push(`<g class="is-trophy" transform="translate(${(cx - 12).toFixed(1)},${cy - 34})"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></g>`);
+  } else {
+    // Spread over the dome, alternating near and far so neighbours' names don't collide.
+    const list = items.slice(0, 8);
+    const near = [0.72, 0.46, 0.86, 0.6];
+    list.forEach((it, i) => {
+      const deg = (180 * (i + 0.5)) / list.length;
+      const a = (deg * Math.PI) / 180;
+      const k = near[i % near.length];
+      const x = cx - Math.cos(a) * R * k;
+      const y = cy - Math.sin(a) * R * k;
+      // The beam passes this angle `deg / 180` of the way through its sweep.
+      const delay = `animation-delay:${((deg / 180) * SWEEP_S).toFixed(2)}s`;
+      defs.push(`<clipPath id="${id}-c${i}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13"/></clipPath>`);
+      marks.push(`<g class="is-blip">
+        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="17" class="is-halo" style="${delay}"/>
+        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="14.5" class="is-disc"/>
+        ${it.image ? `<image href="${escapeHtml(it.image)}" x="${(x - 13).toFixed(1)}" y="${(y - 13).toFixed(1)}" width="26" height="26" clip-path="url(#${id}-c${i})" preserveAspectRatio="xMidYMid slice" class="is-art" style="${delay}"/>` : ''}
+        <text x="${x.toFixed(1)}" y="${(y + 30).toFixed(1)}" text-anchor="middle" class="is-name" style="${delay}">${escapeHtml(it.name)}</text></g>`);
+    });
+    if (mode === 'scan') marks.push(`<circle cx="${cx.toFixed(1)}" cy="${cy}" r="12" class="is-core-halo" style="${origin}"/><circle cx="${cx.toFixed(1)}" cy="${cy}" r="4" class="is-core"/>`);
+    else marks.push(`<g class="is-chip"><rect x="${(cx - 56).toFixed(1)}" y="${cy - 44}" width="112" height="28" rx="14"/><text x="${cx.toFixed(1)}" y="${cy - 26}" text-anchor="middle">Paused</text></g>`);
+  }
+
+  return `<svg class="chart idle-scene is-${cls}" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+    <defs>
+      <radialGradient id="${id}-dome" cx=".5" cy="1" r="1"><stop offset="0" class="is-stop" stop-opacity=".13"/><stop offset=".75" class="is-stop" stop-opacity=".025"/><stop offset="1" class="is-stop" stop-opacity="0"/></radialGradient>
+      <clipPath id="${id}-in"><path d="${arc(R)} Z"/></clipPath>
+      ${defs.join('')}
+    </defs>
+    ${parts.join('')}
+    <g clip-path="url(#${id}-in)">${inside.join('')}</g>
+    ${marks.join('')}
+  </svg>`;
 }
 
 /** Tiny bar sparkline. */
