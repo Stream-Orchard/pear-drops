@@ -19,12 +19,13 @@ Intro text.
 - Done tab.
 `;
 
-function project({ changelog = CHANGELOG, version = '0.2.10' } = {}) {
+function project({ changelog = CHANGELOG, version = '0.2.10', lock = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-rel-'));
   fs.mkdirSync(path.join(dir, 'scripts'));
   for (const f of ['prepare-release.js']) fs.copyFileSync(path.join(ROOT, 'scripts', f), path.join(dir, 'scripts', f));
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'pear-drops', version }, null, 2) + '\n');
   fs.writeFileSync(path.join(dir, 'CHANGELOG.md'), changelog);
+  if (lock) fs.writeFileSync(path.join(dir, 'package-lock.json'), JSON.stringify({ name: 'pear-drops', version, lockfileVersion: 3, packages: { '': { name: 'pear-drops', version }, 'node_modules/x': { version: '1.0.0' } } }, null, 2) + '\n');
   return dir;
 }
 function prepare(dir, tag, notes) {
@@ -104,4 +105,22 @@ test('the real changelog has exactly one current version, matching package.json'
   const cl = read(ROOT, 'CHANGELOG.md');
   const current = [...cl.matchAll(/^##\s+v?(\d+\.\d+\.\d+).*\(current\)\s*$/gm)].map(m => m[1]);
   assert.deepEqual(current, [JSON.parse(read(ROOT, 'package.json')).version]);
+});
+
+test('prepare-release sets the version in package-lock.json too, leaving the rest alone', () => {
+  const dir = project({ lock: true });
+  const r = prepare(dir, 'v0.2.11', GENERATED);
+  assert.equal(r.status, 0, r.stderr);
+  const lock = JSON.parse(read(dir, 'package-lock.json'));
+  assert.equal(lock.version, '0.2.11');
+  assert.equal(lock.packages[''].version, '0.2.11');
+  assert.equal(lock.packages['node_modules/x'].version, '1.0.0');
+  assert.ok(read(dir, 'package-lock.json').endsWith('}\n'), 'written the way npm writes it');
+});
+
+test('the real package-lock.json has the same version as package.json, so npm install leaves it alone', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+  assert.equal(lock.version, pkg.version);
+  assert.equal(lock.packages[''].version, pkg.version);
 });

@@ -36,6 +36,8 @@ git push -u origin <branch>
 gh pr create --base main --title "<title>" --body-file <body.md> --attach <file> [--attach <file> ...]
 ```
 
+An attachment the body doesn't mention is added at the end. To place one, such as in the Before / after table, reference it in the body with exactly the path given to `--attach` (run from the temp folder and use `./after.png` in both). `gh` then swaps that reference for the uploaded file's URL. Alt text goes after `#`, as in `--attach './after.png#The new tooltip'`.
+
 Check that every attachment became a GitHub URL (`gh pr view --json body`). Use the developer's own git and gh accounts.
 
 ## 6. After merging
