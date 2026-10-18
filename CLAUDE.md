@@ -27,6 +27,7 @@ An Electron app that farms Kick emote and badge drops. `src/main/` is the Electr
   - Only `db.js` touches `node:sqlite`. Other modules get the `Db` (or one of its slots) passed in, and tests use `new Db(':memory:')`.
   - A schema change is a new step at the end of `MIGRATIONS` in `db.js`. Never edit a released step.
   - Launch tests read what was saved with `readDb()` from `test/launch/app.js`.
+  - `backups.js` copies it to `backups/` on a schedule (Settings › Privacy & data). The Db copies itself there before a schema update, and `openDb` puts the newest good backup back when the file is damaged, recording `data-restored` (or `data-reset`) in History.
 
 ## Connected apps (Grapevine)
 

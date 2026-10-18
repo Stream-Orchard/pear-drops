@@ -16,6 +16,8 @@ const DEFAULTS = {
   playerQuality: 360, // full page only; null = Kick's automatic choice
   playerOpen: true,
   forgetOnQuit: false,
+  backupEvery: 'day', // Settings › Privacy: how often the data is backed up (backups.js): 'day' | 'week' | 'off'
+  backupKeep: 3, // how many backups to keep: 3 | 7 | 14
   alertOnStall: true,
   repeatAlert: false, // keep chiming until stopped, or until credit returns
   alertRepeatSeconds: 30,

@@ -890,7 +890,7 @@ const SETTINGS_TABS = [
   ['notifications', 'bell', 'Notifications'],
   ['refresh', 'refresh', 'Refresh rates'],
   ['app', 'panel', 'App'],
-  ['privacy', 'lock', 'Privacy'],
+  ['privacy', 'lock', 'Privacy & data'],
   ['account', 'users', 'Account'],
   ['apps', 'link', 'Connected apps'],
   ['updates', 'sparkle', 'Updates'],
@@ -1019,6 +1019,35 @@ function connectedPane() {
   return `<p class="pane-note">Apps that work with Pear Drops. They talk directly on this computer; nothing goes online.</p>${error}${(c?.peers ?? []).map(card).join('')}`;
 }
 
+/**
+ * Settings › Privacy & data: how often the app's data is backed up (backups.js), how many copies
+ * are kept, and the last one, with Back up now and the folder.
+ */
+function backupRows(row, seg) {
+  const b = state.backups;
+  if (!b) return '';
+  const key = (k, html) => html.replace(/data-action="setting-value"/g, `data-action="setting-value" data-key="${k}"`);
+  const when = (t) => {
+    const d = new Date(t);
+    const day = d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    return `${day} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  };
+  const mb = (bytes) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
+  const status = !b.possible
+    ? '<span class="backup-status bad">The data folder can’t be written to, so nothing is saved or backed up this run.</span>'
+    : b.running
+      ? '<span class="backup-status">Backing up…</span>'
+      : b.error
+        ? `<span class="backup-status bad">The last try failed: ${esc(b.error)}</span>`
+        : b.last
+          ? `<span class="backup-status">Last one ${when(b.last.at)}. ${b.count} ${b.count === 1 ? 'copy' : 'copies'}, ${mb(b.size)} in all.</span>`
+          : '<span class="backup-status">None yet.</span>';
+  return `
+    ${row('Back up my data', 'A copy of your history and drop archive, in the data folder. If the data is ever damaged, the app puts the newest good copy back by itself.', key('backupEvery', seg('setting-value', b.every, [['day', 'Daily'], ['week', 'Weekly'], ['off', 'Off']])))}
+    ${b.every === 'off' ? '' : row('Copies to keep', 'The oldest is removed when a new one is made.', key('backupKeep', seg('setting-value', String(b.keep), [['3', '3'], ['7', '7'], ['14', '14']])))}
+    ${row('Backups', status, `<button class="btn sm" data-action="backup-now" ${b.running || !b.possible ? 'disabled' : ''}>${icon('database')} Back up now</button><button class="btn sm" data-action="backup-show">${icon('folder')} Show</button>`)}`;
+}
+
 function renderModal() {
   const root = $('#modal-root');
   if (ui.modal === 'whatsnew') return setHTML(root, whatsNewModal());
@@ -1083,7 +1112,8 @@ function renderModal() {
       <div class="security-row ${enc === 'on' ? '' : 'off'}">${icon('lock')}
         ${enc === 'on' ? 'Your Kick login is encrypted with your system keychain.' : 'Login encryption is off. Start the app with npm start to turn it on.'}</div>
       ${row('Forget my login when I quit', 'Signs you out of Kick every time the app closes.', toggle('forgetOnQuit', s.forgetOnQuit))}
-      <p class="pane-note">Settings, history and the cache are plain files in the app's data folder and never leave this computer.</p>`,
+      ${backupRows(row, seg)}
+      <p class="pane-note">Your settings, history and drop archive stay in the app’s data folder and never leave this computer.</p>`,
     account: `
       <div class="account-card">${img(user?.avatar, 'avatar lg')}<div><b>${esc(user?.username ?? '')}</b><div class="card-sub">Signed in to Kick</div></div>
         <div class="spacer"></div><button class="btn danger" data-action="logout">${icon('logout')} Sign out</button></div>`,
@@ -1351,6 +1381,8 @@ const actions = {
     render();
   },
   'notify-system': () => window.pd.notifySystemSettings(),
+  'backup-now': () => window.pd.backups.run(),
+  'backup-show': () => window.pd.backups.show(),
   'connected-toggle': (el) => {
     const p = state.connected?.peers?.find((x) => x.id === el.dataset.id);
     window.pd.connected.set(el.dataset.id, !p?.enabled);

@@ -12,6 +12,7 @@ const { createDemo } = require('./demo');
 const { TrayController } = require('./tray');
 const { History } = require('./history');
 const { openDb, OLD_FILES } = require('./db');
+const { Backups, EVERY, KEEP } = require('./backups');
 const { Updates, parseChangelog } = require('./updates');
 const { Connected } = require('./connected');
 const { fileKeyStore } = require('@streamorchard/grapevine');
@@ -60,6 +61,7 @@ let powerBlocker = null;
 let security = { encryption: 'unknown', setForget: () => {} };
 let tray = null;
 let db = null; // the app's data: history, drop archive, startup cache, small state (db.js)
+let backups = null; // its copies (backups.js)
 let history = null;
 let archive = null;
 let updates = null;
@@ -76,6 +78,7 @@ function appState() {
     security: { encryption: security.encryption },
     farm: auth.status === 'signed-in' ? farmer.snapshot() : null,
     connected: connected?.state() ?? null,
+    backups: backups?.status() ?? null,
   };
 }
 
@@ -511,7 +514,7 @@ function registerIpc() {
     }
   });
   ipcMain.handle('settings:set', (_e, patch) => {
-    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes', 'notify', 'notifyAway'];
+    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes', 'notify', 'notifyAway', 'backupEvery', 'backupKeep'];
     const clean = Object.fromEntries(Object.entries(patch ?? {}).filter(([k]) => allowed.includes(k)));
     if (clean.stallMinutes !== undefined) clean.stallMinutes = Math.min(120, Math.max(5, Number(clean.stallMinutes) || 20));
     if (clean.refreshSeconds !== undefined) clean.refreshSeconds = Math.min(300, Math.max(30, Number(clean.refreshSeconds) || 60));
@@ -528,6 +531,9 @@ function registerIpc() {
     if (clean.smartRarity !== undefined && !['off', 'some', 'strong'].includes(clean.smartRarity)) delete clean.smartRarity;
     if (clean.smartHopMinutes !== undefined && ![15, 30, 60, 120].includes(Number(clean.smartHopMinutes))) delete clean.smartHopMinutes;
     else if (clean.smartHopMinutes !== undefined) clean.smartHopMinutes = Number(clean.smartHopMinutes);
+    if (clean.backupEvery !== undefined && !Object.keys(EVERY).includes(clean.backupEvery)) delete clean.backupEvery;
+    if (clean.backupKeep !== undefined && !KEEP.includes(Number(clean.backupKeep))) delete clean.backupKeep;
+    else if (clean.backupKeep !== undefined) clean.backupKeep = Number(clean.backupKeep);
     if (clean.notify !== undefined) clean.notify = cleanNotify(clean.notify);
     if (clean.notifyAway !== undefined) clean.notifyAway = clean.notifyAway === true;
     if (clean.queueMode !== undefined && !['manual', 'smart'].includes(clean.queueMode)) delete clean.queueMode;
@@ -537,6 +543,8 @@ function registerIpc() {
     store.set(clean);
     if ('forgetOnQuit' in clean) security.setForget(clean.forgetOnQuit);
     if ('playerMode' in clean || 'showChat' in clean || 'playerQuality' in clean) watcher.applySettings();
+    if ('backupKeep' in clean) backups.rotate();
+    if ('backupEvery' in clean) backups.check();
     if (['includeGameDrops', 'categoryOrder', 'disabledCategories', 'queueMode', 'smartRarity', 'smartHopMinutes'].some((k) => k in clean)) {
       farmer.buildModel();
       farmer.tick();
@@ -550,6 +558,13 @@ function registerIpc() {
   ipcMain.handle('connected:test', (_e, id) => connected.test(String(id)));
   ipcMain.handle('connected:icons', () => connected.icons());
   ipcMain.handle('notify:test', () => notifier.test());
+  // Settings › Privacy: back up now, and show where the copies are.
+  ipcMain.handle('backups:run', async () => !!(await backups.run()));
+  ipcMain.handle('backups:show', () => {
+    fs.mkdirSync(backups.dir, { recursive: true });
+    if (DEMO) global.pdOpened.push(backups.dir);
+    else shell.openPath(backups.dir);
+  });
   ipcMain.handle('notify:system-settings', () => {
     const url = systemSettingsUrl();
     if (url && !DEMO) shell.openExternal(url);
@@ -662,6 +677,18 @@ app.whenReady().then(async () => {
   createMainWindow();
   watcher = new Watcher(() => mainWindow, () => store.get());
   history = new History(db).load();
+  // The data was damaged: say what was put back, in History.
+  if (db.restored) {
+    const at = db.restored.at && new Date(db.restored.at);
+    history.add(db.restored.from ? 'data-restored' : 'data-reset', {
+      backup: db.restored.from,
+      text: at
+        ? `The app’s data was damaged, so the backup from ${at.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} was put back`
+        : 'The app’s data was damaged and there was no good backup, so it started afresh',
+    });
+  }
+  backups = new Backups({ db, dir: app.getPath('userData'), settings: () => store.get(), history, log: (text) => console.warn(text) }).start();
+  backups.on('change', () => sendState());
   archive = new DropArchive(app.getPath('userData'), db, {
     resolveUrl: assetUrl,
     // Downloaded in the Kick session, as the site itself would load them.
@@ -770,6 +797,7 @@ app.on('before-quit', () => {
   connected?.stop(); // says goodbye, so the other app knows at once
   archive?.flush();
   updates?.stop();
+  backups?.stop();
 });
 
 // Last, after farming has stopped: saves the run's numbers so a restart carries them on, and

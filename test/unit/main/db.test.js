@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { Db, openDb, FILE } = require('../../../src/main/db');
+const { Db, openDb, listBackups, backupName, checkFile, FILE, BACKUPS, MIGRATIONS } = require('../../../src/main/db');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pd-db-'));
 
@@ -134,7 +134,8 @@ test('a damaged database is moved aside and a new one started', () => {
   const db = openDb(dir, { log: (text) => logged.push(text) });
   db.set('ok', true);
   assert.equal(db.get('ok'), true);
-  assert.match(logged[0], /couldn't be opened/);
+  assert.match(logged[0], /couldn't be opened.*starting a new one/);
+  assert.deepEqual(db.restored, { from: null, at: null, error: 'file is not a database' }, 'with no backup to put back');
   assert.ok(fs.readdirSync(dir).some((f) => f.startsWith(`${FILE}.broken-`)), 'kept, in case it can be rescued');
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
@@ -149,4 +150,88 @@ test('a data folder that can’t be written keeps this run’s data in memory', 
   assert.match(logged.at(-1), /nothing will be saved/);
   db.set('ok', 1);
   assert.equal(db.get('ok'), 1);
+});
+
+test('a backup is one checked file that opens on its own, and a bad file fails the check', async () => {
+  const dir = tmp();
+  const db = openDb(dir);
+  db.set('k', 1);
+  const file = path.join(dir, 'copy.db');
+  const size = await db.backupTo(file);
+  assert.equal(size, fs.statSync(file).size);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.startsWith('copy')), ['copy.db'], 'no -wal or part file beside it');
+  assert.equal(checkFile(file), true);
+  const copy = new Db(file);
+  assert.equal(copy.get('k'), 1);
+  copy.close();
+  fs.writeFileSync(path.join(dir, 'bad.db'), 'not a database');
+  assert.equal(checkFile(path.join(dir, 'bad.db')), false);
+  assert.equal(checkFile(path.join(dir, 'missing.db')), false);
+  db.close();
+  await assert.rejects(db.backupTo(path.join(dir, 'closed.db')));
+  assert.ok(!fs.existsSync(path.join(dir, 'closed.db.part')), 'a failed copy leaves nothing');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('backups are listed newest first, by the time in their names', () => {
+  const dir = tmp();
+  const t = Date.UTC(2026, 9, 18, 9, 12, 0);
+  for (const name of [backupName(t), backupName(t + 86_400_000), backupName(t, 2), 'notes.txt', 'pear-drops-x.db']) fs.writeFileSync(path.join(dir, name), 'x');
+  assert.equal(backupName(t), 'pear-drops-2026-10-18T09-12-00Z.db');
+  assert.deepEqual(
+    listBackups(dir).map((b) => [b.name, b.at, b.before, b.size]),
+    [
+      ['pear-drops-2026-10-19T09-12-00Z.db', t + 86_400_000, null, 1],
+      ['pear-drops-2026-10-18T09-12-00Z.db', t, null, 1],
+      ['pear-drops-2026-10-18T09-12-00Z-before-v2.db', t, 2, 1],
+    ],
+  );
+  assert.deepEqual(listBackups(path.join(dir, 'missing')), []);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('an update that changes the schema backs up the data first', () => {
+  const dir = tmp();
+  const backups = path.join(dir, BACKUPS);
+  const first = new Db(path.join(dir, FILE), { backups });
+  first.set('k', 'before');
+  first.close();
+  assert.deepEqual(listBackups(backups), [], 'not for a new database');
+  const next = [...MIGRATIONS, 'CREATE TABLE extra (x)'];
+  const db = new Db(path.join(dir, FILE), { backups, migrations: next });
+  const [copy] = listBackups(backups);
+  assert.equal(copy.before, 2);
+  const old = new Db(copy.file, { migrations: MIGRATIONS });
+  assert.equal(old.sql.prepare('PRAGMA user_version').get().user_version, 1, 'the copy is from before the update');
+  assert.equal(old.get('k'), 'before');
+  old.close();
+  db.close();
+  const again = new Db(path.join(dir, FILE), { backups, migrations: next });
+  assert.equal(listBackups(backups).length, 1, 'only once');
+  again.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a damaged database is replaced by the newest backup that passes its check', async () => {
+  const dir = tmp();
+  const backups = path.join(dir, BACKUPS);
+  fs.mkdirSync(backups);
+  const db = openDb(dir);
+  db.set('k', 'older');
+  await db.backupTo(path.join(backups, backupName(Date.UTC(2026, 9, 17))));
+  db.set('k', 'newer');
+  await db.backupTo(path.join(backups, backupName(Date.UTC(2026, 9, 18))));
+  db.close();
+  fs.writeFileSync(path.join(backups, backupName(Date.UTC(2026, 9, 19))), 'damaged too');
+  fs.writeFileSync(path.join(dir, FILE), 'this is not a database, just some bytes');
+  fs.rmSync(path.join(dir, `${FILE}-wal`), { force: true });
+  const logged = [];
+  const restored = openDb(dir, { log: (text) => logged.push(text) });
+  assert.equal(restored.get('k'), 'newer');
+  assert.deepEqual(restored.restored, { from: backupName(Date.UTC(2026, 9, 18)), at: Date.UTC(2026, 9, 18), error: 'file is not a database' });
+  assert.match(logged[0], /restored the backup from 2026-10-18/);
+  assert.equal(listBackups(backups).length, 3, 'the backups stay');
+  assert.ok(fs.readdirSync(dir).some((f) => f.startsWith(`${FILE}.broken-`)));
+  restored.close();
+  fs.rmSync(dir, { recursive: true, force: true });
 });
