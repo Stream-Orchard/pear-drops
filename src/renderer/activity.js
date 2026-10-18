@@ -46,13 +46,14 @@ function farmingWords(f) {
   return { farming: 'Farming', paused: 'Paused', done: 'Every drop is done', 'signed-out': 'Signed out of Kick', waiting: 'Waiting for a stream with drops' }[f.state] ?? `State: ${f.state}`;
 }
 
-/** players' state, in words. */
+/** players' state, in words: signed in or out, and why (Auto: out while Pear Drops farms). */
 function playersWords(p) {
   const k = p?.platforms?.kick;
   if (!k) return 'No Kick players open';
   const open = k.open?.length ?? 0;
-  const mode = { 'signed-in': 'always signed in', 'signed-out': 'always signed out', auto: 'signed out while you farm' }[k.mode] ?? k.mode;
-  return `${open} Kick player${open === 1 ? '' : 's'} open, ${k.signedIn ? 'signed in' : 'signed out'} · ${mode}`;
+  const state = k.signedIn ? 'signed in' : 'signed out';
+  const how = { auto: k.signedIn ? 'signed in (Auto)' : 'signed out while Pear Drops farms', 'signed-in': 'signed in (always)', 'signed-out': 'signed out (always)' }[k.mode];
+  return `${open} Kick player${open === 1 ? '' : 's'} open, ${how ?? `${state}${k.mode ? ` · ${k.mode}` : ''}`}`;
 }
 
 /**

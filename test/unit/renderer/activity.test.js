@@ -38,7 +38,14 @@ test('each message in plain words, either way', () => {
   assert.equal(say({ dir: 'in', kind: 'request', method: 'drops.farming.show', data: {} }).text, 'Stream Multiview asked to show Pear Drops');
   assert.equal(say({ dir: 'out', kind: 'reply', method: 'drops.farming.show', data: { shown: true } }).text, 'Shown');
   const players = { platforms: { kick: { signedIn: false, mode: 'auto', account: null, open: [{ slug: 'pixelpear' }, { slug: 'moonlitmaple' }] } } };
-  assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: players }).text, '2 Kick players open, signed out · signed out while you farm');
+  assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: players }).text, '2 Kick players open, signed out while Pear Drops farms');
+  // The state and why in one phrase: Auto signed in isn't "signed in · signed out while you farm".
+  const kick = (k) => say({ dir: 'in', kind: 'event', method: 'players.changed', data: { platforms: { kick: { account: null, open: [{ slug: 'pixelpear' }], ...k } } } }).text;
+  assert.equal(kick({ signedIn: true, mode: 'auto' }), '1 Kick player open, signed in (Auto)');
+  assert.equal(kick({ signedIn: true, mode: 'signed-in' }), '1 Kick player open, signed in (always)');
+  assert.equal(kick({ signedIn: false, mode: 'signed-out' }), '1 Kick player open, signed out (always)');
+  assert.equal(kick({ signedIn: true, mode: 'by-channel' }), '1 Kick player open, signed in · by-channel', 'a mode it has no words for');
+  assert.equal(kick({ signedIn: false }), '1 Kick player open, signed out');
   assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: { platforms: {} } }).text, 'No Kick players open');
   assert.equal(say({ dir: 'out', kind: 'request', method: 'players.get', data: {} }).text, 'Asked Stream Multiview about its players');
   assert.equal(say({ dir: 'out', kind: 'request', method: 'link.hello' }).text, 'Hello, with what Pear Drops speaks');
