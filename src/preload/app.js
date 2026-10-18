@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('pd', {
     set: (id, on) => ipcRenderer.invoke('connected:set', id, on),
     disconnect: (id) => ipcRenderer.invoke('connected:disconnect', id),
     pairAgain: (id) => ipcRenderer.invoke('connected:pair-again', id),
+    test: (id) => ipcRenderer.invoke('connected:test', id),
     icons: () => ipcRenderer.invoke('connected:icons'),
   },
   notifyTest: () => ipcRenderer.invoke('notify:test'),

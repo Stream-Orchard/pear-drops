@@ -3969,6 +3969,10 @@ input[type='range']::-webkit-slider-thumb {
   color: var(--text);
   font-weight: 600;
 }
+.app-foot.ok {
+  background: var(--green-soft);
+  color: #c9f7b5;
+}
 .app-foot.warn {
   background: rgba(251, 191, 75, 0.06);
   color: #e9d3a6;

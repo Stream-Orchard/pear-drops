@@ -34,4 +34,5 @@ An Electron app that farms Kick emote and badge drops. `src/main/` is the Electr
   - **A new app** is added in Grapevine's known-apps list. The cards here come from it, so it needs no code here.
   - **A new capability Pear Drops uses** needs its wording in `CAPABILITIES` in `src/renderer/app.js`. A capability without wording still gets a plain tile.
 - **Tests** use demo mode's stand-in Stream Multiview (`pdDemo.multiview()`), in a Grapevine folder of the data folder's own. Never the real app.
-- **After a Pear Drops release** that adds or changes what's sent, record it in Grapevine (its `app-shipped` skill, `npm run released -- com.streamorchard.peardrops <version>`). That fixes those capability versions and lets other apps say "update Pear Drops to <version>".
+- **What Pear Drops speaks** is declared once, in `package.json`'s `grapevine` field: its app id, and the capability versions it provides and uses. `connected.js` reads it, and every release tag keeps it.
+- **After a Pear Drops release** that adds or changes what's sent, record it in Grapevine (its `app-shipped` skill). That fixes those capability versions and lets other apps say "update Pear Drops to <version>". `start-change` runs `npx grapevine-check` first, which lists any release not yet recorded and the command for it, so this isn't left to memory.

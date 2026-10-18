@@ -92,6 +92,15 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@streamorchard/grapevine": "^0.5.1"
+    "@streamorchard/grapevine": "^0.7.0"
+  },
+  "grapevine": {
+    "app": "com.streamorchard.peardrops",
+    "provides": {
+      "drops.farming": "1.0"
+    },
+    "uses": {
+      "players": "1.0"
+    }
   }
 }

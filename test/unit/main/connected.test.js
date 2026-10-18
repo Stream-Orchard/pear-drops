@@ -39,6 +39,7 @@ function setup({ enabled = false, status = 'farming', signedIn = true } = {}) {
   const place = { env: { ...process.env, GRAPEVINE_DIR: dir } };
   const c = new Connected({ store, farmer, auth: () => auth, version: '0.1.5', history, keys: memoryKeyStore(), place, appDataDir: dir, show: () => (shown += 1) });
   c.link.timing = { ...c.link.timing, pollMs: 40, backoffMs: [20, 40, 80] };
+  c.store = store;
   return { c, dir, store, farmer, auth, history, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
 
@@ -263,4 +264,41 @@ test('any app Grapevine knows gets its own card and switch, with what the two wo
   assert.equal(c.nameOf('com.example.overlay'), 'Stream Overlay');
   await c.stop(); // before its folder goes
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('what Pear Drops speaks comes from package.json, where grapevine-check reads it at each release', () => {
+  const { grapevine } = require('../../../package.json');
+  assert.equal(grapevine.app, APP_ID);
+  assert.equal(APP_ID, 'com.streamorchard.peardrops');
+  const { c, cleanup } = setup();
+  assert.deepEqual(c.link.mine, { provides: { 'drops.farming': ['1.0'] }, uses: { players: ['1.0'] } });
+  cleanup();
+});
+
+test('Test on the card: off, not open, a round trip, and a link that cannot start', async () => {
+  const { c, dir, cleanup } = setup();
+  try {
+    assert.deepEqual(await c.test(MV), { ok: false, reason: 'off', text: 'Switch on Connect with Stream Multiview first' });
+    c.store.set({ connectedApps: { [MV]: { enabled: true } } });
+    const missing = await c.test(MV);
+    assert.equal(c.state().running, true, 'switched on but not started yet: it starts');
+    assert.deepEqual(missing, { ok: false, reason: 'not-running', text: "Stream Multiview isn't open" });
+    const peer = await standInPeer({ as: MV, dir, version: '0.4.0', provides: { players: '1.0' }, uses: { 'drops.farming': '1.0' }, timing: { pollMs: 40 } });
+    try {
+      const ok = await c.test(MV);
+      assert.equal(ok.ok, true, JSON.stringify(ok));
+      assert.match(ok.text, /^Stream Multiview 0\.4\.0 answered in \d+ ms$/);
+    } finally {
+      await peer.stop();
+    }
+  } finally {
+    await c.stop();
+    cleanup();
+  }
+  const broken = setup({ enabled: true });
+  broken.c.link.start = async () => {
+    throw new Error('Another copy of Pear Drops is already using Grapevine');
+  };
+  assert.deepEqual(await broken.c.test(MV), { ok: false, reason: 'not-started', text: 'Another copy of Pear Drops is already using Grapevine' });
+  broken.cleanup();
 });
