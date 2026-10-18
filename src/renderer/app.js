@@ -220,7 +220,7 @@ function healthChip(f) {
 function noticeHTML(f) {
   const n = streamNotice(f);
   if (!n) return '';
-  return `<div class="hero-notice ${n.kind}" data-at="${n.at}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>`;
+  return `<div class="hero-notice" data-kind="${n.kind}" data-at="${n.at}">${icon(n.icon)}<span>${esc(n.text)}</span><small>${fmtAgo(n.at)}</small></div>`;
 }
 
 /** The time to the next check with Kick, as a ring that empties. */
