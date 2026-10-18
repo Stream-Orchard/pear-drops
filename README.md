@@ -10,6 +10,35 @@ A desktop app that collects Kick **emote and badge drops** for you. Sign in once
 
 Game drops that need a linked game account are skipped unless you turn them on.
 
+## Install
+
+Download the installer for your computer from the [latest release](https://github.com/Stream-Orchard/pear-drops/releases/latest), under **Assets**:
+
+| Computer | File |
+|---|---|
+| **Windows** 10 or 11 | `Pear-Drops-Setup-<version>.exe` |
+| **Mac** (Apple silicon or Intel), macOS 12 or newer | `Pear-Drops-<version>-mac.dmg` |
+
+The app is free, and it isn't signed with a paid Apple or Microsoft certificate yet, so your computer warns you the first time. That's expected:
+
+**Windows**
+1. Open the `.exe` you downloaded.
+2. If a blue *Windows protected your PC* box appears, click **More info**, then **Run anyway**.
+3. Follow the installer. Pear Drops opens when it's done, and gets a Start menu and desktop shortcut.
+
+**Mac**
+1. Open the `.dmg` and drag **Pear Drops** into **Applications**.
+2. Open Pear Drops from Applications. macOS says it can't check it for malware: click **Done**.
+3. Open **System Settings › Privacy & Security**, scroll down to *"Pear Drops" was blocked* and click **Open Anyway** (and again in the box that follows), then enter your password. You only do this once.
+4. If macOS asks to use *Pear Drops Safe Storage* in your keychain (it can after an update), enter your password and click **Always Allow**. That key encrypts your saved Kick login.
+
+**Then:**
+1. Click **Sign in with Kick** and log in to Kick in the window that appears.
+2. Close any other Kick streams on your account, in other tabs, apps or your phone. Kick credits drops to only one stream at a time (see *How Kick drops work* below).
+3. That's it. Pear Drops picks a stream and starts collecting. Closing the window keeps it going in the menu bar (Mac) or the system tray (Windows).
+
+Pear Drops updates itself: Settings › Updates shows when there's a new version.
+
 ## Features
 
 - **Live dashboard:** the drop being farmed, a progress ring and ETAs, a credited-minutes chart with a forecast to each reward, a live monitor of watch events vs credits, and session stats. It fits a maximized window without scrolling.
@@ -33,9 +62,9 @@ Game drops that need a linked game account are skipped unless you turn them on.
 - **Desktop notifications** (Settings › Notifications): pick which ones you want, all off to start with. They cover a drop claimed or ready to claim, a stream ending or raiding, stream problems, credit going to another stream, signing in again, everything collected or nothing live, and new drops on Kick. They can be limited to when Pear Drops isn't in front. "Send a test" checks your computer allows them, and a button opens its notification settings.
 - **Font** (Settings › App): your computer's own font on macOS and Windows, or Inter, which comes with the app and looks the same everywhere. Linux uses Inter by default.
 
-## Getting started
+## Run from source
 
-Needs [Node.js](https://nodejs.org) 24 or newer.
+For Linux, or to work on the app. Needs [Node.js](https://nodejs.org) 24 or newer.
 
 ```sh
 npm install
@@ -44,7 +73,7 @@ npm start          # switches on login encryption, then starts the app
 
 Or double-click `start-mac-linux.sh` / `Start Pear Drops.bat`.
 
-On first open, click **Sign in with Kick** and log in in the window that appears. Then close any other Kick streams on your account; see *How Kick drops work* below.
+Then sign in as in *Install* above.
 
 ### Try it without an account
 
