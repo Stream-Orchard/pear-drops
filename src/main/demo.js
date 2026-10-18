@@ -83,6 +83,7 @@ function makeCampaigns() {
   return [
     {
       id: 'c-neon',
+      url: 'https://kick.com/category/neon-rush',
       name: 'Neon Rush Launch Week',
       status: 'active',
       starts_at: days(-3),
@@ -95,6 +96,7 @@ function makeCampaigns() {
     },
     {
       id: 'c-cozy',
+      url: 'https://kick.com/events/cozy-hours',
       name: 'Cozy Hours',
       status: 'active',
       starts_at: days(-5),
@@ -144,6 +146,8 @@ function makeCampaigns() {
     // Announced, not started yet (Kick lists these as "upcoming"): the Coming soon card.
     {
       id: 'c-kart-night',
+      url: 'https://kick.com/events/pixel-kart-night-cup',
+      created_at: days(-2),
       name: 'Pixel Kart Night Cup',
       status: 'upcoming',
       starts_at: days(0.3),
@@ -156,6 +160,8 @@ function makeCampaigns() {
     },
     {
       id: 'c-sky-s4',
+      url: 'https://kick.com/category/skyforge-arena',
+      created_at: days(-0.4),
       name: 'Skyforge Season 4',
       status: 'upcoming',
       starts_at: days(4.2),
@@ -254,6 +260,8 @@ class DemoApi {
   }
 
   async claim(campaignId, rewardId) {
+    // A test or the trailer can have the stand-in refuse claims, with the body Kick sends.
+    if (this.refuseClaims) throw Object.assign(new Error('HTTP 400'), { status: 400, body: this.refuseClaims });
     this.claimed.add(rewardId);
     return { message: 'Success' };
   }

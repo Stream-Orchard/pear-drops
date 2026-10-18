@@ -350,6 +350,34 @@ test('the Queue ends with Coming soon: the drops Kick has announced, soonest fir
   assert.ok(!(await a.win.textContent('#side .queue-list')).includes('Night Cup'), 'announced drops are not in the queue itself');
 });
 
+test("Details opens a drop's About page, and a refused claim says why with a button to link the account", async () => {
+  // Coming soon's Details: recorded, not opened (demo mode never opens the real browser).
+  await a.win.click('[data-action="side-tab"][data-id="queue"]');
+  await until(a.win, () => document.querySelector('#side .coming [data-action="open-link"]'), 'Details on Coming soon', 10000);
+  const link = await a.win.getAttribute('#side .coming [data-action="open-link"]', 'data-url');
+  assert.match(link, /^https:\/\/kick\.com\/(events|category)\//, "the shown drop's About page");
+  await a.win.click('#side .coming [data-action="open-link"]');
+  await until(a.win, () => true, 'the click');
+  const opened = await a.app.evaluate(() => global.pdOpened);
+  assert.ok(opened.includes(link), JSON.stringify(opened));
+  assert.match(await a.win.textContent("#side .coming"), /announced (just now|\d+ (min|hours?|days?) ago)/);
+
+  // Kick refuses the next claim, saying the game account must be linked.
+  await a.app.evaluate(() => (global.pdDemo.api.refuseClaims = { data: { type: 'INVALID_CLAIM', connect_url: 'https://kick.com/settings/connections' } }));
+  const cat = await a.app.evaluate(() => global.pdDebug.farmer.model.campaigns.find((c) => c.id === 'c-neon').categoryId);
+  await a.demo((d) => d.advance('c-neon', 180));
+  await until(a.win, (id) => document.querySelector(`#side .cat[data-cat-id="${id}"]`), 'the Neon Rush row', 10000, cat);
+  // Open its drops (unless an earlier test left them open).
+  const open = () => a.win.evaluate((id) => !!document.querySelector(`#side .cat[data-cat-id="${id}"] .cat-campaigns`), cat);
+  if (!(await open())) await a.win.click(`#side .cat[data-cat-id="${cat}"] .cat-row`);
+  await until(a.win, () => document.querySelector('#side .claim-error + [data-action="open-link"]'), 'Link your account', 10000);
+  await a.win.click('#side .claim-error + [data-action="open-link"]');
+  await until(a.win, () => true, 'the click');
+  assert.ok((await a.app.evaluate(() => global.pdOpened)).includes('https://kick.com/settings/connections'));
+  await a.app.evaluate(() => (global.pdDemo.api.refuseClaims = null));
+  if (await open()) await a.win.click(`#side .cat[data-cat-id="${cat}"] .cat-row`);
+});
+
 test('paused, the hero shows what comes next', async () => {
   await a.app.evaluate(() => global.pdDebug.farmer.setPaused(true));
   await until(a.win, () => document.querySelector('#hero .hero-next-row'), 'up next', 10000);
