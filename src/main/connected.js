@@ -7,7 +7,7 @@ const { EventEmitter } = require('events');
 const { createLink, KNOWN_APPS, iconDataUrl } = require('@streamorchard/grapevine');
 const { assetUrl } = require('./kick-api');
 // What Pear Drops speaks, from package.json's "grapevine" field: written once there, and kept by every
-// release tag, so `npx grapevine-check` can tell what each release shipped.
+// release tag, so `npm run grapevine:check` can tell what each release shipped.
 const DECLARED = require('../../package.json').grapevine;
 
 const APP_ID = DECLARED.app;
