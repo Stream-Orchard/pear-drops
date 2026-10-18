@@ -79,27 +79,40 @@ test('heartbeatStrip and sparkBars draw events and bars', () => {
   assert.equal(run('sparkBars([])'), '');
 });
 
-test('heartbeatStrip with nothing playing: checks as rings, the newest pulsing, and what it shows while the lanes are empty', () => {
+test('heartbeatStrip with nothing playing: checks as rings, the newest pulsing, and what it will show until the first', () => {
   const now = Date.now();
+  ctx.tl = [];
+  const empty = run(`heartbeatStrip(tl, ${now}, { idle: 'Each check <shows> here' })`);
+  assert.match(empty, /hb-glow/);
+  assert.match(empty, /Each check &lt;shows&gt; here/, 'escaped');
+
   ctx.tl = [
     { t: now - 20 * MIN, type: 'check', ok: true },
     { t: now - 10 * MIN, type: 'check', ok: false },
     { t: now - 3000, type: 'check', ok: true },
   ];
-  const strip = run(`heartbeatStrip(tl, ${now}, { idle: 'Each check <shows> here' })`);
+  const strip = run(`heartbeatStrip(tl, ${now}, { idle: 'Each check shows here' })`);
   assert.equal((strip.match(/class="hb-check/g) || []).length, 3);
   assert.equal((strip.match(/hb-check bad/g) || []).length, 1, 'a failed check is marked');
   assert.match(strip, new RegExp(`data-key="hb-ping-${now - 3000}"`), 'the new check pulses, keyed so a redraw leaves it alone');
   assert.match(strip, /hb-glow/);
-  assert.match(strip, /Each check &lt;shows&gt; here/, 'escaped');
+  assert.doesNotMatch(strip, /hb-idle/, 'the checks say it themselves');
 
-  // An old check doesn't pulse; with events in the lanes, the message would cover them.
+  // An old check doesn't pulse; nor is there a message over events in the lanes.
   ctx.tl = [{ t: now - 5 * MIN, type: 'check', ok: true }, { t: now - 30 * MIN, type: 'credit', delta: 2 }];
   const busy = run(`heartbeatStrip(tl, ${now}, { idle: 'quiet' })`);
   assert.doesNotMatch(busy, /hb-ping/);
   assert.doesNotMatch(busy, /hb-idle/);
-  assert.match(busy, /hb-glow/);
+  ctx.tl = [{ t: now - 30 * MIN, type: 'credit', delta: 2 }];
+  assert.doesNotMatch(run(`heartbeatStrip(tl, ${now}, { idle: 'quiet' })`), /hb-idle/);
   assert.doesNotMatch(run(`heartbeatStrip(tl, ${now})`), /hb-glow|hb-idle/, 'not while something plays');
+});
+
+test('idleScene sits in the middle of a tall card, rather than at its foot', () => {
+  const cy = (w, h) => Number(run(`idleScene({ mode: 'scan', items: [], width: ${w}, height: ${h} })`).match(/class="is-core" .*?|<circle cx="[\d.]+" cy="([\d.]+)" r="4" class="is-core"/)[1]);
+  assert.equal(cy(900, 300), 280, 'a wide card: the dome fills its height');
+  // 400 wide: the dome is 166 high, in a card with 556 of room.
+  assert.equal(cy(400, 600), Math.round(580 - (556 - 166) / 2));
 });
 
 test('idleScene: a radar over the categories still to go, each lit as the beam passes', () => {
@@ -141,6 +154,30 @@ test('idleScene paused: the categories still, with no beam; done: the rewards co
   assert.match(done, /is-trophy/);
   assert.match(done, /<title>Reward 1<\/title>/, 'each one says what it is');
   assert.doesNotMatch(done, /is-beam|is-blip/);
+});
+
+test('progressChart for a stream that just started: a dashed line across the past, and the label clear of the line', () => {
+  const now = Date.now();
+  ctx.fresh = { points: [[now - MIN, 536], [now, 538]], rewards: [{ name: 'Cx Emote', required: 600, tracked: true }], target: 600, now, rate: 1, width: 800, height: 400 };
+  const svg = run('progressChart(fresh)');
+  assert.ok(!/NaN|Infinity/.test(svg));
+  assert.match(svg, /class="series earlier"/, 'what it was at most, before the first reading');
+  assert.match(svg, /class="earlier-area"/);
+  assert.match(svg, />538 of 600 min</);
+  assert.doesNotMatch(svg, /min now/);
+  const now_ = svg.match(/<circle cx="[\d.]+" cy="([\d.]+)" r="5" class="now-dot"/);
+  const label = svg.match(/<g class="pill p-now">\s*<rect x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="22"/);
+  assert.ok(Number(label[1]) + 22 < Number(now_[1]) - 4, 'the label sits above the dot');
+
+  // History back to the chart's edge needs no dashed line.
+  ctx.long = { ...ctx.fresh, points: [[now - 3 * 3600_000, 400], [now, 538]] };
+  assert.doesNotMatch(run('progressChart(long)'), /earlier/);
+  // Near the top of the chart, the label goes under the dot instead.
+  ctx.top = { ...ctx.fresh, points: [[now - 3 * 3600_000, 0], [now, 600]] };
+  const top = run('progressChart(top)');
+  const dot = Number(top.match(/<circle cx="[\d.]+" cy="([\d.]+)" r="5" class="now-dot"/)[1]);
+  const below = Number(top.match(/<g class="pill p-now">\s*<rect x="[\d.]+" y="([\d.]+)"/)[1]);
+  assert.ok(below > dot, 'below the dot');
 });
 
 test('progressChart for a paused campaign: what resuming would bring, in times from resuming', () => {

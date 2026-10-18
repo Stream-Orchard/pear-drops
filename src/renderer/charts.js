@@ -107,6 +107,14 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
   // ---- history
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ') + ` L${xNow.toFixed(1)},${yNow.toFixed(1)}`;
   const area = `${line} L${xNow.toFixed(1)},${bottom} L${x(pts[0][0]).toFixed(1)},${bottom} Z`;
+  // Before the first reading (a stream that just started): progress never goes down, so it was
+  // at most that much. A faint dashed line across the past, rather than a sliver of shading.
+  const x0 = x(pts[0][0]);
+  const earlier =
+    x0 - pad.l > 4
+      ? `<path d="M${pad.l},${y(pts[0][1]).toFixed(1)} L${x0.toFixed(1)},${y(pts[0][1]).toFixed(1)} L${x0.toFixed(1)},${bottom} L${pad.l},${bottom} Z" fill="url(#${id}-area)" class="earlier-area"/>
+        <path d="M${pad.l},${y(pts[0][1]).toFixed(1)} L${x0.toFixed(1)},${y(pts[0][1]).toFixed(1)}" class="series earlier"/>`
+      : '';
 
   // ---- forecast band (faster / slower than now) and projection
   let forecast = '';
@@ -186,6 +194,7 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
     <text x="${xNow + 12}" y="${pad.t - 1}" class="region">${resume ? 'IF YOU RESUME' : 'FORECAST'}</text>` : ''}
     ${xNow - pad.l > 90 ? `<text x="${pad.l + 4}" y="${pad.t - 1}" class="region">CREDITED</text>` : ''}
     ${grid.join('')}
+    ${earlier}
     <path d="${area}" fill="url(#${id}-area)"/>
     ${forecast}
     <path d="${line}" class="series-glow"/>
@@ -194,7 +203,7 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
     ${markers.join('')}
     <circle cx="${xNow}" cy="${yNow}" r="10" class="now-halo"/>
     <circle cx="${xNow}" cy="${yNow}" r="5" class="now-dot"/>
-    ${pill(xNow - 14, showForecast ? yNow + 4 : yNow - 22, `${units} min now`, { cls: 'p-now', anchor: 'end', ...bounds })}
+    ${pill(xNow - 12, yNow - 22 < pad.t + 6 ? yNow + 24 : yNow - 22, target ? `${units} of ${target} min` : `${units} min`, { cls: 'p-now', anchor: 'end', ...bounds })}
     ${labels.join('')}
   </svg>`;
 }
@@ -238,8 +247,8 @@ function heartbeatStrip(timeline, now, { minutes = 60, width = 600, height = 78,
     const xx = x(last.t).toFixed(1);
     parts.push(`<circle data-key="hb-ping-${last.t}" cx="${xx}" cy="${eventY}" r="14" class="hb-ping${last.ok === false ? ' bad' : ''}" style="transform-origin:${xx}px ${eventY}px"/>`);
   }
-  // What it's showing, while there's nothing else in the lanes to read.
-  const busy = timeline.some((e) => e.t >= t0 && (e.type === 'sent' || e.type === 'credit'));
+  // What it will show, until there's something in the lanes to read.
+  const busy = timeline.some((e) => e.t >= t0 && (e.type === 'sent' || e.type === 'credit' || e.type === 'check'));
   if (idle) {
     const lanes = 'hb-lanes';
     const mx = pad.l + w * 0.6;
@@ -269,8 +278,9 @@ function heartbeatStrip(timeline, now, { minutes = 60, width = 600, height = 78,
 function idleScene({ mode, items = [], width = 720, height = 260, checkedAt = null, tone = '', now = Date.now(), idPrefix = 'is' }) {
   const id = idPrefix;
   const cx = width / 2;
-  const cy = height - 20;
   const R = Math.max(60, Math.min(width / 2 - 34, height - 44));
+  // Centred top to bottom when the width limits it, so a tall card has no gap above.
+  const cy = Math.round(height - 20 - Math.max(0, height - 44 - R) / 2);
   const cls = tone === 'warn' ? 'warn' : mode;
   const arc = (r) => `M${(cx - r).toFixed(1)},${cy} A${r.toFixed(1)},${r.toFixed(1)} 0 0 1 ${(cx + r).toFixed(1)},${cy}`;
   const origin = `transform-origin:${cx.toFixed(1)}px ${cy}px`;

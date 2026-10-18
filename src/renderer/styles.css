@@ -1658,6 +1658,15 @@ span.img-missing {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
+/* Before the first reading: what it was at most. */
+.chart .series.earlier {
+  stroke-opacity: 0.45;
+  stroke-width: 2;
+  stroke-dasharray: 4 6;
+}
+.chart .earlier-area {
+  opacity: 0.4;
+}
 .chart .series-glow {
   fill: none;
   stroke: var(--green);
