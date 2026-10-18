@@ -27,6 +27,8 @@ const DEFAULTS = {
   trayPercent: true,
   font: process.platform === 'linux' ? 'bundled' : 'system', // 'system': SF Pro, Segoe UI · 'bundled': Inter, the same everywhere
   // Settings › Notifications: a desktop notification switch per kind (src/main/notifier.js), all off to start with.
+  // Settings › Connected apps: each app's Connect switch, off to start with (connected.js).
+  connectedApps: { 'com.glowingpear.streammultiview': { enabled: false } },
   notify: { claimed: false, ready: false, ended: false, trouble: false, conflict: false, signedOut: false, done: false, newDrops: false },
   notifyAway: false, // only while Pear Drops isn't in front
   window: null, // { bounds, maximized }: remembered between launches

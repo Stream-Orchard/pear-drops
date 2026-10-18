@@ -341,6 +341,13 @@ button {
 .live-dot.green {
   background: var(--green);
 }
+.live-dot.amber {
+  background: var(--amber);
+}
+/* Waiting is calm: no ping. */
+.chip.amber .live-dot.amber::after {
+  animation: none;
+}
 @keyframes ping-ring {
   0% {
     transform: scale(1);
@@ -3805,6 +3812,177 @@ input[type='range']::-webkit-slider-thumb {
 .notify-kind .switch {
   flex: none;
   pointer-events: none;
+}
+/* Settings › Connected apps: a card per app, with its logo, what it is, its switch, what the
+   two apps share, and one line on how it's going. */
+.app-card {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.app-head {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  background: radial-gradient(120% 140% at 0% 0%, rgba(83, 252, 24, 0.08), transparent 55%);
+}
+.app-card.off .app-head,
+.app-card.waiting .app-head {
+  background: radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.03), transparent 55%);
+}
+.app-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: #0d1410;
+  object-fit: contain;
+  padding: 6px;
+  box-shadow:
+    0 6px 18px -6px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.app-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.app-info b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.app-info > span {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.app-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--green);
+  font: 600 11.5px/1.2 var(--font);
+  cursor: pointer;
+}
+.app-link .icon {
+  width: 12px;
+  height: 12px;
+}
+.app-link:hover {
+  text-decoration: underline;
+}
+.app-switch {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.app-switch:hover {
+  background: var(--surface-2);
+}
+.app-switch .text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.app-switch b {
+  font-size: 13px;
+  font-weight: 650;
+}
+.app-switch .text span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.app-switch .switch {
+  pointer-events: none;
+}
+.app-flows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 16px 14px;
+}
+.app-flow {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.app-flow b {
+  display: block;
+  color: var(--text);
+  margin-bottom: 1px;
+}
+.app-flow > .icon {
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+  border-radius: 7px;
+  background: var(--green-soft);
+  color: var(--green);
+}
+.app-flow.in > .icon {
+  background: rgba(110, 168, 255, 0.12);
+  color: var(--blue);
+}
+.app-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.app-foot b {
+  color: var(--text);
+  font-weight: 600;
+}
+.app-foot.warn {
+  background: rgba(251, 191, 75, 0.06);
+  color: #e9d3a6;
+}
+.app-foot.bad {
+  background: rgba(255, 93, 110, 0.06);
+  color: #f2b3ba;
+}
+.app-line {
+  flex: 1;
+  min-width: 0;
+}
+.app-paired {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.app-foot .btn {
+  flex: none;
 }
 /* Settings › Updates: the changelog takes what room is left, and scrolls inside itself. */
 .settings-pane .modal-section.pane-updates {

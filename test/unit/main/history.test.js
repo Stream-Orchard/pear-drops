@@ -22,7 +22,7 @@ function session(h, { start, minutes, slug = 'pixelpear', campaignId = 'c1', cre
 }
 
 test('every event type belongs to a filter group', () => {
-  for (const type of ['credit', 'claim', 'unlock', 'watch-start', 'stall', 'reload', 'crash', 'offline', 'conflict', 'pause', 'login']) assert.ok(GROUP_OF[type], type);
+  for (const type of ['credit', 'claim', 'unlock', 'watch-start', 'stall', 'reload', 'crash', 'offline', 'conflict', 'pause', 'login', 'link-connected', 'link-disconnected', 'link-unpaired']) assert.ok(GROUP_OF[type], type);
 });
 
 test('sessions pair starts and ends, with credits, stalls and efficiency', () => {

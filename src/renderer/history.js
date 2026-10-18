@@ -47,6 +47,10 @@ const EVENT_KIND = {
   wake: ['Woke up', 'pulse', 'muted'],
   follow: ['Followed', 'heart', 'green'],
   unfollow: ['Unfollowed', 'heart', 'muted'],
+  // Settings › Connected apps.
+  'link-connected': ['Linked', 'link', 'green'],
+  'link-disconnected': ['Unlinked', 'link', 'muted'],
+  'link-unpaired': ['Unpaired', 'link', 'amber'],
 };
 
 const hist = {

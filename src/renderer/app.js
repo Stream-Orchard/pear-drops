@@ -171,12 +171,19 @@ function renderBanner() {
     return setHTML($('#banner'), '');
   }
   alarm.sawConflict = true;
+  // A linked Stream Multiview whose Kick players are signed in is the likely culprit: say so.
+  const multiview = state.connected?.peers?.find((p) => p.status === 'connected' && p.kick?.signedIn && p.kick.open?.length);
   setHTML(
     $('#banner'),
     `<div class="banner">
       <div class="icon-wrap">${icon('alert')}</div>
       <div class="text"><b>Another Kick stream is taking your drop credit</b>
-      <span>${f.eventsSinceCredit} watch events sent with no credit. Kick credits only one stream per account, so close any other streams to continue progressing drops.</span></div>
+      <span>${f.eventsSinceCredit} watch events sent with no credit. ${
+        multiview
+          ? `${esc(multiview.name)} has Kick players open that are signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> there, or close them.`
+          : 'Kick credits only one stream per account, so close any other streams to continue progressing drops.'
+      }</span></div>
+      ${multiview ? `<button class="btn sm" data-action="open-connected-apps">${icon('link')} Connected apps</button>` : ''}
       ${alarm.timer ? `<button class="btn sm stop-alarm" data-action="stop-alarm">${icon('volumeOff')} Stop alarm</button>` : ''}
     </div>`,
   );
@@ -885,8 +892,93 @@ const SETTINGS_TABS = [
   ['app', 'panel', 'App'],
   ['privacy', 'lock', 'Privacy'],
   ['account', 'users', 'Account'],
+  ['apps', 'link', 'Connected apps'],
   ['updates', 'sparkle', 'Updates'],
 ];
+
+/**
+ * Settings › Connected apps: one card per app Pear Drops can link with (connected.js), with its
+ * logo, what it is, where to get it, its Connect switch, what the two apps share, and how it's going.
+ */
+function connectedPane() {
+  const c = state.connected;
+  if (!ui.appIcons) {
+    ui.appIcons = {};
+    window.pd.connected
+      .icons()
+      .then((icons) => {
+        ui.appIcons = icons;
+        render();
+      })
+      .catch(() => {});
+  }
+  const farming = farm()?.current;
+  const card = (p) => {
+    const name = esc(p.name);
+    const notInstalled = p.installed === false && p.status !== 'connected';
+    const chip = notInstalled
+      ? '<span class="chip">Not installed</span>'
+      : {
+          connected: `<span class="chip green"><span class="live-dot green"></span>Connected${p.version ? ` · ${esc(p.version)}` : ''}</span>`,
+          waiting: '<span class="chip amber"><span class="live-dot amber"></span>Waiting</span>',
+          'pair-again': '<span class="chip amber">Pair again</span>',
+          incompatible: '<span class="chip red">Can’t connect</span>',
+          off: '<span class="chip">Off</span>',
+        }[p.status];
+    // One line on how it's going, and the button that goes with it.
+    let line = '';
+    let tone = '';
+    let action = '';
+    if (notInstalled) {
+      line = 'Free for Windows, macOS and Linux.';
+      action = `<button class="btn sm primary" data-action="open-link" data-url="${esc(p.download)}">${icon('download')} Download</button>`;
+    } else if (p.status === 'connected') {
+      const k = p.kick;
+      if (p.report?.state === 'limited') [line, tone] = [esc(p.report.text), 'warn'];
+      else if (!k) line = `Linked. Waiting to hear about ${name}’s players.`;
+      else if (k.mode === 'signed-in' && farming)
+        [line, tone] = [`Its Kick players stay signed in, so they can take your drop credit. In ${name}, turn on <b>Sign Kick players out while Pear Drops is farming</b>.`, 'warn'];
+      else if (k.mode === 'signed-in') line = `Its Kick players stay signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> in ${name} to keep your credit.`;
+      else if (k.mode === 'signed-out') line = 'Its Kick players are always signed out, so your drop credit is safe.';
+      else line = k.signedIn ? 'Its Kick players are signed in, and sign out as soon as you farm.' : 'Its Kick players are signed out while you farm, so the credit stays here.';
+      action = `<button class="btn sm" data-action="connected-disconnect" data-id="${esc(p.id)}">Disconnect</button>`;
+    } else if (p.status === 'pair-again') {
+      tone = 'warn';
+      if (p.keyHeldBy === 'us') {
+        line = `The pairing doesn’t match ${name}’s any more (one of the apps was reinstalled, say). Pair again to start afresh.`;
+        action = `<button class="btn sm" data-action="connected-pair-again" data-id="${esc(p.id)}">${icon('link')} Pair again</button>`;
+      } else line = `The pairing doesn’t match. Press <b>Pair again</b> in ${name}’s Connected apps.`;
+    } else if (p.status === 'incompatible') [line, tone] = [esc(p.report?.text ?? 'Can’t connect: update one of the apps.'), 'bad'];
+    else if (p.status === 'waiting')
+      line =
+        p.reason === 'switched-off'
+          ? `${name} is open, but its own Connect switch is off.`
+          : p.reason === 'disconnected-there'
+            ? `Disconnected in ${name}. Switch it on there to link again.`
+            : `${name} isn’t open, or its Connect switch is off.`;
+    else line = 'Off. Nothing listens until you switch it on.';
+    const paired = p.pairedAt ? `<span class="app-paired">Paired ${new Date(p.pairedAt).toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>` : '';
+    return `<div class="app-card ${p.status}">
+      <div class="app-head">
+        ${ui.appIcons?.[p.id] ? `<img class="app-logo" src="${ui.appIcons[p.id]}" alt="" />` : '<span class="app-logo"></span>'}
+        <div class="app-info"><b>${name}</b><span>${esc(p.summary)}</span>
+          ${notInstalled ? '' : `<button class="app-link" data-action="open-link" data-url="${esc(p.download)}">${icon('external')} Download page</button>`}</div>
+        ${chip}
+      </div>
+      <button class="app-switch" data-action="connected-toggle" data-id="${esc(p.id)}">
+        <span class="text"><b>Connect with ${name}</b><span>Both apps need this switched on.</span></span>
+        <span class="switch ${p.enabled ? 'on' : ''}"></span>
+      </button>
+      <div class="app-flows">
+        <div class="app-flow">${icon('arrowRight')}<span><b>Pear Drops tells it</b>when you’re farming, so its Kick players sign out and leave the drop credit here.</span></div>
+        <div class="app-flow in">${icon('arrowLeft')}<span><b>It tells Pear Drops</b>whether its Kick players are signed in right now.</span></div>
+      </div>
+      <div class="app-foot ${tone}"><span class="app-line">${line}</span>${paired}${action}</div>
+    </div>`;
+  };
+  const error = c?.error ? `<div class="security-row off">${icon('alert')} ${esc(c.error)}</div>` : '';
+  return `<p class="pane-note">Apps that work with Pear Drops. They talk directly on this computer; nothing goes online.</p>${error}${(c?.peers ?? []).map(card).join('')}`;
+}
 
 function renderModal() {
   const root = $('#modal-root');
@@ -956,6 +1048,7 @@ function renderModal() {
     account: `
       <div class="account-card">${img(user?.avatar, 'avatar lg')}<div><b>${esc(user?.username ?? '')}</b><div class="card-sub">Signed in to Kick</div></div>
         <div class="spacer"></div><button class="btn danger" data-action="logout">${icon('logout')} Sign out</button></div>`,
+    apps: ui.settingsTab === 'apps' ? connectedPane() : '',
     updates: ui.settingsTab === 'updates' ? updatesPane() : '',
   };
 
@@ -1219,6 +1312,16 @@ const actions = {
     render();
   },
   'notify-system': () => window.pd.notifySystemSettings(),
+  'connected-toggle': (el) => {
+    const p = state.connected?.peers?.find((x) => x.id === el.dataset.id);
+    window.pd.connected.set(el.dataset.id, !p?.enabled);
+  },
+  'connected-disconnect': (el) => window.pd.connected.disconnect(el.dataset.id),
+  'connected-pair-again': (el) => window.pd.connected.pairAgain(el.dataset.id),
+  'open-connected-apps': () => {
+    ui.settingsTab = 'apps';
+    openModal('settings');
+  },
   'setting-toggle': (el) => {
     const key = el.dataset.key;
     const current = key === 'showChat' ? state.settings.showChat !== false : state.settings[key];

@@ -90,5 +90,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "dependencies": {
+    "@streamorchard/grapevine": "^0.2.0"
   }
 }

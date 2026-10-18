@@ -39,6 +39,12 @@ contextBridge.exposeInMainWorld('pd', {
   claim: (campaignId, rewardId) => ipcRenderer.invoke('farm:claim', campaignId, rewardId),
   follow: (slug, on) => ipcRenderer.invoke('farm:follow', slug, on),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  connected: {
+    set: (id, on) => ipcRenderer.invoke('connected:set', id, on),
+    disconnect: (id) => ipcRenderer.invoke('connected:disconnect', id),
+    pairAgain: (id) => ipcRenderer.invoke('connected:pair-again', id),
+    icons: () => ipcRenderer.invoke('connected:icons'),
+  },
   notifyTest: () => ipcRenderer.invoke('notify:test'),
   notifySystemSettings: () => ipcRenderer.invoke('notify:system-settings'),
   onShowView: (callback) => {
