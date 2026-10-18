@@ -2,7 +2,12 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.4 (current)
+## 0.1.5 (current)
+- Rare says how many hours it has seen so far, and counts watch sessions from the history
+- npm install no longer changes package-lock.json: releases keep its version in step
+- A quick restart carries the run on: the stat cards keep counting, and Claimed really counts today
+
+## 0.1.4
 - Dashboard polish: clearer counts and labels, grouped activity, calmer switches, and no focus ring after a click
 - The dashboard fills its space: a plan under the Queue, roomier rewards, and what's next while paused or waiting
 - Small windows fit: every panel adapts, so nothing scrolls or is cut short on a 13" laptop
