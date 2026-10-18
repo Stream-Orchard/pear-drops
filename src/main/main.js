@@ -697,11 +697,16 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  history?.shutdown();
   archive?.flush();
   updates?.stop();
 });
 
+// Last, after farming has stopped: saves the run's numbers so a restart carries them on.
+app.on('will-quit', () => farmer?.flushCache());
+
 app.on('window-all-closed', () => {
+  history?.shutdown();
   stopFarming();
   app.quit();
 });

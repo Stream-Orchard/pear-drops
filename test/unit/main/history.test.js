@@ -169,6 +169,18 @@ test('events are saved to disk and loaded back in order', async () => {
   assert.deepEqual(again.events.map((e) => e.text), ['a', 'b']);
 });
 
+test('once the app is quitting, events are on disk at once, after any still being written', async () => {
+  const { dir, history } = fresh();
+  history.add('start', { text: 'a' });
+  history.shutdown();
+  history.add('pause', { text: 'b' }); // the first write is still going: this one waits its turn
+  await history.writing;
+  history.add('watch-end', { text: 'c' });
+  assert.deepEqual(new History(dir).load().events.map((e) => e.text), ['a', 'b', 'c'], 'c without waiting');
+  history.file = path.join(dir, 'missing', 'history.jsonl');
+  assert.doesNotThrow(() => history.add('pause', { text: 'd' }), 'a failed write is ignored');
+});
+
 test('lines that are not JSON are skipped when loading', () => {
   const { dir } = fresh();
   fs.writeFileSync(path.join(dir, 'history.jsonl'), `{"t":${Date.now()},"type":"start"}\nnot json\n`);

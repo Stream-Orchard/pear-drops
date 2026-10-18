@@ -889,3 +889,81 @@ test('a drop rebuilt from history shows as missed, with what was credited', asyn
   assert.equal(p.category, 'Special Events');
   assert.equal(p.units, 0);
 });
+
+test('a quick restart carries the run on: the stat cards, and the stream being watched', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pd-run-')), 'cache.json');
+  const first = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 20 } });
+  first.farmer.cacheFile = file;
+  await first.farmer.tick();
+  const startedAt = first.farmer.current.startedWatchingAt - 40 * MIN; // as if watched for 40 min
+  first.farmer.current.startedWatchingAt = startedAt;
+  first.history.events.find((e) => e.type === 'watch-start').t = startedAt;
+  Object.assign(first.farmer.stats, { sessionStart: startedAt - MIN, watchMs: 40 * MIN, earned: 38, claims: 1 });
+  first.watcher.emit('watch-event', { t: Date.now() });
+  assert.ok(first.farmer.cacheTimer, 'a watch event saves the count');
+  first.farmer.stop();
+  first.farmer.flushCache();
+  assert.equal(first.farmer.cacheTimer, null);
+  await first.farmer.cacheSaved; // the pending save resolves too
+
+  const second = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 22 } });
+  second.farmer.cacheFile = file;
+  second.history.events = [...first.history.events];
+  assert.ok(second.farmer.loadCache());
+  const { stats } = second.farmer;
+  assert.equal(stats.sessionStart, startedAt - MIN);
+  assert.ok(stats.watchMs >= 40 * MIN && stats.watchMs < 41 * MIN, 'the watch time goes on from 40 min');
+  assert.equal(stats.earned, 38);
+  assert.equal(stats.eventsSent, 1);
+  await second.farmer.tick();
+  assert.equal(second.farmer.current.startedWatchingAt, startedAt, 'the same stream, watched since before the restart');
+  assert.equal(second.farmer.current.campaignSince.a, startedAt);
+  second.farmer.stop();
+  const end = second.history.events.at(-1);
+  assert.equal(end.type, 'watch-end');
+  assert.equal(end.minutes, 0, 'History counts each launch\'s own session');
+
+  // A restart long after: a new run, from zero, and the stream starts afresh.
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...saved, savedAt: Date.now() - 20 * MIN }));
+  const third = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] }, units: { a: 22 } });
+  third.farmer.cacheFile = file;
+  third.history.events = [...first.history.events];
+  third.farmer.loadCache();
+  assert.equal(third.farmer.stats.earned, 0);
+  assert.equal(third.farmer.resumeWatch, undefined);
+});
+
+test('a different stream after a quick restart starts its own watch time', async () => {
+  const { farmer, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('other', 1)] } });
+  history.events = [
+    { t: Date.now() - 30 * MIN, type: 'watch-start', session: 'x', slug: 'gone', campaignIds: ['a'] },
+    { t: Date.now() - 2 * MIN, type: 'watch-end', session: 'x', reason: 'App closed or signed out' },
+  ];
+  farmer.resumeRun({ savedAt: Date.now() - 2 * MIN, stats: { earned: 5, watchMs: 'bad' } });
+  assert.equal(farmer.stats.earned, 5);
+  assert.equal(farmer.stats.watchMs, 0, 'a bad saved value is left at zero');
+  assert.equal(farmer.resumeWatch.slug, 'gone');
+  await farmer.tick();
+  assert.ok(Date.now() - farmer.current.startedWatchingAt < 5000);
+  assert.equal(farmer.resumeWatch, null, 'only the first pick can carry on');
+});
+
+test('Claimed today counts the history\'s claims since midnight, so a restart keeps it', () => {
+  const { farmer, history } = setup({ campaigns: [], streams: {} });
+  const midnight = new Date().setHours(0, 0, 0, 0);
+  history.events = [
+    { t: midnight - MIN, type: 'claim' },
+    { t: midnight + MIN, type: 'claim' },
+    { t: midnight + 2 * MIN, type: 'credit' },
+    { t: midnight + 3 * MIN, type: 'claim' },
+  ];
+  assert.equal(farmer.claimsToday(midnight + 4 * MIN), 2);
+  assert.equal(farmer.snapshot().stats.claimsToday, farmer.claimsToday());
+  farmer.history = null;
+  farmer.stats.claims = 3;
+  assert.equal(farmer.claimsToday(), 3, 'without a history, this run\'s claims');
+});

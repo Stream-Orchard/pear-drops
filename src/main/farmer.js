@@ -24,6 +24,7 @@ const FROZEN_MS = 15_000;
 const QUICK_CHECK_MS = 15_000;
 // How long what just happened to the stream (it ended, a raid, a reload) shows on the dashboard and tray.
 const NOTICE_MS = MIN;
+const RESUME_MS = 15 * MIN; // a restart within this carries the run's numbers, and the stream being watched, on
 const STUCK_REASON = { frozen: 'The picture froze', buffering: 'The video stopped loading', paused: 'The video paused', loading: 'The video never started' };
 const MAX_CRASHES = 3; // within 10 minutes, before switching away
 const MAX_STUCK_RELOADS = 2;
@@ -134,6 +135,7 @@ class Farmer extends EventEmitter {
 
     watcher.on('watch-event', ({ t }) => {
       this.stats.eventsSent += 1;
+      this.saveCache(); // so a restart carries the count on
       this.pushTimeline({ t, type: 'sent' });
       if (this.current) {
         this.eventsSinceCredit += 1;
@@ -344,6 +346,7 @@ class Farmer extends EventEmitter {
     } catch {}
     this.availability = new Availability(c?.availability);
     this.availabilityFromHistory();
+    this.resumeRun(c);
     if (!c?.campaigns?.length) return false;
     this.rawCampaigns = c.campaigns;
     this.campaignsAt = c.savedAt ?? 0;
@@ -356,17 +359,58 @@ class Farmer extends EventEmitter {
     return true;
   }
 
+  /**
+   * A restart soon after the last save (an update, a crash, a quick quit and reopen) carries on
+   * the same run: the stat cards keep counting from where they were, rather than from zero, and
+   * the stream that was being watched keeps its start time if it's picked again.
+   */
+  resumeRun(c, now = Date.now()) {
+    if (!c?.stats || !(now - c.savedAt <= RESUME_MS)) return;
+    for (const k of ['sessionStart', 'watchMs', 'earned', 'claims', 'switches', 'reloads', 'eventsSent']) {
+      if (Number.isFinite(c.stats[k])) this.stats[k] = c.stats[k];
+    }
+    // One left without an end (the app crashed) was still on when the cache was last saved.
+    const last = this.history?.sessions?.(this.history.events, now).at(-1);
+    if (last && now - (last.end ?? c.savedAt) <= RESUME_MS) this.resumeWatch = { slug: last.slug, start: last.start, campaignIds: last.campaignIds };
+  }
+
+  cacheData() {
+    this.accumulateWatchTime();
+    return { savedAt: Date.now(), campaigns: this.rawCampaigns, progress: this.progress, followed: [...this.followed], streams: [...this.streams], availability: this.availability, stats: { ...this.stats, watchTickAt: null } };
+  }
+
   /** Saves a moment later, so a burst of changes writes once. Resolves once it's on disk (or the write failed). */
   saveCache() {
     if (!this.cacheFile || this.cacheTimer) return this.cacheSaved;
     this.cacheSaved = new Promise((resolve) => {
+      this.cacheDone = resolve;
       this.cacheTimer = setTimeout(() => {
         this.cacheTimer = null;
-        const data = { savedAt: Date.now(), campaigns: this.rawCampaigns, progress: this.progress, followed: [...this.followed], streams: [...this.streams], availability: this.availability };
-        resolve(require('fs').promises.writeFile(this.cacheFile, JSON.stringify(data)).catch(() => {}));
+        resolve(require('fs').promises.writeFile(this.cacheFile, JSON.stringify(this.cacheData())).catch(() => {}));
       }, 2000);
     });
     return this.cacheSaved;
+  }
+
+  /** Saves now, as the app quits, so the next launch can carry the run on. */
+  flushCache() {
+    if (!this.cacheFile) return;
+    clearTimeout(this.cacheTimer);
+    this.cacheTimer = null;
+    try {
+      require('fs').writeFileSync(this.cacheFile, JSON.stringify(this.cacheData()));
+    } catch {}
+    this.cacheDone?.();
+  }
+
+  /** Rewards claimed since midnight, from the history, so a restart doesn't zero it. */
+  claimsToday(now = Date.now()) {
+    const events = this.history?.events;
+    if (!events) return this.stats.claims;
+    const midnight = new Date(now).setHours(0, 0, 0, 0);
+    let n = 0;
+    for (let i = events.length - 1; i >= 0 && events[i].t >= midnight; i--) if (events[i].type === 'claim') n += 1;
+    return n;
   }
 
   /**
@@ -1213,13 +1257,18 @@ class Farmer extends EventEmitter {
 
   startWatching(stream, cat, campaignIds, manual) {
     const now = Date.now();
+    // The same stream as before a quick restart: it has been watched since then.
+    const resumed = this.resumeWatch?.slug === stream.slug ? this.resumeWatch : null;
+    this.resumeWatch = null;
+    const since = (id) => (resumed?.campaignIds.includes(id) ? resumed.start : now);
     this.current = {
       ...stream,
       categoryId: cat.id,
       categoryName: cat.name,
       campaignIds,
-      campaignSince: Object.fromEntries(campaignIds.map((id) => [id, now])),
-      startedWatchingAt: now,
+      campaignSince: Object.fromEntries(campaignIds.map((id) => [id, since(id)])),
+      startedWatchingAt: resumed?.start ?? now,
+      sessionStartedAt: now, // this launch's watch session, for its History entry
       lastProgressAt: now,
       lastReloadAt: null,
       reloads: 0,
@@ -1249,7 +1298,7 @@ class Farmer extends EventEmitter {
     clearTimeout(this.crashTimer);
     const cur = this.current;
     if (cur) {
-      const minutes = Math.round((Date.now() - cur.startedWatchingAt) / MIN);
+      const minutes = Math.round((Date.now() - (cur.sessionStartedAt ?? cur.startedWatchingAt)) / MIN);
       this.record('watch-end', { ...this.streamCtx(cur), reason, minutes, credited: cur.credited, text: `Left ${cur.username} after ${minutes} min (+${cur.credited} credited): ${reason}` });
     }
     this.accumulateWatchTime();
@@ -1541,7 +1590,7 @@ class Farmer extends EventEmitter {
       past: this.model.past ?? [],
       upcoming: this.model.upcoming ?? [],
       forecast: this.forecast(),
-      stats: { ...this.stats, followedCount: this.followed.size },
+      stats: { ...this.stats, followedCount: this.followed.size, claimsToday: this.claimsToday() },
       samples: this.samples.slice(-360),
       timeline: this.timeline.filter((e) => e.t > Date.now() - 3 * 60 * MIN),
       log: this.log.slice(-150),
