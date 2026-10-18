@@ -379,8 +379,9 @@ button {
   outline: none;
 }
 /* In place of an image that's missing or didn't load (format.js img()): the image's own box,
-   in its own shape, with a faint picture. */
-.img-missing {
+   in its own shape, with a faint picture. span.: ahead of the box's own background (.cat-art,
+   .avatar, …), which comes later and would otherwise hide the picture. */
+span.img-missing {
   display: inline-block;
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='.22' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='3'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='m21 16-5-5-9 9'/%3E%3C/svg%3E")
@@ -2447,6 +2448,17 @@ button {
 }
 .past .campaign-rewards {
   padding-left: 48px;
+}
+/* History and Details stacked in the card's last column: a third grid item would wrap under the
+   art, and side by side they'd cut the drop's name short. */
+.past-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.past-actions .btn {
+  justify-content: flex-start;
 }
 .mini-reward .btn {
   height: 22px;
@@ -4832,11 +4844,6 @@ input[type='range']::-webkit-slider-thumb {
 .past-partial .icon {
   width: 12px;
   height: 12px;
-}
-.past .cat-art:empty,
-.past span.cat-art {
-  display: block;
-  background: linear-gradient(160deg, rgba(83, 252, 24, 0.12), rgba(255, 255, 255, 0.03));
 }
 
 /* =========================================================================

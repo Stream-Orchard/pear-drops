@@ -38,6 +38,38 @@ test('the Done tab lists finished and missed drops, with stored images', async (
   const files = fs.readdirSync(path.join(a.data, 'drop-images'));
   assert.ok(files.length >= 10, `${files.length} images stored`);
 
+  // History and Details stacked on the right of the card's top row, not wrapped under the art.
+  const rows = await a.win.evaluate(() =>
+    [...document.querySelectorAll('.past')]
+      .filter((p) => p.querySelector('.details-btn, [data-action="open-link"]'))
+      .map((p) => {
+        const top = (el) => Math.round(el.getBoundingClientRect().top);
+        const row = p.querySelector('.past-row').getBoundingClientRect();
+        const left = (el) => Math.round(el.getBoundingClientRect().left);
+        const name = p.querySelector('.cat-name span');
+        return { history: left(p.querySelector('.hist-btn')), details: left(p.querySelector('.past-actions > :last-child')), rowBottom: Math.round(row.bottom), artBottom: Math.round(p.querySelector('.cat-art').getBoundingClientRect().bottom), nameCut: name.scrollWidth > name.clientWidth + 1 };
+      }),
+  );
+  assert.ok(rows.length, 'some done drops have a Details button');
+  for (const r of rows) {
+    assert.equal(r.details, r.history, 'Details under History, in the same column');
+    assert.ok(r.rowBottom - r.artBottom < 30, 'no extra row under the art');
+    assert.equal(r.nameCut, false, 'the name has room');
+  }
+
+  // Artwork that's missing (a drop known only from history) shows the placeholder's faint picture,
+  // not the art box's plain background.
+  const placeholder = await a.win.evaluate(() => {
+    const box = document.createElement('div');
+    box.className = 'past';
+    box.innerHTML = img(null, 'cat-art');
+    document.querySelector('#side').appendChild(box);
+    const bg = getComputedStyle(box.firstElementChild).backgroundImage;
+    box.remove();
+    return bg;
+  });
+  assert.match(placeholder, /data:image\/svg\+xml/);
+
   // Filters
   await a.win.click('[data-action="past-filter"][data-id="missed"]');
   await until(a.win, () => [...document.querySelectorAll('.past')].every((p) => p.classList.contains('missed')), 'only missed drops');
