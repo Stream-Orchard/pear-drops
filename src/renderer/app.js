@@ -690,7 +690,7 @@ function donePanel(f) {
             <div class="cat-meta">${meta.map((m) => `<span>${m}</span>`).join('<i>·</i>')}</div>
             ${p.partial ? `<div class="past-partial" data-tip="Kick removed this drop before this version of the app could save its details">${icon('list')} From your history: ${p.units ? `${p.units} min credited` : 'watched, nothing credited'}</div>` : unitsTrack(p.name, p.units, p.rewards, { ended })}
           </div>
-          <button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(p.id)}" data-tip="This drop's history">${icon('list')} History</button>${detailsButton(p.url)}
+          <div class="past-actions"><button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(p.id)}" data-tip="This drop's history">${icon('list')} History</button>${detailsButton(p.url)}</div>
         </div>
         ${rewards ? `<div class="campaign-rewards">${rewards}</div>` : ''}
       </div>`;

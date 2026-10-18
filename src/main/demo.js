@@ -551,7 +551,8 @@ function pastCampaigns(now) {
   const camp = (id, name, category, start, end, rewards) => ({ id, name, status: 'active', starts_at: at(start), ends_at: at(end), category, organization: KICK_ORG, channels: [], rewards });
   return {
     campaigns: [
-      camp('c-frost', 'Frostbite Rally Weekend', frost, -9, -4, [reward('r-frost-1', 'Snowdrift Emote', 60, '⛄', 195), reward('r-frost-2', 'Ice Crown Badge', 180, '🧊', 205, 'badge')]),
+      // With its About page, as Kick gives most drops: the Done card shows Details beside History.
+      { ...camp('c-frost', 'Frostbite Rally Weekend', frost, -9, -4, [reward('r-frost-1', 'Snowdrift Emote', 60, '⛄', 195), reward('r-frost-2', 'Ice Crown Badge', 180, '🧊', 205, 'badge')]), url: 'https://kick.com/category/frostbite-rally' },
       camp('c-retro', 'Retro Arcade Week', retro, -8, -2, [reward('r-retro-1', 'Pixel Heart Emote', 45, '💜', 280), reward('r-retro-2', 'Coin Op Emote', 150, '🪙', 45), reward('r-retro-3', 'High Score Badge', 300, '🏆', 50, 'badge')]),
       camp('c-melt', 'Meltdown Mini-Event', CATEGORIES.neon, -2, 3, [reward('r-melt-1', 'Lava Lamp Emote', 90, '🌋', 15)]),
     ],
