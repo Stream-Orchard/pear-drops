@@ -706,6 +706,7 @@ app.whenReady().then(async () => {
     auth: () => auth,
     version: app.getVersion(),
     history,
+    show: showMain, // a click on Stream Multiview's farming widget
     keys: fileKeyStore(path.join(app.getPath('userData'), 'grapevine.json'), crypt),
     place: linkDir ? { env: { ...process.env, GRAPEVINE_DIR: linkDir } } : undefined,
     // Demo mode: "installed" means a folder the stand-in makes, not the real Stream Multiview.

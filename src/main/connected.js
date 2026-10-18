@@ -5,9 +5,17 @@
 // they're what's taking it. Off until switched on: nothing listens before then.
 const { EventEmitter } = require('events');
 const { createLink, KNOWN_APPS, iconDataUrl } = require('@streamorchard/grapevine');
+const { assetUrl } = require('./kick-api');
 
 const APP_ID = 'com.streamorchard.peardrops';
 const PUBLISH_MS = 2000; // at most one drops.farming.changed this often
+const MIN = 60_000;
+
+/** Kick's own https address for a picture (never pd-img://, which only Pear Drops can open), or undefined. */
+const https = (url) => (typeof url === 'string' && url.startsWith('https://') ? url : undefined);
+const iso = (t) => (Number.isFinite(t) ? new Date(t).toISOString() : null);
+/** An object without its undefined fields: the schema treats a field that's there as one to check. */
+const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
 /** Pear Drops' farming status as drops.farming's state. */
 function farmingState(code, signedIn) {
@@ -27,9 +35,10 @@ class Connected extends EventEmitter {
    * @param {string} [o.appDataDir] to tell whether the other apps are installed
    * @param {{add(type: string, data: object): void}} [o.history]
    * @param {(level: string, text: string) => void} [o.log]
+   * @param {() => void} [o.show] brings Pear Drops' window to the front (drops.farming.show)
    * @param {typeof createLink} [o.make]
    */
-  constructor({ store, farmer, auth, version, keys, place, appDataDir, history = null, log = () => {}, make = createLink }) {
+  constructor({ store, farmer, auth, version, keys, place, appDataDir, history = null, show = () => {}, log = () => {}, make = createLink }) {
     super();
     this.store = store;
     this.farmer = farmer;
@@ -65,6 +74,11 @@ class Connected extends EventEmitter {
     });
     this.link.on('unpaired', (id) => this.record('link-unpaired', id, (name) => `${name} disconnected: both apps forgot the pairing`));
     this.link.on('change', () => this.changed());
+    // A click on another app's farming widget.
+    this.link.handle('drops.farming.show', () => {
+      show();
+      return { shown: true };
+    });
   }
 
   nameOf(id) {
@@ -123,21 +137,51 @@ class Connected extends EventEmitter {
     this.link.pairAgain(id);
   }
 
-  /** What Pear Drops is farming right now, as drops.farming's fields. */
-  farming() {
+  /**
+   * What Pear Drops is farming right now, as drops.farming's fields: enough for another app to
+   * show it (a top-bar widget, say), with the stream, the drop's picture and every reward's state.
+   */
+  farming(now = Date.now()) {
     const a = this.auth();
     const signedIn = a.status === 'signed-in';
     const state = farmingState(this.farmer.status?.code, signedIn);
     const cur = this.farmer.current;
     const account = signedIn && a.user?.username ? { platform: 'kick', user: a.user.username } : null;
     if (state !== 'farming' || !cur) return { state, account, channel: null, drop: null };
+    const channel = compact({ platform: 'kick', slug: cur.slug, name: cur.username || undefined, avatar: https(cur.avatar) });
+    const stream = compact({ title: cur.title ? String(cur.title).slice(0, 300) : undefined, viewers: Number.isInteger(cur.viewers) ? cur.viewers : undefined });
     const c = this.farmer.model.campaigns.find((x) => x.id === cur.campaignIds?.[0]);
-    const total = c ? c.targetUnits || Math.max(0, ...c.rewards.map((r) => r.required ?? 0)) : 0;
+    if (!c) return { state, account, channel, stream, drop: null };
+    const raw = this.farmer.rawCampaigns?.find((x) => x.id === c.id);
+    const rawImage = (id) => https(assetUrl(raw?.rewards?.find((r) => r.id === id)?.image_url));
+    const units = c.units ?? 0;
+    const f = this.farmer.forecast?.()[c.id];
+    // Minutes earned a minute, as Pear Drops sees it; none when it's stalled.
+    const rate = f && f.rate >= 0.05 ? f.rate : null;
+    const at = (required) => (rate ? iso(now + ((required - units) / rate) * MIN) : null);
+    const tracked = c.rewards.filter((r) => r.tracked !== false).sort((x, y) => x.required - y.required);
+    const items = tracked.slice(0, 20).map((r) => {
+      const state = r.claimed ? 'claimed' : r.ready ? 'ready' : 'locked';
+      return compact({ name: r.name, image: rawImage(r.id), required: r.required, state, ...(state === 'locked' ? { unlocksAt: at(r.required) } : {}) });
+    });
+    const total = c.targetUnits || Math.max(0, ...tracked.map((r) => r.required ?? 0));
+    const next = c.next ? compact({ name: c.next.name, image: rawImage(c.next.id), required: c.next.required, unlocksAt: at(c.next.required) }) : null;
+    const endsAt = Date.parse(c.endsAt);
     return {
       state,
       account,
-      channel: { platform: 'kick', slug: cur.slug, ...(cur.username ? { name: cur.username } : {}) },
-      drop: c ? { campaign: c.name, category: cur.categoryName ?? '', progress: { done: c.units ?? 0, total, unit: 'minutes' } } : null,
+      channel,
+      stream,
+      drop: compact({
+        campaign: c.name,
+        category: cur.categoryName ?? '',
+        progress: { done: units, total, unit: 'minutes' },
+        image: https(raw?.category?.image_url) ?? https(raw?.category?.banner_image_url),
+        endsAt: Number.isFinite(endsAt) ? iso(endsAt) : undefined,
+        rewards: { claimed: tracked.filter((r) => r.claimed).length, total: tracked.length, items },
+        next,
+        doneAt: at(total),
+      }),
     };
   }
 

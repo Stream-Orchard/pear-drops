@@ -22,6 +22,8 @@ const until = async (fn, what, ms = 5000) => {
   }
 };
 
+let shown = 0;
+
 /** A Connected with a fake farmer and settings, linked through its own folder. */
 function setup({ enabled = false, status = 'farming', signedIn = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-link-'));
@@ -30,12 +32,12 @@ function setup({ enabled = false, status = 'farming', signedIn = true } = {}) {
   const farmer = Object.assign(new EventEmitter(), {
     status: { code: status },
     current: { slug: 'pixelpear', username: 'PixelPear', categoryName: 'Neon Rush', campaignIds: ['c1'] },
-    model: { campaigns: [{ id: 'c1', name: 'Neon Rush Launch Week', units: 48, targetUnits: 120, rewards: [{ required: 60 }, { required: 120 }] }] },
+    model: { campaigns: [{ id: 'c1', name: 'Neon Rush Launch Week', units: 48, targetUnits: 120, rewards: [{ id: 'r1', name: 'Reward', required: 60 }, { id: 'r2', name: 'Reward', required: 120 }] }] },
   });
   const auth = { status: signedIn ? 'signed-in' : 'signed-out', user: signedIn ? { username: 'pearfan' } : null };
   const history = { events: [], add: (type, data) => history.events.push({ type, ...data }) };
   const place = { env: { ...process.env, GRAPEVINE_DIR: dir } };
-  const c = new Connected({ store, farmer, auth: () => auth, version: '0.1.5', history, keys: memoryKeyStore(), place, appDataDir: dir });
+  const c = new Connected({ store, farmer, auth: () => auth, version: '0.1.5', history, keys: memoryKeyStore(), place, appDataDir: dir, show: () => (shown += 1) });
   c.link.timing = { ...c.link.timing, pollMs: 40, backoffMs: [20, 40, 80] };
   return { c, dir, store, farmer, auth, history, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
@@ -52,7 +54,8 @@ test('drops.farming says what Pear Drops is doing, in its own words', () => {
     state: 'farming',
     account: { platform: 'kick', user: 'pearfan' },
     channel: { platform: 'kick', slug: 'pixelpear', name: 'PixelPear' },
-    drop: { campaign: 'Neon Rush Launch Week', category: 'Neon Rush', progress: { done: 48, total: 120, unit: 'minutes' } },
+    stream: {},
+    drop: { campaign: 'Neon Rush Launch Week', category: 'Neon Rush', progress: { done: 48, total: 120, unit: 'minutes' }, rewards: { claimed: 0, total: 2, items: [{ name: 'Reward', required: 60, state: 'locked', unlocksAt: null }, { name: 'Reward', required: 120, state: 'locked', unlocksAt: null }] }, next: null, doneAt: null },
   });
   farmer.model.campaigns[0].targetUnits = 0;
   assert.equal(c.farming().drop.progress.total, 120, 'or the last reward, without a target');
@@ -63,6 +66,50 @@ test('drops.farming says what Pear Drops is doing, in its own words', () => {
   auth.status = 'signed-out';
   assert.equal(c.farming().state, 'signed-out');
   assert.equal(c.farming().account, null);
+  cleanup();
+});
+
+test('enough for a widget: pictures as Kick gives them, the stream, every reward and when each unlocks', () => {
+  const { c, farmer, cleanup } = setup();
+  const now = Date.parse('2026-10-18T09:00:00Z');
+  Object.assign(farmer.current, { avatar: 'https://files.kick.com/pixelpear.webp', title: 'Neon Rush ranked', viewers: 1240 });
+  Object.assign(farmer.model.campaigns[0], {
+    endsAt: '2026-10-21T18:00:00Z',
+    rewards: [
+      { id: 'r2', name: 'Hype Rocket Emote', required: 60, image: 'pd-img://archive/r2.png' },
+      { id: 'r1', name: 'Pear Badge', required: 30, claimed: true },
+      { id: 'r3', name: 'Neon Crown', required: 120, ready: false },
+      { id: 'g1', name: 'Game Skin', required: 90, tracked: false },
+    ],
+    next: { id: 'r2', name: 'Hype Rocket Emote', required: 60, remaining: 12 },
+  });
+  farmer.rawCampaigns = [{ id: 'c1', category: { image_url: 'https://files.kick.com/neon-rush.webp' }, rewards: [{ id: 'r2', image_url: 'drops/reward/r2.png' }, { id: 'r1', image_url: 'http://insecure/r1.png' }] }];
+  farmer.forecast = () => ({ c1: { rate: 1, nextMinutes: 12, doneMinutes: 72 } });
+  const f = c.farming(now);
+  assert.deepEqual(f.channel, { platform: 'kick', slug: 'pixelpear', name: 'PixelPear', avatar: 'https://files.kick.com/pixelpear.webp' });
+  assert.deepEqual(f.stream, { title: 'Neon Rush ranked', viewers: 1240 });
+  assert.equal(f.drop.image, 'https://files.kick.com/neon-rush.webp');
+  assert.equal(f.drop.endsAt, '2026-10-21T18:00:00.000Z');
+  assert.deepEqual(f.drop.rewards, {
+    claimed: 1,
+    total: 3,
+    items: [
+      { name: 'Pear Badge', required: 30, state: 'claimed' },
+      { name: 'Hype Rocket Emote', image: 'https://ext.kick.com/drops/reward/r2.png', required: 60, state: 'locked', unlocksAt: '2026-10-18T09:12:00.000Z' },
+      { name: 'Neon Crown', required: 120, state: 'locked', unlocksAt: '2026-10-18T10:12:00.000Z' },
+    ],
+  }, "in unlock order, game rewards Pear Drops doesn't farm left out, pictures only as https");
+  assert.equal(f.drop.next.unlocksAt, '2026-10-18T09:12:00.000Z');
+  assert.equal(f.drop.doneAt, '2026-10-18T10:12:00.000Z');
+  farmer.model.campaigns[0].rewards[0].ready = true;
+  assert.equal(c.farming(now).drop.rewards.items[1].state, 'ready');
+  assert.equal(c.farming(now).drop.rewards.items[1].unlocksAt, undefined, 'only locked ones have an unlock time');
+  farmer.forecast = () => ({ c1: { rate: 0.01 } });
+  assert.equal(c.farming(now).drop.doneAt, null, 'no times while it is stalled');
+  // Every bit of it fits drops.farming's schema.
+  const { Schemas } = require(path.join(path.dirname(require.resolve('@streamorchard/grapevine/package.json')), 'src', 'schema.js'));
+  const params = { ...c.farming(now), seq: 1, at: new Date(now).toISOString() };
+  assert.deepEqual(Schemas.load().validate('drops.farming', 1, 'event', 'drops.farming.changed', params), []);
   cleanup();
 });
 
@@ -122,6 +169,8 @@ test('switched on, it links with Stream Multiview, hears about its players, and 
     assert.equal(c.icons(), c.icons(), 'read once');
     assert.ok(history.events.some((e) => e.type === 'link-connected' && e.text === 'Connected to Stream Multiview'));
     assert.ok(changes.length > 0);
+    assert.deepEqual(await peer.link.request(APP_ID, 'drops.farming.show'), { shown: true }, 'a widget click');
+    assert.equal(shown, 1, 'brought Pear Drops to the front');
 
     // It quits: noticed at once, and its players are forgotten.
     await peer.stop();

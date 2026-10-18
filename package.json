@@ -92,6 +92,6 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@streamorchard/grapevine": "^0.2.0"
+    "@streamorchard/grapevine": "^0.4.0"
   }
 }

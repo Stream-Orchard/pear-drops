@@ -62,6 +62,14 @@ test('switched on: waiting, then connected to Stream Multiview, with its players
   assert.equal(heard.state, 'farming');
   assert.ok(heard.channel.slug);
   assert.equal(heard.account.platform, 'kick');
+  // Enough for a widget: the drop's rewards, each with its state, in the order they unlock.
+  assert.ok(heard.drop.rewards.items.length >= 1);
+  for (const r of heard.drop.rewards.items) assert.ok(['claimed', 'ready', 'locked'].includes(r.state), r.state);
+  const order = heard.drop.rewards.items.map((r) => r.required);
+  assert.deepEqual(order, [...order].sort((x, y) => x - y));
+  for (const pic of [heard.channel.avatar, heard.drop.image, ...heard.drop.rewards.items.map((r) => r.image)].filter(Boolean)) assert.match(pic, /^https:\/\//, 'pictures as Kick gives them');
+  // A click on its widget brings Pear Drops forward.
+  assert.deepEqual(await a.app.evaluate(() => global.pdDemo.multiviewPeer.link.request('com.streamorchard.peardrops', 'drops.farming.show')), { shown: true });
 });
 
 test('players that stay signed in: a warning on the card, and the credit banner names Stream Multiview', async () => {
