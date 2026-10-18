@@ -6,8 +6,11 @@
 const { EventEmitter } = require('events');
 const { createLink, KNOWN_APPS, iconDataUrl } = require('@streamorchard/grapevine');
 const { assetUrl } = require('./kick-api');
+// What Pear Drops speaks, from package.json's "grapevine" field: written once there, and kept by every
+// release tag, so `npx grapevine-check` can tell what each release shipped.
+const DECLARED = require('../../package.json').grapevine;
 
-const APP_ID = 'com.streamorchard.peardrops';
+const APP_ID = DECLARED.app;
 const PUBLISH_MS = 2000; // at most one drops.farming.changed this often
 const MIN = 60_000;
 
@@ -56,8 +59,8 @@ class Connected extends EventEmitter {
     const self = KNOWN_APPS.find((a) => a.id === APP_ID);
     this.link = make({
       app: { id: APP_ID, slug: self.slug, name: self.name, version, summary: self.summary, homepage: self.homepage, download: self.download, icon: self.icon },
-      provides: { 'drops.farming': '1.0' },
-      uses: { players: '1.0' },
+      provides: DECLARED.provides,
+      uses: DECLARED.uses,
       allowed: (id) => this.enabled(id),
       knownApps,
       keys,

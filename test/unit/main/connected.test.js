@@ -264,3 +264,12 @@ test('any app Grapevine knows gets its own card and switch, with what the two wo
   await c.stop(); // before its folder goes
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('what Pear Drops speaks comes from package.json, where grapevine-check reads it at each release', () => {
+  const { grapevine } = require('../../../package.json');
+  assert.equal(grapevine.app, APP_ID);
+  assert.equal(APP_ID, 'com.streamorchard.peardrops');
+  const { c, cleanup } = setup();
+  assert.deepEqual(c.link.mine, { provides: { 'drops.farming': ['1.0'] }, uses: { players: ['1.0'] } });
+  cleanup();
+});

@@ -7,6 +7,16 @@ description: Start a change to Pear Drops (bug fix, feature, issue) - plan it, c
 
 Every change goes on its own branch in its own worktree and ends as a pull request. Never commit to `main`.
 
+## 0. Anything to record in Grapevine?
+
+Run `npx grapevine-check`. It looks at every Pear Drops release tag, and at what each one shipped for Connected apps (`package.json`'s `grapevine` field), against Grapevine's record.
+
+- **"Nothing to record" or "is recorded":** carry on.
+- **It lists releases:**
+  1. Tell the developer which releases, and that until they're recorded those capability versions could still be changed in place.
+  2. Offer to record them first. That's Grapevine's `app-shipped` skill, in a Grapevine checkout (`../grapevine` next to this repo, or clone `Stream-Orchard/grapevine`): run each `npm run released -- …` line it printed, then a pull request and a patch release there.
+  3. Then carry on with the change here.
+
 ## 1. What's the change?
 
 - If the request already describes it, or names an issue (`#12` or a URL), use that. For an issue: `gh issue view <n> --comments`.
