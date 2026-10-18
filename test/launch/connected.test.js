@@ -151,6 +151,24 @@ test('Activity: every message between the two this run, in words, a page at a ti
   assert.deepEqual(a.errors, []);
 });
 
+test('farming stops with its players out on Auto: the log and the card say they sign back in after a few minutes', async () => {
+  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto' }));
+  await openTab();
+  await until(a.win, () => /signed out while you farm/.test(document.querySelector('.app-foot')?.textContent ?? ''), 'its players, on Auto', 15000);
+  await a.win.evaluate(() => window.pd.pause(true));
+  await until(a.win, () => /sign back in a few minutes after farming stops/.test(document.querySelector('.app-foot').textContent), 'the card line', 10000);
+  await a.win.click('.app-card [data-action="act-open-app"]');
+  const marker = '.act-marker:has(.act-pill [d="M12 7v5l3 2"])';
+  await until(a.win, (sel) => document.querySelector(sel), 'the clock marker', 10000, marker);
+  assert.equal(await a.win.textContent(`${marker} .act-pill`), 'Farming stopped · Kick players sign back in after a few minutes');
+  assert.match(await a.win.textContent('.act-list'), /2 Kick players open, signed out while Pear Drops farms/);
+  await a.win.evaluate(() => window.pd.pause(false));
+  await until(a.win, () => /Farming again · Kick players stay signed out/.test(document.querySelector('.act-list').textContent), 'farming again', 10000);
+  await a.win.click('.modal-head [data-action="act-close"]');
+  await until(a.win, () => /signed out while you farm/.test(document.querySelector('.app-foot')?.textContent ?? ''), 'the usual line again', 10000);
+  await a.farming();
+});
+
 test('Disconnect forgets the pairing and switches it off; History has the link coming and going', async () => {
   await openTab();
   await until(a.win, () => document.querySelector('.app-card [data-action="connected-disconnect"]'), 'Disconnect');

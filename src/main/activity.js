@@ -88,9 +88,12 @@ class ActivityLog {
     if (this.totals.has(app)) this.totals.get(app).ping = null;
   }
 
-  /** Something connected.js noticed: kind 'status' (connected, disconnected, a test) or 'note' (a dropped message). */
-  note(app, { kind = 'status', tone = '', text, at = this.now() }) {
-    return this.push({ at, app: app ?? null, dir: null, kind, method: null, tone, text });
+  /**
+   * Something connected.js noticed: kind 'status' (connected, disconnected, a test) or 'note' (a
+   * dropped message). `about: 'players'` for the wait to sign Kick players back in (a clock).
+   */
+  note(app, { kind = 'status', tone = '', text, about, at = this.now() }) {
+    return this.push({ at, app: app ?? null, dir: null, kind, method: null, tone, text, ...(about ? { about } : {}) });
   }
 
   /**

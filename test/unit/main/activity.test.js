@@ -64,6 +64,11 @@ test('notes: connected, a test, a dropped message, shown in their app’s log (o
   assert.deepEqual(log.page(MV, { filter: 'problems' }).entries.map((e) => e.tone), ['warn']);
   assert.equal(log.page(OTHER).total, 3);
   assert.equal(p.totals.sent + p.totals.received, 0, 'a hello from an app not yet known counts for none');
+  const wait = log.note(MV, { about: 'players', text: 'Farming stopped · Kick players sign back in after a few minutes' });
+  assert.equal(wait.about, 'players', 'what it’s about, for its icon');
+  assert.equal(wait.kind, 'status');
+  assert.equal(log.page(MV).problems, 1, 'not a problem');
+  assert.equal('about' in p.entries[0], false, 'only when given');
 });
 
 test('the chart: messages a minute each way over the last half hour, with problems', () => {

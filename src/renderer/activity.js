@@ -32,6 +32,8 @@ const kb = (bytes) => {
   return `${bytes} B`;
 };
 const millis = (ms) => (ms < 1 ? '<1 ms' : `${ms} ms`);
+/** A number in a box two digits wide, so the words after it stay put as it counts (styles.css .act-num). */
+const num = (n) => `<span class="act-num">${n}</span>`;
 const actTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const list = (names) => (names?.length ? names.join(', ') : 'nothing');
 
@@ -46,13 +48,14 @@ function farmingWords(f) {
   return { farming: 'Farming', paused: 'Paused', done: 'Every drop is done', 'signed-out': 'Signed out of Kick', waiting: 'Waiting for a stream with drops' }[f.state] ?? `State: ${f.state}`;
 }
 
-/** players' state, in words. */
+/** players' state, in words: signed in or out, and why (Auto: out while Pear Drops farms). */
 function playersWords(p) {
   const k = p?.platforms?.kick;
   if (!k) return 'No Kick players open';
   const open = k.open?.length ?? 0;
-  const mode = { 'signed-in': 'always signed in', 'signed-out': 'always signed out', auto: 'signed out while you farm' }[k.mode] ?? k.mode;
-  return `${open} Kick player${open === 1 ? '' : 's'} open, ${k.signedIn ? 'signed in' : 'signed out'} · ${mode}`;
+  const state = k.signedIn ? 'signed in' : 'signed out';
+  const how = { auto: k.signedIn ? 'signed in (Auto)' : 'signed out while Pear Drops farms', 'signed-in': 'signed in (always)', 'signed-out': 'signed out (always)' }[k.mode];
+  return `${open} Kick player${open === 1 ? '' : 's'} open, ${how ?? `${state}${k.mode ? ` · ${k.mode}` : ''}`}`;
 }
 
 /**
@@ -191,7 +194,7 @@ function activityPane(peer) {
   const stats = `<div class="act-stats">
     ${stat('out', 'arrowRight', 'Sent', t.sent, kb(t.bytesOut))}
     ${stat('in', 'arrowLeft', 'Received', t.received, kb(t.bytesIn))}
-    ${stat('beat', 'pulse', 'Heartbeat', t.ping?.ms != null ? millis(t.ping.ms) : t.ping ? 'OK' : '—', ago === null ? '' : ago < 60 ? `${ago}s ago` : `${Math.round(ago / 60)}m ago`)}
+    ${stat('beat', 'pulse', 'Heartbeat', t.ping?.ms != null ? (t.ping.ms < 1 ? '&lt;1 ms' : `${num(t.ping.ms)} ms`) : t.ping ? 'OK' : '—', ago === null ? '' : ago < 60 ? `${num(ago)}s ago` : `${num(Math.round(ago / 60))}m ago`)}
     ${stat(d?.problems ? 'bad' : 'calm', 'alert', 'Problems', d?.problems ?? 0, '')}
   </div>`;
   const chartEl = $('.act-chart');
@@ -220,8 +223,9 @@ function activityPane(peer) {
     const w = describeActivity(e, peer?.name ?? act.app);
     const time = `<span class="act-time">${actTime(e.at)}</span>`;
     if (e.kind === 'status' || e.kind === 'note') {
+      const ic = e.kind === 'note' ? 'alert' : e.about === 'players' ? 'clock' : 'link';
       return `<div class="act-row act-marker tone-${e.tone || 'plain'} ${fresh(e) ? 'fresh' : ''}" data-n="${e.n}">${time}<span class="act-marker-line"></span>
-        <span class="act-pill">${icon(e.kind === 'note' ? 'alert' : 'link')}<span>${esc(w.text)}</span></span><span class="act-marker-line"></span></div>`;
+        <span class="act-pill">${icon(ic)}<span>${esc(w.text)}</span></span><span class="act-marker-line"></span></div>`;
     }
     const cap = (e.method ?? '').startsWith('link.') ? 'link' : (e.method ?? '').startsWith('players.') ? 'players' : 'drops';
     const meta = [e.ms != null ? millis(e.ms) : '', e.bytes ? kb(e.bytes) : ''].filter(Boolean);

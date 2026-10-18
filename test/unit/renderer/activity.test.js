@@ -38,7 +38,14 @@ test('each message in plain words, either way', () => {
   assert.equal(say({ dir: 'in', kind: 'request', method: 'drops.farming.show', data: {} }).text, 'Stream Multiview asked to show Pear Drops');
   assert.equal(say({ dir: 'out', kind: 'reply', method: 'drops.farming.show', data: { shown: true } }).text, 'Shown');
   const players = { platforms: { kick: { signedIn: false, mode: 'auto', account: null, open: [{ slug: 'pixelpear' }, { slug: 'moonlitmaple' }] } } };
-  assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: players }).text, '2 Kick players open, signed out · signed out while you farm');
+  assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: players }).text, '2 Kick players open, signed out while Pear Drops farms');
+  // The state and why in one phrase: Auto signed in isn't "signed in · signed out while you farm".
+  const kick = (k) => say({ dir: 'in', kind: 'event', method: 'players.changed', data: { platforms: { kick: { account: null, open: [{ slug: 'pixelpear' }], ...k } } } }).text;
+  assert.equal(kick({ signedIn: true, mode: 'auto' }), '1 Kick player open, signed in (Auto)');
+  assert.equal(kick({ signedIn: true, mode: 'signed-in' }), '1 Kick player open, signed in (always)');
+  assert.equal(kick({ signedIn: false, mode: 'signed-out' }), '1 Kick player open, signed out (always)');
+  assert.equal(kick({ signedIn: true, mode: 'by-channel' }), '1 Kick player open, signed in · by-channel', 'a mode it has no words for');
+  assert.equal(kick({ signedIn: false }), '1 Kick player open, signed out');
   assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: { platforms: {} } }).text, 'No Kick players open');
   assert.equal(say({ dir: 'out', kind: 'request', method: 'players.get', data: {} }).text, 'Asked Stream Multiview about its players');
   assert.equal(say({ dir: 'out', kind: 'request', method: 'link.hello' }).text, 'Hello, with what Pear Drops speaks');
@@ -49,6 +56,28 @@ test('each message in plain words, either way', () => {
   assert.equal(say({ dir: 'in', kind: 'error', method: 'players.get', data: { code: -32601, message: 'No such method' } }).text, 'No such method (-32601)');
   assert.equal(say({ dir: 'in', kind: 'event', method: 'clips.changed', data: { seq: 1, at: '', clips: [] } }).text, 'clips', 'one it has no words for: its fields');
   assert.deepEqual({ ...say({ kind: 'status', tone: 'ok', text: 'Connected to Stream Multiview' }) }, { title: 'Link', kind: 'status', text: 'Connected to Stream Multiview' });
+});
+
+test('the wait to sign Kick players back in is a marker with a clock; the heartbeat’s numbers sit in boxes', () => {
+  const at = new Date(2026, 9, 18, 17, 0, 0).getTime();
+  const entries = [
+    { n: 2, at: at + 50, app: 'mv', dir: null, kind: 'status', method: null, tone: '', about: 'players', text: 'Farming stopped · Kick players sign back in after a few minutes' },
+    { n: 1, at, app: 'mv', dir: null, kind: 'status', method: null, tone: 'ok', text: 'Connected to Stream Multiview' },
+  ];
+  const data = (ping) => ({ entries, total: 2, newer: 0, problems: 0, latest: 2, started: at, minutes: Array.from({ length: 30 }, () => ({ out: 0, in: 0, bad: 0 })), totals: { sent: 1, received: 1, bytesOut: 10, bytesIn: 10, ping } });
+  const pane = (ping) => {
+    run('act.app = "mv"; act.data = d; act.seen = Infinity', { d: data(ping), $: () => null, ui: {}, state: null });
+    return run('activityPane({ name: "Stream Multiview", status: "connected" })');
+  };
+  const html = pane({ at: Date.now() - 8000, ms: 3 });
+  const [wait, link] = html.match(/<span class="act-pill">[^]*?<\/span><\/span>/g);
+  assert.match(wait, /Farming stopped · Kick players sign back in after a few minutes/);
+  assert.match(wait, new RegExp(run('icon("clock")').replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')), 'a clock');
+  assert.match(link, new RegExp(run('icon("link")').replace(/[()[\]{}.*+?^$|\\]/g, '\\$&')), 'the link');
+  assert.match(html, /<b><span class="act-num">3<\/span> ms<\/b><em><span class="act-num">8<\/span>s ago<\/em>/, 'the round trip and the seconds, two digits wide');
+  assert.match(pane({ at: Date.now() - 125_000, ms: 0.4 }), /<b>&lt;1 ms<\/b><em><span class="act-num">2<\/span>m ago<\/em>/);
+  assert.match(pane(null), /<b>—<\/b><\/span>/, 'none yet');
+  run('act.app = null; act.data = null');
 });
 
 test('an open message lists its fields by path, arrays by their length', () => {
