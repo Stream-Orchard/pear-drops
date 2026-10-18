@@ -245,7 +245,7 @@ test('a switch saved under an id the app had before a rename still counts', () =
   cleanup();
 });
 
-test('any app Grapevine knows gets its own card and switch, with what the two would share', () => {
+test('any app Grapevine knows gets its own card and switch, with what the two would share', async () => {
   const { KNOWN_APPS } = require('@streamorchard/grapevine');
   const mv = KNOWN_APPS.find((a) => a.id === MV);
   const overlay = { ...mv, id: 'com.example.overlay', slug: 'stream-overlay', name: 'Stream Overlay', dataFolder: 'Stream Overlay', provides: ['clips'], uses: ['drops.farming'] };
@@ -258,9 +258,9 @@ test('any app Grapevine knows gets its own card and switch, with what the two wo
   assert.equal(card.status, 'off');
   assert.deepEqual(card.shares, { out: ['drops.farming'], in: [] }, 'it uses what Pear Drops provides; Pear Drops has no use for clips');
   assert.match(c.icons()['com.example.overlay'], /^data:image\/png/);
-  c.setEnabled('com.example.overlay', true);
+  await c.setEnabled('com.example.overlay', true);
   assert.equal(settings.connectedApps['com.example.overlay'].enabled, true, 'its own switch');
   assert.equal(c.nameOf('com.example.overlay'), 'Stream Overlay');
+  await c.stop(); // before its folder goes
   fs.rmSync(dir, { recursive: true, force: true });
-  return c.stop();
 });
