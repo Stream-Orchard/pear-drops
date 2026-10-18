@@ -73,6 +73,11 @@ test('switched on: waiting, then connected to Stream Multiview, with its players
   await a.win.click('.app-card [data-action="connected-test"]');
   await until(a.win, () => document.querySelector('.app-foot.ok'), 'the test result', 10000);
   assert.match(await a.win.textContent('.app-foot .app-line'), /^Stream Multiview 0\.4\.0 answered in \d+ ms$/);
+  // A change on the card replaces the test's answer at once.
+  await a.demo((d) => d.multiview({ signedIn: true, mode: 'signed-in' }));
+  await until(a.win, () => document.querySelector('.app-foot.warn'), 'the new warning, not the old test answer', 10000);
+  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto' }));
+  await until(a.win, () => /signed out while you farm/.test(document.querySelector('.app-foot')?.textContent ?? ''), 'back to the usual line', 15000);
   // A click on its widget brings Pear Drops forward.
   assert.deepEqual(await a.app.evaluate(() => global.pdDemo.multiviewPeer.link.request('com.streamorchard.peardrops', 'drops.farming.show')), { shown: true });
 });

@@ -988,9 +988,14 @@ function connectedPane() {
       return `<div class="app-flow ${way}">${icon(way === 'out' ? 'arrowRight' : 'arrowLeft')}<span><b>${title}</b>${text}</span></div>`;
     };
     const flows = [...p.shares.out.map((cap) => tile(cap, 'out')), ...p.shares.in.map((cap) => tile(cap, 'in'))].join('');
-    // A Test just run: its answer stands in for the line for a moment.
+    // A Test just run: its answer stands in for the line for a moment, unless the line itself
+    // changes meanwhile (a new warning matters more than the test).
     const tested = ui.appTests?.[p.id];
-    if (tested?.result && Date.now() - tested.at < 15_000) [line, tone] = [esc(tested.result.text), tested.result.ok ? 'ok' : 'warn'];
+    if (tested?.result && Date.now() - tested.at < 15_000) {
+      tested.line ??= line;
+      if (tested.line === line) [line, tone] = [esc(tested.result.text), tested.result.ok ? 'ok' : 'warn'];
+      else tested.result = null;
+    }
     const test = p.enabled
       ? `<button class="btn sm" data-action="connected-test" data-id="${esc(p.id)}" ${tested?.running ? 'disabled' : ''}>${icon('pulse')} ${tested?.running ? 'Testing…' : 'Test'}</button>`
       : '';
