@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.7 (current)
+## 0.1.8 (current)
+- Chart: a stream that just started draws cleanly, its label stays clear of the line, and the radar sits in the middle
+- Chart: the radar is a full circle, and the past starts at the first reading
+
+## 0.1.7
 - History, drops and the startup cache are kept in one database: quicker to start as history grows, and nothing half-saved after a crash
 - Back up your data every day or week, and put the newest good copy back if it's ever damaged
 - Connected apps: an Activity log of every message between Pear Drops and the linked app
