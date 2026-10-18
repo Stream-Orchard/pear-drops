@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- The README's hero image (hero.jpg), drawn as a stylised Pear Drops: no real channels, rewards or
-     accounts. To regenerate hero.jpg after editing (needs npm run test:setup once):
+     accounts. To regenerate hero.jpg after editing (needs npx playwright install chromium once):
      node -e "require('playwright').chromium.launch().then(async b=>{const p=await b.newPage({viewport:{width:1280,height:640},deviceScaleFactor:2});await p.goto('file://'+require('path').resolve('.github/assets/hero.html'));await p.screenshot({path:'.github/assets/hero.jpg',type:'jpeg',quality:90});await b.close()})" -->
 <html><head><meta charset="utf-8">
 <style>

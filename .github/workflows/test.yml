@@ -42,7 +42,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx --no install-electron
-      - run: npm run test:setup
       - name: Coverage (unit) with per-file minimums
         run: npm run test:coverage
       - name: Launch tests (real app, demo mode, hidden and muted)

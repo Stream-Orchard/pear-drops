@@ -25,7 +25,7 @@ await a.close();
 
 ## Tools
 
-Install Playwright once with `npm run test:setup`. Don't install anything else without asking.
+Playwright comes with `npm install`. Don't install anything else without asking.
 
 ## Don't get stuck
 

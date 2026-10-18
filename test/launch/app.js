@@ -10,7 +10,7 @@ function playwright() {
   try {
     return require('playwright');
   } catch {
-    throw new Error('Playwright is not installed: run `npm run test:setup` first.');
+    throw new Error('Playwright is not installed: run `npm install` first.');
   }
 }
 

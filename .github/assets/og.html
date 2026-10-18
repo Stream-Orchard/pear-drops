@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- The repository's social preview image (og.png: the picture shown when the repo is linked on GitHub,
      Discord, X and so on), the README hero with bigger words so it reads as a small thumbnail. No real
-     channels, rewards or accounts. To regenerate og.png after editing (needs npm run test:setup once):
+     channels, rewards or accounts. To regenerate og.png after editing (needs npx playwright install chromium once):
      node -e "require('playwright').chromium.launch().then(async b=>{const p=await b.newPage({viewport:{width:1280,height:640}});await p.goto('file://'+require('path').resolve('.github/assets/og.html'));await p.evaluate(()=>document.fonts.ready);await p.screenshot({path:'.github/assets/og.png'});await b.close()})"
      Then upload it in the repository's Settings > General > Social preview. -->
 <html><head><meta charset="utf-8">
