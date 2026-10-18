@@ -3813,6 +3813,11 @@ input[type='range']::-webkit-slider-thumb {
   flex: none;
   pointer-events: none;
 }
+/* The banner's title is its <b>: a setting named in its text is set apart like this instead. */
+.banner-em {
+  color: var(--text);
+  font-weight: 600;
+}
 /* Settings › Connected apps: a card per app, with its logo, what it is, its switch, what the
    two apps share, and one line on how it's going. */
 .app-card {

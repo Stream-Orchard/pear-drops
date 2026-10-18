@@ -180,7 +180,7 @@ function renderBanner() {
       <div class="text"><b>Another Kick stream is taking your drop credit</b>
       <span>${f.eventsSinceCredit} watch events sent with no credit. ${
         linked
-          ? `${esc(linked.name)} has Kick players open that are signed in. Turn on <b>Sign Kick players out while Pear Drops is farming</b> there, or close them.`
+          ? `${esc(linked.name)} has Kick players open that are signed in. Turn on <span class="banner-em">Sign Kick players out while Pear Drops is farming</span> there, or close them.`
           : 'Kick credits only one stream per account, so close any other streams to continue progressing drops.'
       }</span></div>
       ${linked ? `<button class="btn sm" data-action="open-connected-apps">${icon('link')} Connected apps</button>` : ''}
