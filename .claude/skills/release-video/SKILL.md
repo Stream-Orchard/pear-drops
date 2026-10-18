@@ -16,7 +16,7 @@ A walkthrough of the real app, one feature at a time: a title card, then the fea
 
 ## Tools
 
-- Playwright: `npm run test:setup` once.
+- Playwright: comes with `npm install`.
 - ffmpeg with libx264 on the PATH: `brew install ffmpeg`, `winget install Gyan.FFmpeg` or `sudo apt install ffmpeg`.
 
 Don't install anything without asking.

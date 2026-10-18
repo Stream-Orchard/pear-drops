@@ -105,7 +105,6 @@ The app never sends watch events itself. It runs the real kick.com channel page,
 | `npm run dev` | Dev copy with a throwaway data folder (`-- --profile <name>` keeps it, `-- --debug` opens a debug port) |
 | `npm run demo` | Dev copy against the stand-in Kick |
 | `npm test` | Unit tests (`test/unit/`, mirrors `src/`) |
-| `npm run test:setup` | Installs Playwright (once) for the launch tests |
 | `npm run test:launch` | The real app in demo mode, hidden and muted (`test:launch:visible` to watch) |
 | `npm run test:coverage` | Unit coverage, checked against `test/coverage-min.json` (minimums only go up: `-- --update`) |
 | `npm run dist:mac` / `dist:win` | Installers in `dist/` |
