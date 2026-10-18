@@ -3931,7 +3931,9 @@ input[type='range']::-webkit-slider-thumb {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.12s ease;
-  white-space: normal;
+  /* A line break in the text starts a new line, and no word is left alone on the last one. */
+  white-space: pre-line;
+  text-wrap: pretty;
 }
 .tooltip.on {
   opacity: 1;

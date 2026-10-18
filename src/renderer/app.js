@@ -442,9 +442,14 @@ function catStatus(cat, f) {
 /** A category that rarely has a stream on (farmer.js liveRate): Smart order catches it while it's live. */
 function rareChip(cat) {
   if (!cat.rarelyLive || cat.complete || !cat.needsWatching) return '';
-  const pct = Math.round(cat.liveRate * 100);
   const smart = state.settings.queueMode === 'smart';
-  return `<span class="chip violet" data-tip="Live ${pct}% of the hours seen this week.${smart ? ' Smart order watches it while it’s on.' : ' Smart order would watch it while it’s on.'}">Rare</span>`;
+  // Under a week watched, say how few hours that is, rather than a percentage of "this week".
+  const { hours, live, since } = cat.liveSeen ?? {};
+  const seen =
+    since > Date.now() - 6 * 24 * 3600_000
+      ? `Live ${live} of ${hours} hours seen since ${new Date(since).toLocaleDateString([], { weekday: 'short' })} ${fmtClock(since)}.`
+      : `Live ${Math.round(cat.liveRate * 100)}% of the hours seen this week.`;
+  return `<span class="chip violet" data-tip="${seen}\n${smart ? 'Smart order watches it while it’s on.' : 'Smart order would watch it while it’s on.'}">Rare</span>`;
 }
 
 /** A thin bar of minutes watched, with each reward's icon at the minute it unlocks. */

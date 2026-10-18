@@ -33,3 +33,11 @@ test('only the last week counts, and it survives being saved and loaded', () => 
   assert.equal(b.rate(7, later + MIN_HOURS * HOUR), 0);
   assert.equal(new Availability(null).rate(7), null, 'nothing saved yet');
 });
+
+test('a watch session marks every hour it touches as live, and seen() says how many hours there are', () => {
+  const a = new Availability();
+  a.note(7, T0, false);
+  a.noteLive(7, T0 + 2 * HOUR + 50 * 60_000, T0 + 4 * HOUR + 5 * 60_000);
+  assert.deepEqual(a.seen(7, T0 + 5 * HOUR), { hours: 4, live: 3, since: T0 });
+  assert.deepEqual(a.seen(99, T0), { hours: 0, live: 0, since: null }, 'never seen');
+});

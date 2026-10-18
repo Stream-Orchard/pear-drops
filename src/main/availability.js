@@ -21,14 +21,27 @@ class Availability {
     this.byCategory.set(key, hours);
   }
 
+  /** A stretch known to have had a stream live (a watch session): every hour it touches is live. */
+  noteLive(categoryId, from, to) {
+    for (let t = Math.floor(from / HOUR) * HOUR; t <= to; t += HOUR) this.note(categoryId, t, true);
+  }
+
+  /** This week's hours seen and how many had a stream live, and when the first of them began. */
+  seen(categoryId, now = Date.now()) {
+    const hours = this.byCategory.get(String(categoryId)) ?? {};
+    const after = Math.floor(now / HOUR) - WEEK_HOURS;
+    const seen = Object.keys(hours).map(Number).filter((h) => h > after);
+    return {
+      hours: seen.length,
+      live: seen.filter((h) => hours[h]).length,
+      since: seen.length ? Math.min(...seen) * HOUR : null,
+    };
+  }
+
   /** The share of this week's hours seen with a stream live (0 to 1), or null until there's enough to say. */
   rate(categoryId, now = Date.now()) {
-    const hours = this.byCategory.get(String(categoryId));
-    if (!hours) return null;
-    const since = Math.floor(now / HOUR) - WEEK_HOURS;
-    const seen = Object.entries(hours).filter(([h]) => Number(h) > since);
-    if (seen.length < MIN_HOURS) return null;
-    return seen.filter(([, live]) => live).length / seen.length;
+    const { hours, live } = this.seen(categoryId, now);
+    return hours < MIN_HOURS ? null : live / hours;
   }
 
   toJSON() {
@@ -36,4 +49,4 @@ class Availability {
   }
 }
 
-module.exports = { Availability, HOUR, MIN_HOURS };
+module.exports = { Availability, HOUR, MIN_HOURS, WEEK_HOURS };

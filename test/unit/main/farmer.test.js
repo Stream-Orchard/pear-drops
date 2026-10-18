@@ -502,7 +502,49 @@ test('Smart order catches a rarely live drop while it is on, ahead of a common o
   assert.equal(first.rarelyLive, true);
   assert.equal(second.rarelyLive, false);
   assert.equal(watcher.watching, 'sometimes');
-  assert.ok(history.events.some((e) => e.type === 'decision' && /rarely live \(live 1\d% of the past week\)/.test(e.text)), 'the pick says why');
+  // Under a week of looks, the reason gives the hours rather than a share of "the past week".
+  assert.ok(history.events.some((e) => e.type === 'decision' && /rarely live \(live [45] of the 4[01] hours checked\)/.test(e.text)), 'the pick says why');
+});
+
+test('after a week of looks, a rarely live drop is given as a share of the past week', async () => {
+  const { farmer, history } = commonAndRare();
+  for (let h = 41; h <= 7 * 24 - 1; h++) {
+    farmer.availability.note(1, Date.now() - h * 3600_000, true);
+    farmer.availability.note(2, Date.now() - h * 3600_000, h % 10 === 0);
+  }
+  await farmer.tick();
+  assert.ok(history.events.some((e) => e.type === 'decision' && /rarely live \(live 1\d% of the past week\)/.test(e.text)));
+});
+
+test('watch sessions in the history count as live hours, from before the live rate was saved', () => {
+  const { Availability } = require('../../../src/main/availability');
+  const { farmer, history } = setup({ campaigns: [], streams: {} });
+  const hour = 3600_000;
+  const t = Math.floor(Date.now() / hour) * hour - 10 * hour;
+  history.events = [
+    { t: t + 10 * MIN, type: 'watch-start', session: 's1', categoryId: 7 },
+    { t: t + hour + 50 * MIN, type: 'watch-end', session: 's1' }, // two hours touched
+    { t: t + 5 * hour, type: 'watch-start', session: 's2' }, // no category: left out
+    { t: t + 5 * hour + MIN, type: 'watch-end', session: 's2' },
+  ];
+  farmer.availability = new Availability({ 7: { [Math.floor(t / hour) + 4]: 0 } });
+  farmer.availabilityFromHistory();
+  assert.deepEqual(farmer.availability.seen(7), { hours: 3, live: 2, since: t });
+  assert.deepEqual(Object.keys(farmer.availability.toJSON()), ['7']);
+
+  // With no startup cache at all, they're still counted.
+  farmer.cacheFile = '/nonexistent-dir-for-tests/cache.json';
+  assert.equal(farmer.loadCache(), false);
+  assert.deepEqual(farmer.availability.seen(7), { hours: 2, live: 2, since: t });
+});
+
+test('the stream being watched counts its category as live, even when the listing misses it', async () => {
+  const { farmer, api } = setup({ campaigns: [campaign('a')], streams: { 1: [live('first', 1)] } });
+  await farmer.tick();
+  api.livestreams = async () => [];
+  farmer.streams.clear();
+  await farmer.refreshStreams({ force: true });
+  assert.deepEqual(farmer.availability.seen(1), { hours: 1, live: 1, since: Math.floor(Date.now() / 3600_000) * 3600_000 });
 });
 
 test('Favour rarely live drops: Some weighs the live rate less, Off sorts by end time alone', async () => {
