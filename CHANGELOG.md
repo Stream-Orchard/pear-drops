@@ -2,7 +2,16 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.3 (current)
+## 0.1.4 (current)
+- Dashboard polish: clearer counts and labels, grouped activity, calmer switches, and no focus ring after a click
+- The dashboard fills its space: a plan under the Queue, roomier rewards, and what's next while paused or waiting
+- Small windows fit: every panel adapts, so nothing scrolls or is cut short on a 13" laptop
+- After a restart nothing looks empty or contradictory: session sparkline, Activity from history, and a note on short Streams lists
+- Coming soon replaces the plan: drops Kick has announced, with when they start
+- Event drops find their channels through the event's own stream list
+- Drops link to their About page, and a refused claim says why (with Link your account)
+
+## 0.1.3
 - History no longer counts an interrupted watch session as still going
 - History shows a first day by the hour, and watch sessions show the stream title
 - Images that won't load show a tidy placeholder, and every Streams category shows its name and count
