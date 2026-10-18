@@ -28,12 +28,12 @@ test.after(async () => {
 
 const settings = () => JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
 
-test('a rarely live category shows a Rare chip with how often it is live', async () => {
+test('a rarely live category shows a Rare chip with how many of the hours seen it was live', async () => {
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
   const chip = `.cat[data-cat-id="${JUST_CHATTING}"] .chip.violet`;
   await until(a.win, (s) => document.querySelector(s), 'the Rare chip', 10000, chip);
   assert.equal((await a.win.textContent(chip)).trim(), 'Rare');
-  assert.match(await a.win.getAttribute(chip, 'data-tip'), /^Live 1\d% of the hours seen this week\. Smart order would watch it/);
+  assert.match(await a.win.getAttribute(chip, 'data-tip'), /^Live \d+ of \d+ hours seen since \w+ \d.+\.\nSmart order would watch it/);
   assert.equal(await a.win.locator('.cat .chip.violet').count(), 1, 'only the rare one');
 });
 

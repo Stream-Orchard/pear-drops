@@ -9,7 +9,9 @@ const RETRY_MS = 5_000;
 const RARELY_LIVE = 0.35;
 // Settings › Farming › Favour rarely live drops: the power the live rate is raised to.
 const RARITY_WEIGHT = { off: 0, some: 0.5, strong: 1 };
-const livePct = (cat) => `live ${Math.round(cat.liveRate * 100)}%`;
+// How often a category was seen live: a share of the week once it's been watched that long, else the hours.
+const liveShare = ({ liveRate, liveSeen: { hours, live, since } }, now = Date.now()) =>
+  since <= now - 6 * 24 * 60 * MIN ? `live ${Math.round(liveRate * 100)}% of the past week` : `live ${live} of the ${hours} hours checked`;
 const NOMINAL_RATE = 1; // progress units (minutes) per minute watched
 const HISTORY_MS = 6 * 60 * MIN;
 // The player's video not moving: past PLAYER_START_MS from loading, a reload after PLAYER_STUCK_MS.
@@ -336,13 +338,12 @@ class Farmer extends EventEmitter {
    */
   loadCache() {
     if (!this.cacheFile) return false;
-    let c;
+    let c = null;
     try {
       c = JSON.parse(require('fs').readFileSync(this.cacheFile, 'utf8'));
-    } catch {
-      return false;
-    }
+    } catch {}
     this.availability = new Availability(c?.availability);
+    this.availabilityFromHistory();
     if (!c?.campaigns?.length) return false;
     this.rawCampaigns = c.campaigns;
     this.campaignsAt = c.savedAt ?? 0;
@@ -366,6 +367,17 @@ class Farmer extends EventEmitter {
       }, 2000);
     });
     return this.cacheSaved;
+  }
+
+  /**
+   * Every watch session in the history had a stream live for its category, so those hours count
+   * as live: including ones from before the live rate was saved, or after the cache was lost.
+   */
+  availabilityFromHistory(now = Date.now()) {
+    const events = this.history?.events ?? [];
+    for (const s of this.history?.sessions?.(events, now) ?? []) {
+      if (s.categoryId !== undefined && s.categoryId !== null) this.availability.noteLive(s.categoryId, s.start, s.end ?? now);
+    }
   }
 
   /** Rebuilds the chart and live monitor's recent past from the saved history. */
@@ -653,6 +665,7 @@ class Farmer extends EventEmitter {
         soonestEnd: Math.min(...(active.length ? active : cat.campaigns).map((c) => new Date(c.endsAt).getTime())),
         remainingUnits: active.reduce((sum, c) => sum + c.remainingUnits, 0),
         liveRate,
+        liveSeen: this.availability.seen(cat.id, now),
         liveEnd,
         rarelyLive: liveRate !== null && liveRate < RARELY_LIVE,
         // Whether being rarely live is moving it up (Smart order, unless that's switched off).
@@ -841,7 +854,8 @@ class Farmer extends EventEmitter {
         const have = new Set(listed.map((ls) => ls.channel.id));
         const list = [...listed, ...(fromEvents ?? []).filter((ls) => !have.has(ls.channel.id))];
         this.streams.set(cat.id, { at: now, list });
-        this.availability.note(cat.id, now, this.candidatesFor(cat, active).length > 0);
+        // The stream being watched counts even if the listing missed it.
+        this.availability.note(cat.id, now, this.candidatesFor(cat, active).length > 0 || this.current?.categoryId === cat.id);
       } catch (err) {
         this.addLog('warn', `Could not list ${cat.name} streams: ${err.message}`);
       }
@@ -1090,7 +1104,7 @@ class Farmer extends EventEmitter {
         const smart = settings.queueMode === 'smart';
         let why;
         if (first.urgent) why = `${first.urgent.campaign} ends in ${fmtSpan(first.urgent.msLeft)} with ${first.urgent.remaining} min to go (${fmtSpan(Math.max(0, first.urgent.slack))} to spare)`;
-        else if (smart && first.rarityCounts) why = `${first.name} is rarely live (${livePct(first)} of the past week) and is on now (it ends in ${fmtSpan(first.soonestEnd - now)}`;
+        else if (smart && first.rarityCounts) why = `${first.name} is rarely live (${liveShare(first, now)}) and is on now (it ends in ${fmtSpan(first.soonestEnd - now)}`;
         else if (smart) why = `${first.name} ends sooner (${fmtSpan(first.soonestEnd - now)}`;
         else why = `${first.name} is higher in your queue`;
         const curEnd = curCat ? Math.min(...curCat.campaigns.filter((c) => c.needsWatching).map((c) => new Date(c.endsAt).getTime())) : null;
@@ -1175,7 +1189,7 @@ class Farmer extends EventEmitter {
     const reasons = [];
     if (cat.urgent) reasons.push(`${cat.urgent.campaign} ends in ${fmtSpan(cat.urgent.msLeft)} and needs ${cat.urgent.remaining} min`);
     else if (targets[0]?.id !== cat.id) reasons.push(`${targets.filter((c) => c.id !== cat.id && c.streams.every((s) => s.blocked)).map((c) => c.name).join(', ') || 'higher categories'} had no usable stream`);
-    else if (this.store.get().queueMode === 'smart' && cat.rarityCounts) reasons.push(`it's rarely live (${livePct(cat)} of the past week), so it's caught while it's on (${fmtSpan(cat.soonestEnd - Date.now())} left)`);
+    else if (this.store.get().queueMode === 'smart' && cat.rarityCounts) reasons.push(`it's rarely live (${liveShare(cat)}), so it's caught while it's on (${fmtSpan(cat.soonestEnd - Date.now())} left)`);
     else if (this.store.get().queueMode === 'smart') reasons.push(`it ends soonest (${fmtSpan(cat.soonestEnd - Date.now())} left)`);
     else reasons.push(`top of your queue`);
     if (stream.followed) reasons.push('a channel you follow');
