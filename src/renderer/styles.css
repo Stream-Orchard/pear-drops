@@ -5228,3 +5228,494 @@ input[type='range']::-webkit-slider-thumb {
 .coming-head .hist-btn {
   margin-left: 8px;
 }
+/* Settings › Connected apps › Activity (activity.js): who, the totals, the last 30 minutes, and
+   the messages a page at a time. The list takes the room that's left and never scrolls: it
+   shows as many rows as fit. */
+.settings-pane .modal-section.pane-apps.activity {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 18px;
+}
+.settings-pane .modal-section.pane-apps.activity > * {
+  flex-shrink: 0;
+}
+.modal-head h3 .act-back {
+  margin: 0 6px 0 -8px;
+  vertical-align: -6px;
+}
+.act-who {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.act-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: #0d1410;
+  object-fit: contain;
+  padding: 4px;
+  box-shadow:
+    0 6px 16px -6px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.act-who b {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.act-who span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.act-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.act-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+  min-width: 0;
+}
+.act-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.act-stat-label .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 3px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.act-stat.out .act-stat-label .icon {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.act-stat.in .act-stat-label .icon {
+  background: rgba(110, 168, 255, 0.12);
+  color: var(--blue);
+}
+.act-stat.beat .act-stat-label .icon {
+  background: rgba(83, 252, 24, 0.08);
+  color: #9cf27c;
+}
+.act-stat.bad {
+  border-color: rgba(255, 93, 110, 0.25);
+  background: rgba(255, 93, 110, 0.05);
+}
+.act-stat.bad .act-stat-label .icon {
+  background: rgba(255, 93, 110, 0.14);
+  color: var(--red);
+}
+.act-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.act-stat-value b {
+  font: 700 17px/1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.act-stat-value em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+}
+.act-chart-card {
+  padding: 10px 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(110, 168, 255, 0.06), transparent 55%),
+    radial-gradient(120% 160% at 0% 100%, rgba(83, 252, 24, 0.05), transparent 55%),
+    var(--surface);
+}
+.act-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.act-chart-head b {
+  font-weight: 650;
+}
+.act-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.act-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 3px;
+}
+.act-legend i.out {
+  background: var(--green);
+}
+.act-legend i.in {
+  background: var(--blue);
+}
+.act-legend i.bad {
+  border-radius: 50%;
+  background: var(--red);
+}
+.act-chart {
+  height: 64px;
+}
+.act-svg {
+  display: block;
+}
+.act-hit {
+  fill: transparent;
+}
+.act-bar-bg {
+  fill: rgba(255, 255, 255, 0.025);
+}
+.act-svg g:hover .act-bar-bg {
+  fill: rgba(255, 255, 255, 0.07);
+}
+.act-bar-out {
+  fill: var(--green);
+}
+.act-bar-in {
+  fill: var(--blue);
+}
+.act-bar-bad {
+  fill: var(--red);
+}
+.act-axis {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.act-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.act-filters .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.act-count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 93, 110, 0.18);
+  color: #ffb3bb;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+}
+.act-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.act-range {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.act-list {
+  flex: 1 1 auto !important;
+  min-height: 150px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, 0.16);
+}
+/* A message: when, which way, what (the method and its kind), in words, and how long and how big. */
+.act-row {
+  display: grid;
+  grid-template-columns: 62px 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 50px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+button.act-row:hover,
+.act-row.open {
+  background: var(--surface-2);
+}
+.act-row.fresh {
+  animation: act-fresh 1.6s ease-out;
+}
+@keyframes act-fresh {
+  from {
+    background: rgba(83, 252, 24, 0.14);
+  }
+  to {
+    background: transparent;
+  }
+}
+.act-time {
+  color: var(--muted);
+  font: 500 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.act-dir {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+.act-dir .icon {
+  width: 13px;
+  height: 13px;
+}
+.act-row.out .act-dir {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.act-row.in .act-dir {
+  background: rgba(110, 168, 255, 0.12);
+  color: var(--blue);
+}
+.act-row.k-error .act-dir {
+  background: rgba(255, 93, 110, 0.14);
+  color: var(--red);
+}
+.act-row.k-error {
+  background: rgba(255, 93, 110, 0.04);
+}
+.act-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.act-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.act-method {
+  overflow: hidden;
+  font: 600 11.5px var(--mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.act-method::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--muted);
+}
+.act-method.cap-drops::before {
+  background: var(--green);
+}
+.act-method.cap-players::before {
+  background: var(--blue);
+}
+.act-kind {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.act-row.k-error .act-kind {
+  background: rgba(255, 93, 110, 0.14);
+  color: #ffb3bb;
+}
+.act-text {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.act-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+/* Connected, disconnected, a test, a message Grapevine dropped: a marker across the log. */
+.act-row.act-marker {
+  grid-template-columns: 62px minmax(12px, 1fr) auto minmax(12px, 1fr);
+  cursor: default;
+}
+.act-marker-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-2), transparent);
+}
+.act-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 420px;
+  padding: 5px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 550;
+}
+.act-pill span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.act-pill .icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+.act-marker.tone-ok .act-pill {
+  border-color: rgba(83, 252, 24, 0.3);
+  background: var(--green-soft);
+  color: #c9f7b5;
+}
+.act-marker.tone-ok .act-pill .icon {
+  color: var(--green);
+}
+.act-marker.tone-warn .act-pill {
+  border-color: rgba(251, 191, 75, 0.3);
+  background: rgba(251, 191, 75, 0.08);
+  color: #e9d3a6;
+}
+.act-marker.tone-warn .act-pill .icon {
+  color: var(--amber);
+}
+.act-marker.tone-bad .act-pill {
+  border-color: rgba(255, 93, 110, 0.3);
+  background: rgba(255, 93, 110, 0.07);
+  color: #f2b3ba;
+}
+.act-marker.tone-bad .act-pill .icon {
+  color: var(--red);
+}
+/* An open message's fields. */
+.act-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 8px 108px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 8px 12px -10px rgba(0, 0, 0, 0.7);
+}
+.act-fields {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 20px;
+  column-gap: 18px;
+  height: calc(var(--lines, 4) * 20px);
+  margin: 0;
+  overflow: hidden;
+}
+.act-fields div {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  font: 11px/20px var(--mono);
+}
+.act-fields dt {
+  flex: none;
+  color: var(--muted);
+}
+.act-fields dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.act-hidden {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.act-detail-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+}
+.act-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+.act-empty b {
+  color: var(--text);
+  font-size: 14px;
+}
+.act-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--green-soft);
+  color: var(--green);
+  box-shadow: 0 0 0 6px rgba(83, 252, 24, 0.04);
+}
+.act-empty-icon .icon {
+  width: 20px;
+  height: 20px;
+}
