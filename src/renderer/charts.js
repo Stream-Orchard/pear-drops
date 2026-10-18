@@ -62,11 +62,12 @@ function progressChart({ points, rewards, target, now, rate = 1, width = 720, he
   const remaining = Math.max(0, (target || 0) - units);
   const doneMin = r ? remaining / r : Infinity;
 
-  // The forecast runs all the way to the campaign being done (up to two weeks), and the past
-  // keeps at least a sixth of the width so the "now" label and the region names fit beside it.
+  // The forecast runs all the way to the campaign being done (up to two weeks). The past starts
+  // at the first reading, but keeps at least 10 minutes and a sixth of the width, so the "now"
+  // label and the region names fit beside it.
   const futureSpan = Number.isFinite(doneMin) && remaining > 0 ? Math.min(doneMin, MAX_FORECAST_MIN) * 1.1 : 30;
   const future = Math.max(20, futureSpan) * CHART_MIN;
-  const t0 = Math.min(pts[0][0], now - 45 * CHART_MIN, showForecast ? now - future * 0.2 : Infinity);
+  const t0 = Math.min(pts[0][0], now - 10 * CHART_MIN, showForecast ? now - future * 0.2 : Infinity);
   const t1 = showForecast ? now + future : now + (now - t0) * 0.02;
   const yTop = Math.max(target || 0, units) * 1.08 || 10;
   const yMin = Math.max(0, Math.min(...pts.map((p) => p[1])) - yTop * 0.08);
@@ -266,85 +267,78 @@ function heartbeatStrip(timeline, now, { minutes = 60, width = 600, height = 78,
 }
 
 /**
- * What the progress chart shows while nothing is playing, under a dome:
- * - 'scan': a radar beam sweeps over the categories still to go (`items`), each lighting up
+ * What the progress chart shows while nothing is playing, as a radar in the middle of the card:
+ * - 'scan': a beam sweeps round over the categories still to go (`items`), each lighting up
  *   with its name as the beam passes. `tone: 'warn'` while Kick isn't answering.
  * - 'paused': the same categories, still and dimmed.
- * - 'done': the rewards collected (`items`), in an arc, with a shimmer running along them.
+ * - 'done': the rewards collected (`items`) in a ring, with a shimmer running round them.
  * Each check with Kick (`checkedAt`) sends a ripple out from the centre. All of it is CSS
  * animation, so the system's reduce-motion setting stills it, and a redraw with the same
  * things to show leaves the markup, and so the animation, alone.
  */
 function idleScene({ mode, items = [], width = 720, height = 260, checkedAt = null, tone = '', now = Date.now(), idPrefix = 'is' }) {
   const id = idPrefix;
-  const cx = width / 2;
-  const R = Math.max(60, Math.min(width / 2 - 34, height - 44));
-  // Centred top to bottom when the width limits it, so a tall card has no gap above.
-  const cy = Math.round(height - 20 - Math.max(0, height - 44 - R) / 2);
+  const cx = (width / 2).toFixed(1);
+  const cy = (height / 2).toFixed(1);
+  const R = Math.max(50, Math.min(width / 2 - 30, height / 2 - 18));
+  const at = (deg, r) => {
+    const a = (deg * Math.PI) / 180;
+    return [Number(cx) + Math.cos(a) * r, Number(cy) + Math.sin(a) * r];
+  };
   const cls = tone === 'warn' ? 'warn' : mode;
-  const arc = (r) => `M${(cx - r).toFixed(1)},${cy} A${r.toFixed(1)},${r.toFixed(1)} 0 0 1 ${(cx + r).toFixed(1)},${cy}`;
-  const origin = `transform-origin:${cx.toFixed(1)}px ${cy}px`;
+  const origin = `transform-origin:${cx}px ${cy}px`;
   const parts = [];
 
-  // The dome: a glow, rings and spokes.
-  parts.push(`<path d="${arc(R)} Z" fill="url(#${id}-dome)"/>`);
-  for (const k of [0.25, 0.5, 0.75, 1]) parts.push(`<path d="${arc(R * k)}" class="is-ring${k === 1 ? ' edge' : ''}"/>`);
-  for (const a of [30, 60, 90, 120, 150]) {
-    const r = (a * Math.PI) / 180;
-    parts.push(`<line x1="${cx.toFixed(1)}" y1="${cy}" x2="${(cx - Math.cos(r) * R).toFixed(1)}" y2="${(cy - Math.sin(r) * R).toFixed(1)}" class="is-spoke"/>`);
+  // The radar: a glow, rings and spokes.
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${R.toFixed(1)}" fill="url(#${id}-glow)"/>`);
+  for (const k of [0.25, 0.5, 0.75, 1]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${(R * k).toFixed(1)}" class="is-ring${k === 1 ? ' edge' : ''}"/>`);
+  for (const a of [0, 30, 60, 90, 120, 150]) {
+    const [x1, y1] = at(a, R);
+    const [x2, y2] = at(a + 180, R);
+    parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="is-spoke"/>`);
   }
-  parts.push(`<line x1="${(cx - R - 14).toFixed(1)}" x2="${(cx + R + 14).toFixed(1)}" y1="${cy}" y2="${cy}" class="is-base"/>`);
 
   const inside = [];
-  const SWEEP_S = 6; // one pass of the beam, left to right (keep in step with idle-sweep in styles.css)
+  const SWEEP_S = 8; // one turn of the beam (keep in step with idle-sweep in styles.css)
   if (mode === 'scan') {
     // A wedge trailing the beam, fading out behind it.
     const wedge = [];
     for (let i = 0; i < 12; i++) {
-      const a0 = ((-60 + i * 5) * Math.PI) / 180;
-      const a1 = ((-55 + i * 5) * Math.PI) / 180;
-      const r = R * 1.1;
+      const [x0, y0] = at(-60 + i * 5, R * 1.05);
+      const [x1, y1] = at(-55 + i * 5, R * 1.05);
       wedge.push(
-        `<path d="M${cx.toFixed(1)},${cy} L${(cx + Math.cos(a0) * r).toFixed(1)},${(cy + Math.sin(a0) * r).toFixed(1)} A${r.toFixed(1)},${r.toFixed(1)} 0 0 1 ${(cx + Math.cos(a1) * r).toFixed(1)},${(cy + Math.sin(a1) * r).toFixed(1)} Z" opacity="${(0.008 + i * i * 0.0014).toFixed(3)}"/>`,
+        `<path d="M${cx},${cy} L${x0.toFixed(1)},${y0.toFixed(1)} A${(R * 1.05).toFixed(1)},${(R * 1.05).toFixed(1)} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)} Z" opacity="${(0.008 + i * i * 0.0014).toFixed(3)}"/>`,
       );
     }
-    inside.push(`<g class="is-beam" style="${origin}">${wedge.join('')}<line x1="${cx.toFixed(1)}" y1="${cy}" x2="${(cx + R * 1.1).toFixed(1)}" y2="${cy}"/></g>`);
+    inside.push(`<g class="is-beam" style="${origin}">${wedge.join('')}<line x1="${cx}" y1="${cy}" x2="${(Number(cx) + R * 1.05).toFixed(1)}" y2="${cy}"/></g>`);
   }
   if (checkedAt && now - checkedAt < 10_000) {
     // Keyed by the check: each new one ripples once.
-    inside.push(
-      `<g data-key="is-ripple-${checkedAt}">${[0, 1].map((k) => `<circle cx="${cx.toFixed(1)}" cy="${cy}" r="${R.toFixed(1)}" class="is-ripple${k ? ' late' : ''}" style="${origin}"/>`).join('')}</g>`,
-    );
+    inside.push(`<g data-key="is-ripple-${checkedAt}">${[0, 1].map((k) => `<circle cx="${cx}" cy="${cy}" r="${R.toFixed(1)}" class="is-ripple${k ? ' late' : ''}" style="${origin}"/>`).join('')}</g>`);
   }
 
   const marks = [];
   const defs = [];
   if (mode === 'done') {
     const list = items.slice(0, 12);
-    const ar = R * 0.74;
     list.forEach((it, i) => {
-      const a = (Math.PI * (i + 0.5)) / list.length;
-      const x = cx - Math.cos(a) * ar;
-      const y = cy - Math.sin(a) * ar;
+      const [x, y] = at(-90 + (360 * i) / list.length, R * 0.72);
       defs.push(`<clipPath id="${id}-c${i}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13"/></clipPath>`);
       marks.push(`<g class="is-reward"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="16.5" class="is-disc"/>
         ${it.image ? `<image href="${escapeHtml(it.image)}" x="${(x - 13).toFixed(1)}" y="${(y - 13).toFixed(1)}" width="26" height="26" clip-path="url(#${id}-c${i})" preserveAspectRatio="xMidYMid slice"><title>${escapeHtml(it.name)}</title></image>` : ''}
         <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="16.5" class="is-shine" style="animation-delay:${((i / list.length) * 2.4).toFixed(2)}s"/></g>`);
     });
     // A trophy at the centre.
-    marks.push(`<g class="is-trophy" transform="translate(${(cx - 12).toFixed(1)},${cy - 34})"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></g>`);
+    marks.push(`<g class="is-trophy" transform="translate(${(Number(cx) - 12).toFixed(1)},${(Number(cy) - 12).toFixed(1)})"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></g>`);
   } else {
-    // Spread over the dome, alternating near and far so neighbours' names don't collide.
+    // Spread round the circle, alternating near and far so neighbours' names don't collide.
     const list = items.slice(0, 8);
     const near = [0.72, 0.46, 0.86, 0.6];
     list.forEach((it, i) => {
-      const deg = (180 * (i + 0.5)) / list.length;
-      const a = (deg * Math.PI) / 180;
-      const k = near[i % near.length];
-      const x = cx - Math.cos(a) * R * k;
-      const y = cy - Math.sin(a) * R * k;
-      // The beam passes this angle `deg / 180` of the way through its sweep.
-      const delay = `animation-delay:${((deg / 180) * SWEEP_S).toFixed(2)}s`;
+      const deg = -90 + (360 * (i + 0.5)) / list.length;
+      const [x, y] = at(deg, R * near[i % near.length]);
+      // The beam starts pointing right and turns clockwise: it passes here `deg / 360` of the way round.
+      const delay = `animation-delay:${((((deg % 360) + 360) % 360 / 360) * SWEEP_S).toFixed(2)}s`;
       defs.push(`<clipPath id="${id}-c${i}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13"/></clipPath>`);
       marks.push(`<g class="is-blip">
         <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="17" class="is-halo" style="${delay}"/>
@@ -352,14 +346,14 @@ function idleScene({ mode, items = [], width = 720, height = 260, checkedAt = nu
         ${it.image ? `<image href="${escapeHtml(it.image)}" x="${(x - 13).toFixed(1)}" y="${(y - 13).toFixed(1)}" width="26" height="26" clip-path="url(#${id}-c${i})" preserveAspectRatio="xMidYMid slice" class="is-art" style="${delay}"/>` : ''}
         <text x="${x.toFixed(1)}" y="${(y + 30).toFixed(1)}" text-anchor="middle" class="is-name" style="${delay}">${escapeHtml(it.name)}</text></g>`);
     });
-    if (mode === 'scan') marks.push(`<circle cx="${cx.toFixed(1)}" cy="${cy}" r="12" class="is-core-halo" style="${origin}"/><circle cx="${cx.toFixed(1)}" cy="${cy}" r="4" class="is-core"/>`);
-    else marks.push(`<g class="is-chip"><rect x="${(cx - 56).toFixed(1)}" y="${cy - 44}" width="112" height="28" rx="14"/><text x="${cx.toFixed(1)}" y="${cy - 26}" text-anchor="middle">Paused</text></g>`);
+    if (mode === 'scan') marks.push(`<circle cx="${cx}" cy="${cy}" r="12" class="is-core-halo" style="${origin}"/><circle cx="${cx}" cy="${cy}" r="4" class="is-core"/>`);
+    else marks.push(`<g class="is-chip"><rect x="${(Number(cx) - 50).toFixed(1)}" y="${(Number(cy) - 14).toFixed(1)}" width="100" height="28" rx="14"/><text x="${cx}" y="${(Number(cy) + 4).toFixed(1)}" text-anchor="middle">Paused</text></g>`);
   }
 
   return `<svg class="chart idle-scene is-${cls}" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
     <defs>
-      <radialGradient id="${id}-dome" cx=".5" cy="1" r="1"><stop offset="0" class="is-stop" stop-opacity=".13"/><stop offset=".75" class="is-stop" stop-opacity=".025"/><stop offset="1" class="is-stop" stop-opacity="0"/></radialGradient>
-      <clipPath id="${id}-in"><path d="${arc(R)} Z"/></clipPath>
+      <radialGradient id="${id}-glow"><stop offset="0" class="is-stop" stop-opacity=".14"/><stop offset=".75" class="is-stop" stop-opacity=".03"/><stop offset="1" class="is-stop" stop-opacity="0"/></radialGradient>
+      <clipPath id="${id}-in"><circle cx="${cx}" cy="${cy}" r="${R.toFixed(1)}"/></clipPath>
       ${defs.join('')}
     </defs>
     ${parts.join('')}

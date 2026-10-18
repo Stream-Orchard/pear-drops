@@ -108,11 +108,15 @@ test('heartbeatStrip with nothing playing: checks as rings, the newest pulsing, 
   assert.doesNotMatch(run(`heartbeatStrip(tl, ${now})`), /hb-glow|hb-idle/, 'not while something plays');
 });
 
-test('idleScene sits in the middle of a tall card, rather than at its foot', () => {
-  const cy = (w, h) => Number(run(`idleScene({ mode: 'scan', items: [], width: ${w}, height: ${h} })`).match(/class="is-core" .*?|<circle cx="[\d.]+" cy="([\d.]+)" r="4" class="is-core"/)[1]);
-  assert.equal(cy(900, 300), 280, 'a wide card: the dome fills its height');
-  // 400 wide: the dome is 166 high, in a card with 556 of room.
-  assert.equal(cy(400, 600), Math.round(580 - (556 - 166) / 2));
+test('idleScene is a full circle in the middle of the card, whatever its shape', () => {
+  const geo = (w, h) => {
+    const svg = run(`idleScene({ mode: 'scan', items: [], width: ${w}, height: ${h} })`);
+    const [, cx, cy, r] = svg.match(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" class="is-ring edge"/).map(Number);
+    return { cx, cy, r };
+  };
+  assert.deepEqual(geo(900, 300), { cx: 450, cy: 150, r: 132 }, 'a wide card: as tall as fits');
+  assert.deepEqual(geo(400, 600), { cx: 200, cy: 300, r: 170 }, 'a tall one: as wide as fits');
+  assert.equal(geo(100, 80).r, 50, 'never smaller than 50');
 });
 
 test('idleScene: a radar over the categories still to go, each lit as the beam passes', () => {
@@ -129,9 +133,9 @@ test('idleScene: a radar over the categories still to go, each lit as the beam p
   assert.equal((svg.match(/class="is-blip"/g) || []).length, 3);
   assert.match(svg, /Neon &lt;Rush&gt;/, 'names from Kick are escaped');
   assert.equal((svg.match(/<image /g) || []).length, 2, 'a category without art is just its disc');
-  // Spread evenly across the dome, each lit a third further into the 6 s sweep.
+  // Spread evenly round the circle, at -30°, 90° and 210°, each lit as the 8 s turn passes it.
   const delays = [...svg.matchAll(/class="is-name" style="animation-delay:([\d.]+)s"/g)].map((m) => Number(m[1]));
-  assert.deepEqual(delays, [1, 3, 5]);
+  assert.deepEqual(delays, [7.33, 2, 4.67]);
   assert.match(svg, new RegExp(`data-key="is-ripple-${now - 2000}"`), 'a new check ripples');
 
   assert.doesNotMatch(run(`idleScene({ mode: 'scan', items, checkedAt: ${now - 60_000}, now: ${now} })`), /is-ripple/, 'an old one doesn\'t');
@@ -178,6 +182,21 @@ test('progressChart for a stream that just started: a dashed line across the pas
   const dot = Number(top.match(/<circle cx="[\d.]+" cy="([\d.]+)" r="5" class="now-dot"/)[1]);
   const below = Number(top.match(/<g class="pill p-now">\s*<rect x="[\d.]+" y="([\d.]+)"/)[1]);
   assert.ok(below > dot, 'below the dot');
+});
+
+test('progressChart: the past starts at the first reading, keeping at least 10 minutes', () => {
+  const now = Date.now();
+  const left = (points) => {
+    ctx.span = { points, rewards: [{ name: 'Cx Emote', required: 600, tracked: true }], target: 600, now, rate: 1, width: 900, height: 400 };
+    return { svg: run('progressChart(span)') };
+  };
+  // Readings from 20 minutes ago: no shading or dashes reach further back than them.
+  const recent = left([[now - 20 * MIN, 538], [now - 10 * MIN, 546], [now, 554]]);
+  assert.doesNotMatch(recent.svg, /class="series earlier"/, 'the readings start at the edge');
+  const xNow = Number(recent.svg.match(/<line x1="([\d.]+)" x2="[\d.]+" y1="[\d.]+" y2="[\d.]+" class="now-line"/)[1]);
+  assert.ok(xNow > 42 + 0.2 * (900 - 60), `the climb has room (now at x=${xNow})`);
+  // A stream that just started: still 10 minutes of past, with the dashed line before its reading.
+  assert.match(left([[now - MIN, 553], [now, 554]]).svg, /class="series earlier"/);
 });
 
 test('progressChart for a paused campaign: what resuming would bring, in times from resuming', () => {

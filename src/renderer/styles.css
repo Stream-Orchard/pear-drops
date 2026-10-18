@@ -1852,13 +1852,10 @@ span.img-missing {
   stroke: var(--idle);
   stroke-opacity: 0.06;
 }
-.idle-scene .is-base {
-  stroke: rgba(255, 255, 255, 0.1);
-}
 .idle-scene .is-beam {
   fill: var(--idle);
   stroke: var(--idle);
-  animation: idle-sweep 6s linear infinite;
+  animation: idle-sweep 8s linear infinite;
 }
 .idle-scene .is-beam path {
   stroke: none;
@@ -1867,19 +1864,13 @@ span.img-missing {
   stroke-width: 1.6;
   stroke-opacity: 0.8;
 }
-/* Left to right across the dome, fading in and out at the ends (6s: SWEEP_S in charts.js). */
+/* Round and round (8s: SWEEP_S in charts.js). */
 @keyframes idle-sweep {
-  0% {
-    transform: rotate(-180deg);
-    opacity: 0;
-  }
-  6%,
-  94% {
-    opacity: 1;
-  }
-  100% {
+  from {
     transform: rotate(0deg);
-    opacity: 0;
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 .idle-scene .is-ripple {
@@ -1924,15 +1915,15 @@ span.img-missing {
 }
 .idle-scene.is-scan .is-halo,
 .idle-scene.is-warn .is-halo {
-  animation: idle-halo 6s linear infinite;
+  animation: idle-halo 8s linear infinite;
 }
 .idle-scene.is-scan .is-art,
 .idle-scene.is-warn .is-art {
-  animation: idle-lit 6s linear infinite;
+  animation: idle-lit 8s linear infinite;
 }
 .idle-scene.is-scan .is-name,
 .idle-scene.is-warn .is-name {
-  animation: idle-name 6s linear infinite;
+  animation: idle-name 8s linear infinite;
 }
 @keyframes idle-halo {
   0% {
