@@ -1313,6 +1313,91 @@ span.img-missing {
   width: 12px;
   height: 12px;
 }
+.check-ring {
+  width: 13px;
+  height: 13px;
+  transform: rotate(-90deg);
+  fill: none;
+  stroke-width: 2.4;
+}
+.check-ring circle {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.check-ring .left {
+  stroke: var(--green);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+/* Each check with Kick, while nothing plays: the orb pulses and a line of light crosses the top. */
+.hero-empty {
+  --pulse: var(--green);
+}
+.hero-empty.hero-paused {
+  --pulse: var(--blue);
+}
+.hero-empty.hero-done {
+  --pulse: var(--gold);
+}
+.hero-empty.hero-warn {
+  --pulse: var(--amber);
+}
+.hero-empty .orb {
+  position: relative;
+}
+.orb-ping {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1.5px solid var(--pulse);
+  opacity: 0;
+  pointer-events: none;
+  animation: orb-ping 1.4s ease-out;
+}
+.orb-ping.late {
+  animation-delay: 0.25s;
+  animation-fill-mode: backwards;
+}
+@keyframes orb-ping {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+.hero-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: hero-sweep 1.4s ease-out;
+}
+.hero-sweep:has(+ .hero-paused) {
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+}
+.hero-sweep:has(+ .hero-done) {
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.hero-sweep:has(+ .hero-warn) {
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+}
+@keyframes hero-sweep {
+  from {
+    opacity: 1;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
 .hero-empty .orb {
   width: 76px;
   height: 76px;
@@ -1680,6 +1765,270 @@ span.img-missing {
 .chart .hb-claim {
   fill: var(--gold);
 }
+/* With nothing playing: each check with Kick, the newest pulsing, and a glow along the lanes. */
+.chart .hb-check {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 1.5;
+}
+.chart .hb-check.bad,
+.chart .hb-ping.bad {
+  stroke: var(--amber);
+}
+.chart .hb-ping {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 2;
+  opacity: 0;
+  animation: hb-ping 1.2s ease-out;
+}
+@keyframes hb-ping {
+  from {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+.chart .hb-glow {
+  animation: hb-glow 4s linear infinite;
+}
+.chart .hb-glow.late {
+  animation-duration: 4.6s;
+  animation-delay: 1.2s;
+}
+@keyframes hb-glow {
+  to {
+    transform: translateX(var(--run));
+  }
+}
+.chart .hb-idle rect {
+  fill: var(--bg-2);
+  stroke: rgba(255, 255, 255, 0.08);
+}
+.chart .hb-idle text {
+  fill: var(--muted);
+  font: 550 10.5px var(--font);
+}
+
+/* The progress chart while nothing is playing (idleScene in charts.js). */
+.idle-scene {
+  --idle: var(--green);
+}
+.idle-scene.is-warn {
+  --idle: var(--amber);
+}
+.idle-scene.is-paused {
+  --idle: var(--blue);
+}
+.idle-scene.is-done {
+  --idle: var(--gold);
+}
+.idle-scene .is-stop {
+  stop-color: var(--idle);
+}
+.idle-scene .is-ring {
+  fill: none;
+  stroke: var(--idle);
+  stroke-opacity: 0.11;
+  stroke-dasharray: 2 5;
+}
+.idle-scene .is-ring.edge {
+  stroke-opacity: 0.24;
+  stroke-dasharray: none;
+}
+.idle-scene .is-spoke {
+  stroke: var(--idle);
+  stroke-opacity: 0.06;
+}
+.idle-scene .is-base {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.idle-scene .is-beam {
+  fill: var(--idle);
+  stroke: var(--idle);
+  animation: idle-sweep 6s linear infinite;
+}
+.idle-scene .is-beam path {
+  stroke: none;
+}
+.idle-scene .is-beam line {
+  stroke-width: 1.6;
+  stroke-opacity: 0.8;
+}
+/* Left to right across the dome, fading in and out at the ends (6s: SWEEP_S in charts.js). */
+@keyframes idle-sweep {
+  0% {
+    transform: rotate(-180deg);
+    opacity: 0;
+  }
+  6%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(0deg);
+    opacity: 0;
+  }
+}
+.idle-scene .is-ripple {
+  fill: none;
+  stroke: var(--idle);
+  stroke-width: 2;
+  opacity: 0;
+  animation: idle-ripple 1.8s ease-out both;
+}
+.idle-scene .is-ripple.late {
+  animation-delay: 0.3s;
+}
+@keyframes idle-ripple {
+  from {
+    opacity: 0.8;
+    transform: scale(0.02);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+.idle-scene .is-disc {
+  fill: #111317;
+  stroke: rgba(255, 255, 255, 0.2);
+}
+.idle-scene .is-halo {
+  fill: none;
+  stroke: var(--idle);
+  stroke-width: 1.5;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.idle-scene .is-art {
+  opacity: 0.55;
+}
+.idle-scene .is-name {
+  fill: var(--text-2);
+  font: 600 10.5px var(--font);
+  opacity: 0;
+}
+.idle-scene.is-scan .is-halo,
+.idle-scene.is-warn .is-halo {
+  animation: idle-halo 6s linear infinite;
+}
+.idle-scene.is-scan .is-art,
+.idle-scene.is-warn .is-art {
+  animation: idle-lit 6s linear infinite;
+}
+.idle-scene.is-scan .is-name,
+.idle-scene.is-warn .is-name {
+  animation: idle-name 6s linear infinite;
+}
+@keyframes idle-halo {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  35%,
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+@keyframes idle-lit {
+  0% {
+    opacity: 1;
+  }
+  40%,
+  100% {
+    opacity: 0.55;
+  }
+}
+@keyframes idle-name {
+  0%,
+  22% {
+    opacity: 1;
+  }
+  36%,
+  100% {
+    opacity: 0;
+  }
+}
+.idle-scene.is-paused .is-art {
+  opacity: 0.35;
+  filter: grayscale(0.8);
+}
+.idle-scene .is-core {
+  fill: var(--idle);
+}
+.idle-scene .is-core-halo {
+  fill: var(--idle);
+  opacity: 0.2;
+  animation: idle-breathe 2.6s ease-in-out infinite;
+}
+@keyframes idle-breathe {
+  50% {
+    opacity: 0.04;
+    transform: scale(1.4);
+  }
+}
+.idle-scene .is-chip rect {
+  fill: rgba(110, 168, 255, 0.08);
+  stroke: rgba(110, 168, 255, 0.3);
+  animation: idle-fade 3.2s ease-in-out infinite;
+}
+.idle-scene .is-chip text {
+  fill: var(--blue);
+  font: 650 12px var(--font);
+}
+@keyframes idle-fade {
+  50% {
+    opacity: 0.45;
+  }
+}
+.idle-scene .is-reward .is-disc {
+  stroke: rgba(255, 211, 106, 0.55);
+  stroke-width: 1.5;
+}
+.idle-scene .is-shine {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2.5;
+  opacity: 0;
+  animation: idle-shine 4s linear infinite;
+}
+@keyframes idle-shine {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  5% {
+    opacity: 0.95;
+  }
+  20% {
+    opacity: 0;
+  }
+}
+.idle-scene .is-trophy {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Still, the names stay up rather than coming and going with the beam. */
+@media (prefers-reduced-motion: reduce) {
+  .idle-scene .is-name {
+    opacity: 1;
+  }
+  .idle-scene .is-beam {
+    display: none;
+  }
+}
+.progress-chart.resume .projection {
+  opacity: 0.55;
+}
 
 .legend {
   flex: 1;
@@ -1791,6 +2140,13 @@ span.img-missing {
   border-radius: 3px;
   margin-right: 6px;
   vertical-align: -1px;
+}
+.legend i.legend-check {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--teal);
+  border-radius: 50%;
+  background: none;
 }
 
 .health-grid {

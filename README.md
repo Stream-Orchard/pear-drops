@@ -41,7 +41,7 @@ Pear Drops updates itself: Settings › Updates shows when there's a new version
 
 ## Features
 
-- **Live dashboard:** the drop being farmed, a progress ring and ETAs, a credited-minutes chart with a forecast to each reward, a live monitor of watch events vs credits, and session stats. It fits a maximized window without scrolling.
+- **Live dashboard:** the drop being farmed, a progress ring and ETAs, a credited-minutes chart with a forecast to each reward, a live monitor of watch events vs credits, and session stats. With nothing playing, the chart shows why: what resuming would bring, a radar over the drops still to go while it waits for a live channel, or the rewards collected once everything's done. Each check with Kick pulses through the dashboard. It fits a maximized window without scrolling.
 - **Drop queue:** every active emote/badge campaign grouped by category, with live stream counts and a bar of minutes watched with each reward's icon where it unlocks. Drag to reorder, or switch categories off. Or let **Smart order** sort it: what runs out of time first, with drops that are rarely live caught while they're on (it learns how often each category has a stream over the past week; Settings › Farming sets how much that counts and how readily it switches).
 - **Done:** finished drops, and missed ones that ended with rewards left, in their own tab. Each drop's details, your last known progress and its artwork are saved on this computer, so they stay after Kick removes them. A drop Kick lists again with a new end date goes back into the queue.
 - **Recovers by itself:**

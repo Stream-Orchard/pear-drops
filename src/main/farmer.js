@@ -96,6 +96,7 @@ class Farmer extends EventEmitter {
     this.timer = null;
     this.ticking = false;
     this.nextTickAt = null;
+    this.checkedAt = null; // when the last refresh with Kick finished
 
     this.rawCampaigns = [];
     this.campaignsAt = 0;
@@ -120,7 +121,7 @@ class Farmer extends EventEmitter {
     this.checking = null; // what a quick check with Kick is looking into
     this.notice = null; // { kind, text, slug, at }: what just happened to the stream
     this.samples = []; // { t, units: { [campaignId]: n } }
-    this.timeline = []; // { t, type: 'sent' | 'credit' | 'switch' | 'claim', ... }
+    this.timeline = []; // { t, type: 'sent' | 'credit' | 'switch' | 'claim' | 'check', ... }
     this.log = [];
     this.stats = {
       sessionStart: Date.now(),
@@ -207,6 +208,12 @@ class Farmer extends EventEmitter {
     this.changed();
   }
 
+  /** A refresh finished. With nothing playing, the live monitor shows each one as a check. */
+  checked(ok) {
+    this.checkedAt = Date.now();
+    if (!this.current) this.pushTimeline({ t: this.checkedAt, type: 'check', ok });
+  }
+
   schedule(ms) {
     clearTimeout(this.timer);
     if (!this.running) return;
@@ -223,6 +230,7 @@ class Farmer extends EventEmitter {
       if (this.store.get().autoClaim) await this.claimReady();
       if (!this.paused) await this.decide();
       this.failedTicks = 0;
+      this.checked(true);
     } catch (err) {
       if (err.status === 401 || err.status === 403) {
         // The Kick login expired or was signed out elsewhere.
@@ -235,6 +243,7 @@ class Farmer extends EventEmitter {
       this.failedTicks += 1;
       retryIn = Math.min(this.store.get().refreshSeconds * 1000, RETRY_MS * 2 ** (this.failedTicks - 1));
       this.addLog('error', `Refresh failed: ${err.message}`);
+      this.checked(false);
       this.setStatus('error', `Could not reach Kick, retrying in ${Math.round(retryIn / 1000)}s`);
       if (Date.now() - this.lastErrorRecordAt > 10 * MIN) {
         this.lastErrorRecordAt = Date.now();
@@ -1558,6 +1567,7 @@ class Farmer extends EventEmitter {
       paused: this.paused,
       ticking: this.ticking,
       nextTickAt: this.nextTickAt,
+      checkedAt: this.checkedAt,
       stallMinutes: settings.stallMinutes,
       lastCreditAt: this.lastCreditAt,
       lastAlertAt: this.lastAlertAt,

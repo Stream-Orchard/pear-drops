@@ -79,6 +79,96 @@ test('heartbeatStrip and sparkBars draw events and bars', () => {
   assert.equal(run('sparkBars([])'), '');
 });
 
+test('heartbeatStrip with nothing playing: checks as rings, the newest pulsing, and what it shows while the lanes are empty', () => {
+  const now = Date.now();
+  ctx.tl = [
+    { t: now - 20 * MIN, type: 'check', ok: true },
+    { t: now - 10 * MIN, type: 'check', ok: false },
+    { t: now - 3000, type: 'check', ok: true },
+  ];
+  const strip = run(`heartbeatStrip(tl, ${now}, { idle: 'Each check <shows> here' })`);
+  assert.equal((strip.match(/class="hb-check/g) || []).length, 3);
+  assert.equal((strip.match(/hb-check bad/g) || []).length, 1, 'a failed check is marked');
+  assert.match(strip, new RegExp(`data-key="hb-ping-${now - 3000}"`), 'the new check pulses, keyed so a redraw leaves it alone');
+  assert.match(strip, /hb-glow/);
+  assert.match(strip, /Each check &lt;shows&gt; here/, 'escaped');
+
+  // An old check doesn't pulse; with events in the lanes, the message would cover them.
+  ctx.tl = [{ t: now - 5 * MIN, type: 'check', ok: true }, { t: now - 30 * MIN, type: 'credit', delta: 2 }];
+  const busy = run(`heartbeatStrip(tl, ${now}, { idle: 'quiet' })`);
+  assert.doesNotMatch(busy, /hb-ping/);
+  assert.doesNotMatch(busy, /hb-idle/);
+  assert.match(busy, /hb-glow/);
+  assert.doesNotMatch(run(`heartbeatStrip(tl, ${now})`), /hb-glow|hb-idle/, 'not while something plays');
+});
+
+test('idleScene: a radar over the categories still to go, each lit as the beam passes', () => {
+  const now = Date.now();
+  ctx.items = [
+    { name: 'Neon <Rush>', image: 'pd-img://neon.png' },
+    { name: 'Cozy Hours', image: 'pd-img://cozy.png' },
+    { name: 'Market Hours' },
+  ];
+  const svg = run(`idleScene({ mode: 'scan', items, width: 700, height: 300, checkedAt: ${now - 2000}, now: ${now} })`);
+  assert.ok(!/NaN|Infinity|undefined/.test(svg));
+  assert.match(svg, /idle-scene is-scan/);
+  assert.match(svg, /class="is-beam"/);
+  assert.equal((svg.match(/class="is-blip"/g) || []).length, 3);
+  assert.match(svg, /Neon &lt;Rush&gt;/, 'names from Kick are escaped');
+  assert.equal((svg.match(/<image /g) || []).length, 2, 'a category without art is just its disc');
+  // Spread evenly across the dome, each lit a third further into the 6 s sweep.
+  const delays = [...svg.matchAll(/class="is-name" style="animation-delay:([\d.]+)s"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(delays, [1, 3, 5]);
+  assert.match(svg, new RegExp(`data-key="is-ripple-${now - 2000}"`), 'a new check ripples');
+
+  assert.doesNotMatch(run(`idleScene({ mode: 'scan', items, checkedAt: ${now - 60_000}, now: ${now} })`), /is-ripple/, 'an old one doesn\'t');
+  assert.match(run(`idleScene({ mode: 'scan', tone: 'warn', items })`), /is-warn/, 'amber while Kick isn\'t answering');
+  ctx.many = Array.from({ length: 20 }, (_, i) => ({ name: `Cat ${i}` }));
+  assert.equal((run(`idleScene({ mode: 'scan', items: many })`).match(/class="is-blip"/g) || []).length, 8, 'at most 8 fit');
+});
+
+test('idleScene paused: the categories still, with no beam; done: the rewards collected in an arc', () => {
+  const paused = run(`idleScene({ mode: 'paused', items, width: 600, height: 260 })`);
+  assert.match(paused, /is-paused/);
+  assert.doesNotMatch(paused, /is-beam/);
+  assert.match(paused, />Paused</);
+
+  ctx.won = Array.from({ length: 14 }, (_, i) => ({ name: `Reward ${i}`, image: i % 2 ? `pd-img://r${i}.png` : null }));
+  const done = run(`idleScene({ mode: 'done', items: won, width: 600, height: 260 })`);
+  assert.ok(!/NaN|Infinity|undefined/.test(done));
+  assert.match(done, /is-done/);
+  assert.equal((done.match(/class="is-reward"/g) || []).length, 12, 'at most 12 in the arc');
+  assert.match(done, /is-trophy/);
+  assert.match(done, /<title>Reward 1<\/title>/, 'each one says what it is');
+  assert.doesNotMatch(done, /is-beam|is-blip/);
+});
+
+test('progressChart for a paused campaign: what resuming would bring, in times from resuming', () => {
+  const now = Date.now();
+  ctx.paused = {
+    points: [[now - 30 * MIN, 40], [now, 48]],
+    rewards: [
+      { name: 'Ethan Emote', required: 60, tracked: true },
+      { name: 'Done Badge', required: 180, tracked: true },
+    ],
+    target: 180,
+    now,
+    rate: 1,
+    resume: true,
+    width: 700,
+    height: 300,
+  };
+  const svg = run('progressChart(paused)');
+  assert.match(svg, /progress-chart resume/);
+  assert.match(svg, /IF YOU RESUME/);
+  assert.doesNotMatch(svg, /FORECAST/);
+  assert.match(svg, /Ethan Emote · 12m in/);
+  assert.match(svg, /Done 2h 12m after resuming/);
+  // Further out than the chart reaches.
+  ctx.slow = { ...ctx.paused, points: [[now, 6]], target: 600, rewards: [{ name: 'Safe Badge', required: 600, tracked: true }], rate: 0.021 };
+  assert.match(run('progressChart(slow)'), /Done \d+d after resuming/);
+});
+
 test('progressRing clamps its fraction', () => {
   assert.match(run(`progressRing(2, { label: 'x' })`), /stroke-dashoffset="0"/);
 });
