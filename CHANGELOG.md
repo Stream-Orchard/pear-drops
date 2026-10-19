@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.9 (current)
+## 0.1.10 (current)
+- Updates come from the renamed StreamOrchard org, and older installs follow without a warning
+- A quick restart keeps the exact time the stream started
+
+## 0.1.9
 - Notices: leaving a stream shows a proper notice instead of a broken toggle, and each kind has its own colour
 - Activity log: clearer Kick player wording, a steady heartbeat, and why players sign back in minutes after farming stops
 - Playwright comes with npm install, so the launch tests no longer need a separate setup step
