@@ -17,8 +17,8 @@
     "test:all": "npm test && npm run test:launch",
     "test:coverage": "node scripts/coverage.js",
     "icon": "electron scripts/make-icon/main.js",
-    "dist:mac": "npx --yes electron-builder@25.1.8 --mac --publish never",
-    "dist:win": "npx --yes electron-builder@25.1.8 --win --publish never",
+    "dist:mac": "npx --yes electron-builder@26.15.3 --mac --publish never",
+    "dist:win": "npx --yes electron-builder@26.15.3 --win --publish never",
     "test:launch:visible": "PD_TEST_VISIBLE=1 node --test --test-force-exit --test-concurrency=1 --test-timeout=120000 \"test/launch/**/*.test.js\"",
     "worktree": "node scripts/worktree.js",
     "signing-cert": "node scripts/mac-signing-cert.js",
@@ -43,6 +43,14 @@
       "!src/**/*.md"
     ],
     "afterPack": "build/after-pack.js",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
     "mac": {
       "target": [
         {
@@ -93,7 +101,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@streamorchard/grapevine": "^0.8.0"
+    "@streamorchard/grapevine": "^0.9.0"
   },
   "grapevine": {
     "app": "com.streamorchard.peardrops",

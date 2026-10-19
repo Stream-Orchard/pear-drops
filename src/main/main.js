@@ -7,7 +7,8 @@ const { Watcher } = require('./watcher');
 const { Farmer } = require('./farmer');
 const { Notifier, cleanNotify, systemSettingsUrl } = require('./notifier');
 const { Store } = require('./store');
-const { setupSecurity, guardContents } = require('./security');
+const { setupSecurity, guardContents, keepOnKick, openLink } = require('./security');
+const guard = require('./guard');
 const { createDemo } = require('./demo');
 const { TrayController } = require('./tray');
 const { History } = require('./history');
@@ -21,8 +22,17 @@ const { fileKeyStore } = require('@streamorchard/grapevine');
 process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
 
-const DEMO = !!process.env.PD_DEMO;
-const HIDDEN = !!process.env.PD_TEST_HIDDEN;
+// The PD_ settings (demo mode, tests, dev copies) only count in copies run from source.
+const env = guard.devEnv({ packaged: app.isPackaged });
+// An installed copy doesn't let another program drive or inspect it.
+const debugging = guard.debugSwitch({ packaged: app.isPackaged, hasSwitch: (s) => app.commandLine.hasSwitch(s) });
+if (debugging) {
+  console.error(`Pear Drops doesn't start with --${debugging}`);
+  app.exit(1);
+}
+
+const DEMO = !!env('PD_DEMO');
+const HIDDEN = !!env('PD_TEST_HIDDEN');
 const demo = DEMO ? createDemo() : null;
 // Demo mode (and so every test) never opens the real browser: its channels are made up.
 // Links it would open are kept in global.pdOpened instead, for tests to check.
@@ -34,7 +44,7 @@ if (DEMO) {
 }
 
 // Dev copies and tests run against their own data folder.
-if (process.env.PD_DEV_DATA) app.setPath('userData', process.env.PD_DEV_DATA);
+if (env('PD_DEV_DATA')) app.setPath('userData', env('PD_DEV_DATA'));
 
 // Keep the hidden/docked player running at full speed, and let it autoplay with
 // sound (the window itself is muted, so nothing is audible).
@@ -43,9 +53,9 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // Tests: no window ever shows or takes focus, and nothing makes a sound.
-if (process.env.PD_TEST_HIDDEN) app.commandLine.appendSwitch('mute-audio');
+if (HIDDEN) app.commandLine.appendSwitch('mute-audio');
 // Video captures render at a fixed scale (e.g. 1440×900 at 1.3333 = 1920×1200 frames).
-if (process.env.PD_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', process.env.PD_SCALE);
+if (env('PD_SCALE')) app.commandLine.appendSwitch('force-device-scale-factor', env('PD_SCALE'));
 
 // The app's stored copies of drop images (see archive.js), shown like any web image.
 protocol.registerSchemesAsPrivileged([{ scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } }]);
@@ -68,6 +78,10 @@ let updates = null;
 let connected = null; // Settings › Connected apps (connected.js)
 let linkDir = null; // where it finds other apps: a folder of its own in demo mode and dev copies
 let quitting = false;
+/** One of the app's own windows (the dashboard, the tray popover), not a Kick page. */
+const isApp = (wc) => [mainWindow, tray?.window].some((w) => w && !w.isDestroyed() && w.webContents === wc);
+// What pages may ask for (guard.js), on every session: the app's own, Kick's, and any made later.
+app.on('session-created', (ses) => guard.lockSession(ses, isApp));
 // The app's own folder (package.json, CHANGELOG.md): the source folder, or inside the installed app.
 const APP_ROOT = path.join(__dirname, '..', '..');
 
@@ -210,7 +224,7 @@ function createMainWindow() {
       mainWindow.showInactive();
       return;
     }
-    if (saved.maximized && !process.env.PD_NO_MAXIMIZE) mainWindow.maximize();
+    if (saved.maximized && !env('PD_NO_MAXIMIZE')) mainWindow.maximize();
     mainWindow.show();
   });
   let saveTimer = null;
@@ -220,10 +234,6 @@ function createMainWindow() {
   };
   ['resize', 'move', 'maximize', 'unmaximize'].forEach((e) => mainWindow.on(e, saveSoon));
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
   // With tray mode on, closing or minimizing keeps farming in the menu bar / tray.
   mainWindow.on('close', (event) => {
     if (quitting || !store.get().minimizeToTray) return;
@@ -311,12 +321,9 @@ function openLogin() {
     webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true },
   });
   loginWindow.webContents.setAudioMuted(true);
-  // Sign-in providers (Google, Apple) open as pop-ups in the same Kick session.
-  loginWindow.webContents.setWindowOpenHandler(({ url }) =>
-    /^https:\/\//.test(url)
-      ? { action: 'allow', overrideBrowserWindowOptions: { parent: loginWindow, webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true } } }
-      : { action: 'deny' },
-  );
+  // Sign-in providers (Google, Apple) open as pop-ups in the same Kick session. The window and its
+  // pop-ups stay on Kick and those providers: anything else opens in the browser.
+  keepOnKick(loginWindow.webContents, () => ({ parent: loginWindow ?? undefined, webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true } }));
   loginWindow.loadURL(`${KICK}/`);
 
   // Answer Kick's cookie banner first (it can sit under the login dialog, where it
@@ -354,11 +361,17 @@ function openLogin() {
   });
 }
 
+/** Closes (or blanks) every page using the Kick login, so none of them writes it back while it's wiped. */
+function closeKickPages() {
+  if (loginWindow && !loginWindow.isDestroyed()) loginWindow.destroy();
+  watcher?.destroyViews();
+}
+
 async function signOut() {
   history?.add('logout', { text: 'Signed out' });
   store.set({ lastUser: null });
   stopFarming();
-  await api.signOut();
+  await api.signOut({ closePages: closeKickPages });
   setAuth({ status: 'signed-out', user: null });
 }
 
@@ -366,7 +379,7 @@ async function signOut() {
 // drive the story through global.pdDemo.
 function setupDemo() {
   watcher.on('watch-event', () => farmer.current && demo.api.creditWatch(farmer.current.slug));
-  let seeded = !process.env.PD_DEMO_SEED;
+  let seeded = !env('PD_DEMO_SEED');
   farmer.on('update', () => {
     if (seeded || !farmer.current) return;
     seeded = true;
@@ -475,10 +488,24 @@ function setupDemo() {
   };
 }
 
+// Who may send the app's messages (guard.js): only its own windows showing their own page. A Kick
+// page, a pop-up or a frame never gets an answer, even if it somehow had the app's preload.
+const PAGES = { main: path.join(__dirname, '..', 'renderer', 'index.html'), tray: path.join(__dirname, '..', 'renderer', 'tray.html') };
+const roleOf = guard.senderRole({ files: PAGES, windows: () => ({ main: mainWindow, tray: tray?.window }) });
+const refused = (channel, e) => console.warn(`Refused ${channel} from ${e?.senderFrame?.url || 'a page that is gone'}`);
+const mainIpc = guard.guardedIpc(ipcMain, roleOf, ['main'], refused); // everything that changes what the app does
+const appIpc = guard.guardedIpc(ipcMain, roleOf, ['main', 'tray'], refused);
+const trayIpc = guard.guardedIpc(ipcMain, roleOf, ['tray'], refused);
+
+/** A short id from a page (a campaign, a reward, a category): a string or number, or null. */
+const idArg = (v) => ((typeof v === 'string' && v.length > 0 && v.length <= 100) || Number.isSafeInteger(v) ? v : null);
+/** Where the docked player goes: four numbers, or null to hide it. */
+const rectArg = (r) => (r && typeof r === 'object' && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(r[k])) ? { x: Math.round(r.x), y: Math.round(r.y), width: Math.max(0, Math.round(r.width)), height: Math.max(0, Math.round(r.height)) } : null);
+
 function registerIpc() {
-  ipcMain.handle('app:getState', () => appState());
-  ipcMain.handle('auth:login', () => openLogin());
-  ipcMain.handle('history:view', (_e, opts = {}) => {
+  appIpc.handle('app:getState', () => appState());
+  mainIpc.handle('auth:login', () => openLogin());
+  mainIpc.handle('history:view', (_e, opts = {}) => {
     const campaignId = typeof opts.campaignId === 'string' ? opts.campaignId : null;
     const view = history.view({
       since: Number(opts.since) || 0,
@@ -498,14 +525,20 @@ function registerIpc() {
     for (const c of view.campaigns) for (const r of c.rewards) r.image = local(r.image);
     return { ...view, drops };
   });
-  ipcMain.handle('auth:logout', () => signOut());
-  ipcMain.handle('farm:pause', (_e, paused) => farmer.setPaused(!!paused));
-  ipcMain.handle('farm:refresh', () => farmer.tick({ force: true }));
-  ipcMain.handle('farm:skip', () => farmer.skip());
-  ipcMain.handle('farm:reload', () => farmer.reloadPlayer());
-  ipcMain.handle('farm:watch', (_e, slug, categoryId) => farmer.watchManual(slug, categoryId));
-  ipcMain.handle('farm:claim', (_e, campaignId, rewardId) => farmer.claimOne(campaignId, rewardId));
-  ipcMain.handle('farm:follow', async (_e, slug, on) => {
+  mainIpc.handle('auth:logout', () => signOut());
+  mainIpc.handle('farm:pause', (_e, paused) => farmer.setPaused(!!paused));
+  mainIpc.handle('farm:refresh', () => farmer.tick({ force: true }));
+  mainIpc.handle('farm:skip', () => farmer.skip());
+  mainIpc.handle('farm:reload', () => farmer.reloadPlayer());
+  mainIpc.handle('farm:watch', (_e, slug, categoryId) => {
+    if (typeof slug !== 'string' || !/^[a-z0-9_-]{1,40}$/i.test(slug) || idArg(categoryId) === null) throw new Error('Stream is no longer available');
+    return farmer.watchManual(slug, categoryId);
+  });
+  mainIpc.handle('farm:claim', (_e, campaignId, rewardId) => {
+    if (idArg(campaignId) === null || idArg(rewardId) === null) return { error: 'That drop isn’t there any more.' };
+    return farmer.claimOne(campaignId, rewardId);
+  });
+  mainIpc.handle('farm:follow', async (_e, slug, on) => {
     if (typeof slug !== 'string' || !/^[a-z0-9_-]{2,40}$/i.test(slug)) return { error: 'bad' };
     try {
       return await farmer.setFollow(slug, !!on);
@@ -513,7 +546,7 @@ function registerIpc() {
       return { error: err.status === 401 || err.status === 403 ? 'login' : 'failed', status: err.status ?? 0 };
     }
   });
-  ipcMain.handle('settings:set', (_e, patch) => {
+  mainIpc.handle('settings:set', (_e, patch) => {
     const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes', 'notify', 'notifyAway', 'backupEvery', 'backupKeep'];
     const clean = Object.fromEntries(Object.entries(patch ?? {}).filter(([k]) => allowed.includes(k)));
     if (clean.stallMinutes !== undefined) clean.stallMinutes = Math.min(120, Math.max(5, Number(clean.stallMinutes) || 20));
@@ -552,56 +585,58 @@ function registerIpc() {
     sendState();
   });
   // Settings › Connected apps.
-  ipcMain.handle('connected:set', (_e, id, on) => connected.setEnabled(String(id), !!on));
-  ipcMain.handle('connected:disconnect', (_e, id) => connected.disconnect(String(id)));
-  ipcMain.handle('connected:pair-again', (_e, id) => connected.pairAgain(String(id)));
-  ipcMain.handle('connected:test', (_e, id) => connected.test(String(id)));
-  ipcMain.handle('connected:icons', () => connected.icons());
-  ipcMain.handle('connected:activity', (_e, id, opts) => {
+  mainIpc.handle('connected:set', (_e, id, on) => connected.setEnabled(String(id).slice(0, 200), !!on));
+  mainIpc.handle('connected:disconnect', (_e, id) => connected.disconnect(String(id).slice(0, 200)));
+  mainIpc.handle('connected:pair-again', (_e, id) => connected.pairAgain(String(id).slice(0, 200)));
+  mainIpc.handle('connected:allow', (_e, id) => connected.allowPairing(String(id).slice(0, 200)));
+  mainIpc.handle('connected:test', (_e, id) => connected.test(String(id).slice(0, 200)));
+  mainIpc.handle('connected:icons', () => connected.icons());
+  mainIpc.handle('connected:activity', (_e, id, opts) => {
     const o = opts && typeof opts === 'object' ? opts : {};
-    return connected.activityPage(String(id), {
+    return connected.activityPage(String(id).slice(0, 200), {
       filter: ['all', 'out', 'in', 'problems'].includes(o.filter) ? o.filter : 'all',
       before: Number.isInteger(o.before) ? o.before : null,
       limit: Math.min(50, Math.max(1, Number(o.limit) || 10)),
     });
   });
-  ipcMain.handle('notify:test', () => notifier.test());
+  mainIpc.handle('notify:test', () => notifier.test());
   // Settings › Privacy: back up now, and show where the copies are.
-  ipcMain.handle('backups:run', async () => !!(await backups.run()));
-  ipcMain.handle('backups:show', () => {
+  mainIpc.handle('backups:run', async () => !!(await backups.run()));
+  mainIpc.handle('backups:show', () => {
     fs.mkdirSync(backups.dir, { recursive: true });
     if (DEMO) global.pdOpened.push(backups.dir);
     else shell.openPath(backups.dir);
   });
-  ipcMain.handle('notify:system-settings', () => {
+  mainIpc.handle('notify:system-settings', () => {
     const url = systemSettingsUrl();
     if (url && !DEMO) shell.openExternal(url);
     return !!url;
   });
-  ipcMain.handle('player:bounds', (_e, rect) => watcher.setBounds(rect));
-  ipcMain.handle('player:suspend', (_e, value) => watcher.setSuspended(!!value));
-  ipcMain.handle('player:devtools', () => watcher.openDevTools());
-  ipcMain.handle('open:external', (_e, url) => {
-    if (/^https:\/\/(www\.)?kick\.com\//.test(url)) shell.openExternal(url);
+  mainIpc.handle('player:bounds', (_e, rect) => watcher.setBounds(rectArg(rect)));
+  mainIpc.handle('player:suspend', (_e, value) => watcher.setSuspended(!!value));
+  mainIpc.handle('player:devtools', () => watcher.openDevTools());
+  mainIpc.handle('open:external', (_e, url) => {
+    if (typeof url !== 'string') return;
+    if (/^https:\/\/(www\.)?kick\.com\//.test(url)) openLink(url);
     // A drop's About page or a connect link, exactly as Kick gave them.
-    else if (typeof url === 'string' && farmer.knownLinks().has(url)) shell.openExternal(url);
+    else if (farmer.knownLinks().has(url)) openLink(url);
     // Links in release notes, and the release page.
-    else if (/^https:\/\/github\.com\//.test(url)) shell.openExternal(url);
+    else if (/^https:\/\/github\.com\//.test(url)) openLink(url);
   });
 
-  ipcMain.handle('update:status', () => updates.status());
-  ipcMain.handle('update:check', () => updates.check());
-  ipcMain.handle('update:install', () => updates.install());
-  ipcMain.handle('update:restart', () => updates.restart());
-  ipcMain.handle('update:settings', (_e, patch) => updates.settings(patch && typeof patch === 'object' ? patch : {}));
-  ipcMain.handle('update:use-dmg', () => updates.useDmg());
-  ipcMain.handle('update:open-page', () => shell.openExternal(updates.status().page || `https://github.com/${updates.status().repo}/releases/latest`));
+  mainIpc.handle('update:status', () => updates.status());
+  mainIpc.handle('update:check', () => updates.check());
+  mainIpc.handle('update:install', () => updates.install());
+  mainIpc.handle('update:restart', () => updates.restart());
+  mainIpc.handle('update:settings', (_e, patch) => updates.settings(patch && typeof patch === 'object' ? patch : {}));
+  mainIpc.handle('update:use-dmg', () => updates.useDmg());
+  mainIpc.handle('update:open-page', () => openLink(updates.status().page || `https://github.com/${updates.status().repo}/releases/latest`));
   // Mac: System Settings > Privacy & Security > App Management, where the app may update itself.
-  ipcMain.handle('update:privacy-settings', () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles'));
-  ipcMain.handle('update:seen', () => updates.dismissJustUpdated());
+  mainIpc.handle('update:privacy-settings', () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles'));
+  mainIpc.handle('update:seen', () => updates.dismissJustUpdated());
   // Links in release notes (already limited to https by the page).
-  ipcMain.handle('update:open-link', (_e, url) => /^https:\/\//.test(String(url)) && shell.openExternal(String(url)));
-  ipcMain.handle('update:changelog', () => {
+  mainIpc.handle('update:open-link', (_e, url) => /^https:\/\//.test(String(url)) && openLink(String(url)));
+  mainIpc.handle('update:changelog', () => {
     try {
       return parseChangelog(fs.readFileSync(path.join(APP_ROOT, 'CHANGELOG.md'), 'utf8'));
     } catch {
@@ -614,7 +649,8 @@ function setupUpdates() {
   const { execFile, spawn } = require('child_process');
   const { net } = require('electron');
   // Tests point the updater at a stand-in GitHub and a copy of the app folder.
-  const appRoot = process.env.PD_UPDATE_APP_ROOT || APP_ROOT;
+  const appRoot = env('PD_UPDATE_APP_ROOT') || APP_ROOT;
+  require('./updater').useServer({ api: env('PD_UPDATE_API'), raw: env('PD_UPDATE_RAW') });
   // The repository comes from the folder being updated, so a test's stand-in folder brings its own.
   let pkgRepo = '';
   try {
@@ -633,11 +669,11 @@ function setupUpdates() {
     pid: process.pid,
     pkgRepo,
     // A git checkout or a dev copy only checks: installing would overwrite the work in progress.
-    devCopy: !app.isPackaged && !process.env.PD_UPDATE_APP_ROOT && (fs.existsSync(path.join(APP_ROOT, '.git')) || !!process.env.PD_DEV_DATA),
+    devCopy: !app.isPackaged && !env('PD_UPDATE_APP_ROOT') && (fs.existsSync(path.join(APP_ROOT, '.git')) || !!env('PD_DEV_DATA')),
     fetch: (url, opts) => net.fetch(url, opts),
     runTool: (cmd, args) => new Promise((res, rej) => execFile(cmd, args, { maxBuffer: 1 << 20 }, (e, out, err) => (e ? rej(e) : res(`${out}\n${err}`)))),
     spawn: (cmd, args) => spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref(),
-    openExternal: (url) => shell.openExternal(url),
+    openExternal: (url) => openLink(url),
     openPath: (file) => shell.openPath(file),
     quit: () => app.quit(),
     relaunch: () => {
@@ -646,7 +682,7 @@ function setupUpdates() {
     },
   }).load();
   updates.on('status', (status) => sendTo(mainWindow, 'update:status', status));
-  if (!HIDDEN || process.env.PD_UPDATE_API) updates.start();
+  if (!HIDDEN || env('PD_UPDATE_API')) updates.start();
 }
 
 // Windows only shows desktop notifications for an app with an ID, the installer's appId.
@@ -659,6 +695,7 @@ if (process.platform === 'win32') {
 }
 
 app.whenReady().then(async () => {
+  for (const ses of [session.defaultSession, session.fromPartition(PARTITION)]) guard.lockSession(ses, isApp);
   session.fromPartition(PARTITION).setUserAgent(app.userAgentFallback);
   if (HIDDEN && process.platform === 'darwin') app.dock.hide();
   if (process.platform === 'darwin' && !HIDDEN) {
@@ -672,16 +709,16 @@ app.whenReady().then(async () => {
   const kickSession = session.fromPartition(PARTITION);
   app.on('web-contents-created', (_event, contents) => {
     if (contents.session === kickSession || HIDDEN) contents.setAudioMuted(true);
-    guardContents(contents);
+    guardContents(contents, { isApp });
   });
 
   store = new Store();
   db = openDb(app.getPath('userData'), { log: (text) => console.warn(text) });
   // Once, from an older version's files.
   const imported = db.importFiles(app.getPath('userData'));
-  security = await setupSecurity(() => store.get().forgetOnQuit, db.slot('security'));
+  security = await setupSecurity(() => store.get().forgetOnQuit, db.slot('security'), { closePages: closeKickPages });
   api = DEMO ? demo.api : new KickApi();
-  if (DEMO) demo.installStage(session.fromPartition(PARTITION), { eventSeconds: Number(process.env.PD_DEMO_EVENT_SECONDS) || 120 });
+  if (DEMO) demo.installStage(session.fromPartition(PARTITION), { eventSeconds: Number(env('PD_DEMO_EVENT_SECONDS')) || 120 });
   createMainWindow();
   watcher = new Watcher(() => mainWindow, () => store.get());
   history = new History(db).load();
@@ -721,7 +758,7 @@ app.whenReady().then(async () => {
       return new Response(null, { status: 404 });
     }
   });
-  if (DEMO && process.env.PD_DEMO_SEED && history.isEmpty()) demo.seedHistoryLog(history);
+  if (DEMO && env('PD_DEMO_SEED') && history.isEmpty()) demo.seedHistoryLog(history);
   createNotifier();
   farmer = new Farmer({ api, watcher, store, history, archive, cache: db.cache });
   notifyFarming();
@@ -739,7 +776,7 @@ app.whenReady().then(async () => {
   // Connected apps, through Grapevine. Demo mode and developer copies get a folder of their own, so
   // they never see (or pair with) the apps you really use; GRAPEVINE_DIR still wins, to try one
   // with a developer copy of Stream Multiview.
-  linkDir = process.env.GRAPEVINE_DIR || (DEMO || process.env.PD_DEV_DATA ? path.join(app.getPath('userData'), 'grapevine') : null);
+  linkDir = env('GRAPEVINE_DIR') || (DEMO || env('PD_DEV_DATA') ? path.join(app.getPath('userData'), 'grapevine') : null);
   const crypt = safeStorage.isEncryptionAvailable()
     ? { encrypt: (t) => safeStorage.encryptString(t).toString('base64'), decrypt: (t) => safeStorage.decryptString(Buffer.from(t, 'base64')) }
     : {};
@@ -751,7 +788,8 @@ app.whenReady().then(async () => {
     history,
     show: showMain, // a click on Stream Multiview's farming widget
     keys: fileKeyStore(path.join(app.getPath('userData'), 'grapevine.json'), crypt),
-    place: linkDir ? { env: { ...process.env, GRAPEVINE_DIR: linkDir } } : undefined,
+    // Grapevine reads GRAPEVINE_DIR itself: an installed copy always uses the shared place.
+    place: { env: { ...process.env, GRAPEVINE_DIR: linkDir ?? '' } },
     // Demo mode: "installed" means a folder the stand-in makes, not the real Stream Multiview.
     appDataDir: DEMO ? path.join(app.getPath('userData'), 'demo-apps') : app.getPath('appData'),
   });
@@ -773,8 +811,9 @@ app.whenReady().then(async () => {
     farmer.changed();
   });
   // Dev copies and tests (own data folder) can reach the engine from Playwright.
-  if (process.env.PD_DEV_DATA) global.pdDebug = { api, farmer, watcher, store, connected };
+  if (env('PD_DEV_DATA')) global.pdDebug = { api, farmer, watcher, store, connected };
   tray = new TrayController({
+    ipc: trayIpc,
     preload: path.join(__dirname, '..', 'preload', 'app.js'),
     onShowMain: showMain,
     onQuit: () => app.quit(),

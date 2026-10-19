@@ -59,7 +59,8 @@ function ringIcon(fraction, tone, { size = 18, scale = 2 } = {}) {
 }
 
 class TrayController {
-  constructor({ preload, onShowMain, onQuit, onAction }) {
+  /** ipc: where its page's messages are handled (main.js passes one that only answers the popover). */
+  constructor({ preload, onShowMain, onQuit, onAction, ipc = ipcMain }) {
     this.preload = preload;
     this.onShowMain = onShowMain;
     this.onQuit = onQuit;
@@ -68,13 +69,13 @@ class TrayController {
     this.iconKey = '';
     this.hiddenAt = 0;
 
-    ipcMain.handle('tray:show-main', () => {
+    ipc.handle('tray:show-main', () => {
       this.hidePopover();
       this.onShowMain();
     });
-    ipcMain.handle('tray:quit', () => this.onQuit());
-    ipcMain.handle('tray:resize', (_e, height) => this.resize(height));
-    ipcMain.handle('tray:action', (_e, name) => onAction(name));
+    ipc.handle('tray:quit', () => this.onQuit());
+    ipc.handle('tray:resize', (_e, height) => Number.isFinite(height) && this.resize(height));
+    ipc.handle('tray:action', (_e, name) => ['pause', 'resume', 'skip', 'refresh'].includes(name) && onAction(name));
   }
 
   create() {

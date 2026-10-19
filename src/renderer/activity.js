@@ -67,6 +67,7 @@ function describeActivity(e, name) {
   const d = e.data ?? {};
   const mine = e.dir === 'out';
   const them = name;
+  if (e.kind === 'error' && e.pairing) return { title: e.method, kind: 'waiting', text: mine ? `Waits until you allow ${them} to pair` : `${them} waits until you allow the pairing there` };
   if (e.kind === 'error') return { title: e.method ?? 'Error', kind: 'error', text: `${d.message ?? 'Failed'}${Number.isInteger(d.code) ? ` (${d.code})` : ''}` };
   const words = {
     'link.hello': { request: mine ? 'Hello, with what Pear Drops speaks' : `${them} said hello`, reply: mine ? `Hello back to ${them}` : `${them} said hello back` },
@@ -230,9 +231,10 @@ function activityPane(peer) {
     const cap = (e.method ?? '').startsWith('link.') ? 'link' : (e.method ?? '').startsWith('players.') ? 'players' : 'drops';
     const meta = [e.ms != null ? millis(e.ms) : '', e.bytes ? kb(e.bytes) : ''].filter(Boolean);
     const isOpen = act.open === e.n;
-    const head = `<button class="act-row ${e.dir} k-${e.kind} ${isOpen ? 'open' : ''} ${fresh(e) ? 'fresh' : ''}" data-action="act-toggle" data-n="${e.n}">
+    const bad = e.kind === 'error' && !e.pairing;
+    const head = `<button class="act-row ${e.dir} k-${bad || e.kind !== 'error' ? e.kind : 'pairing'} ${isOpen ? 'open' : ''} ${fresh(e) ? 'fresh' : ''}" data-action="act-toggle" data-n="${e.n}">
       ${time}
-      <span class="act-dir" data-tip="${e.dir === 'out' ? `Pear Drops → ${name}` : `${name} → Pear Drops`}">${icon(e.kind === 'error' ? 'alert' : e.dir === 'out' ? 'arrowRight' : 'arrowLeft')}</span>
+      <span class="act-dir" data-tip="${e.dir === 'out' ? `Pear Drops → ${name}` : `${name} → Pear Drops`}">${icon(bad ? 'alert' : e.dir === 'out' ? 'arrowRight' : 'arrowLeft')}</span>
       <span class="act-body"><span class="act-title"><span class="act-method cap-${cap}">${esc(w.title)}</span><span class="act-kind">${esc(w.kind)}</span></span>
         <span class="act-text">${esc(w.text)}</span></span>
       <span class="act-meta">${meta.map((m) => `<span>${m}</span>`).join('')}</span>

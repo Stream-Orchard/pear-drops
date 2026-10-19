@@ -8,8 +8,21 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const API = process.env.PD_UPDATE_API || 'https://api.github.com';
-const RAW = process.env.PD_UPDATE_RAW || 'https://raw.githubusercontent.com';
+const GITHUB = { api: 'https://api.github.com', raw: 'https://raw.githubusercontent.com' };
+let API = GITHUB.api;
+let RAW = GITHUB.raw;
+let standIn = false;
+/**
+ * Tests point the updater at a stand-in GitHub on this computer (main.js only lets copies run from
+ * source do it). Only then does a download from http://127.0.0.1 count.
+ */
+function useServer({ api, raw } = {}) {
+  API = api || GITHUB.api;
+  RAW = raw || GITHUB.raw;
+  standIn = API !== GITHUB.api || RAW !== GITHUB.raw;
+}
+/** Where an update may come from: https, or the stand-in GitHub's own http://127.0.0.1. */
+const downloadable = (url) => /^https:\/\//.test(url) || (standIn && /^http:\/\/127\.0\.0\.1[:/]/.test(url));
 const REPO_RE = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
 const UA = 'Pear-Drops-Updater';
 
@@ -47,7 +60,7 @@ async function latestInfo(repo, fetchFn) {
         published: d.published_at || null,
         assets: (Array.isArray(d.assets) ? d.assets : [])
           .map((x) => ({ name: String(x.name || ''), url: String(x.browser_download_url || ''), size: +x.size || 0 }))
-          .filter((x) => /^https:\/\//.test(x.url) || /^http:\/\/127\.0\.0\.1/.test(x.url)),
+          .filter((x) => downloadable(x.url)),
       };
     }
   } else if (r.status !== 404) throw new Error(`http ${r.status}`);
@@ -304,6 +317,7 @@ xattr -dr com.apple.quarantine "$app" 2>/dev/null
  * when the size is known.
  */
 async function downloadTo(fetchFn, url, file, onProgress = () => {}) {
+  if (!downloadable(String(url))) throw new Error('download: not https');
   const r = await fetchFn(url, { headers: { 'User-Agent': UA } });
   if (!r.ok || !r.body) throw new Error(`download ${r.status}`);
   const total = Number(r.headers.get('content-length')) || 0;
@@ -328,7 +342,7 @@ async function downloadTo(fetchFn, url, file, onProgress = () => {}) {
 }
 
 module.exports = {
-  API,
+  useServer,
   REPO_RE,
   UA,
   compareVersions,

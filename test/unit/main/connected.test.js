@@ -24,8 +24,11 @@ const until = async (fn, what, ms = 5000) => {
 
 let shown = 0;
 
-/** A Connected with a fake farmer and settings, linked through its own folder. */
-function setup({ enabled = false, status = 'farming', signedIn = true } = {}) {
+/**
+ * A Connected with a fake farmer and settings, linked through its own folder. allow: Stream Multiview
+ * may pair at once, as if Allow had been pressed (pairing waits for it otherwise).
+ */
+function setup({ enabled = false, status = 'farming', signedIn = true, allow = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-link-'));
   let settings = { connectedApps: { [MV]: { enabled } } };
   const store = { get: () => settings, set: (patch) => (settings = { ...settings, ...patch }) };
@@ -39,6 +42,7 @@ function setup({ enabled = false, status = 'farming', signedIn = true } = {}) {
   const place = { env: { ...process.env, GRAPEVINE_DIR: dir } };
   const c = new Connected({ store, farmer, auth: () => auth, version: '0.1.5', history, keys: memoryKeyStore(), place, appDataDir: dir, show: () => (shown += 1) });
   c.link.timing = { ...c.link.timing, pollMs: 40, backoffMs: [20, 40, 80] };
+  if (allow) c.link.allowPairing(MV);
   c.store = store;
   return { c, dir, store, farmer, auth, history, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
@@ -290,6 +294,54 @@ test('Activity: every message each way, the link coming and going, a test, and w
     await c.stop();
     cleanup();
   }
+});
+
+test('a first pairing waits for Allow: the card asks, the refused hellos are no problem, and Allow pairs and is in History', async () => {
+  const { c, dir, history, cleanup } = setup({ enabled: true, allow: false });
+  const peer = await standInPeer({ as: MV, dir, version: '0.4.0', provides: { players: '1.0' }, uses: { 'drops.farming': '1.0' }, timing: { pollMs: 40, backoffMs: [20, 40, 80] } });
+  try {
+    await c.sync();
+    await until(() => c.state().peers[0].status === 'confirm', 'asks to pair');
+    const [p] = c.state().peers;
+    assert.deepEqual(p.asking, { name: 'Stream Multiview (stand-in)', version: '0.4.0' }, 'as it says in its hello');
+    assert.equal(c.link.keys.get(MV), null, 'nothing kept yet');
+    // The hellos while it waits (here Pear Drops says hello, and stops short of pairing): not problems.
+    await until(() => c.activityPage(MV, { limit: 50 }).entries.some((e) => e.method === 'link.hello'), 'a hello');
+    assert.equal(c.activityPage(MV).problems, 0);
+    assert.equal(c.activityPage(MV, { filter: 'problems' }).total, 0);
+    assert.equal(c.activityPage(MV).totals.problems, 0);
+    // Allow: it pairs on its next try.
+    c.allowPairing(MV);
+    await until(() => c.state().peers[0].status === 'connected', 'connected');
+    assert.ok(c.link.keys.get(MV));
+    assert.equal(history.events.find((e) => e.type === 'link-allowed')?.text, 'Allowed Stream Multiview to pair');
+    assert.ok(c.activityPage(MV, { limit: 50 }).entries.some((e) => e.text === 'Allowed Stream Multiview to pair'));
+    // Only the apps it knows, and never itself.
+    c.allowPairing('com.someone.else');
+    c.allowPairing(APP_ID);
+    assert.equal(history.events.filter((e) => e.type === 'link-allowed').length, 1);
+  } finally {
+    await peer.stop();
+    await c.stop();
+    cleanup();
+  }
+});
+
+test('a refused hello is only a pairing wait while an app waits for Allow', () => {
+  const { c, cleanup } = setup();
+  const hello = { kind: 'error', method: 'link.hello', app: MV, dir: 'out' };
+  const peers = (list) => (c.link.peers = () => list);
+  peers([{ id: MV, status: 'waiting', reason: null }]);
+  assert.equal(c.waitsForAllow(hello), false, 'a real refusal');
+  peers([{ id: MV, status: 'confirm' }]);
+  assert.equal(c.waitsForAllow(hello), true, 'it asks to pair here');
+  assert.equal(c.waitsForAllow({ ...hello, app: null }), true, 'before its hello names it');
+  assert.equal(c.waitsForAllow({ ...hello, app: 'com.someone.else' }), false, 'another app');
+  peers([{ id: MV, status: 'waiting', reason: 'confirm-there' }]);
+  assert.equal(c.waitsForAllow({ ...hello, dir: 'in' }), true, 'waiting for Allow there');
+  assert.equal(c.waitsForAllow({ ...hello, method: 'players.get' }), false, 'only hellos');
+  assert.equal(c.waitsForAllow({ ...hello, kind: 'reply' }), false, 'only refusals');
+  cleanup();
 });
 
 test('Disconnect forgets the pairing on both sides and switches it off; the last switch off stops listening', async () => {

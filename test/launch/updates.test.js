@@ -84,3 +84,38 @@ test('installing copies the new version into the app folder and offers a restart
   assert.match(await a.win.textContent('.tb-update'), /Update ready/);
   await a.win.screenshot({ path: path.join(os.tmpdir(), 'pd-updates-ready.png') });
 });
+
+test('updates from a repository other than the one the app was built from carry a warning, and one click goes back', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-approot-'));
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ ...PKG, updateRepo: 'pearorchard/pear-drops' }));
+  const b = await launchApp({
+    size: { width: 1512, height: 944 },
+    files: { 'updates.json': { seenVersion: require('../../package.json').version, auto: false, repo: REPO } },
+    env: { PD_UPDATE_API: gh.url, PD_UPDATE_APP_ROOT: root },
+  });
+  try {
+    await b.farming();
+    await b.win.click('button.icon-only[data-action="settings"]');
+    await b.win.click('[data-action="settings-tab"][data-id="updates"]');
+    await until(b.win, () => document.querySelector('.upd-warn'), 'the warning');
+    assert.match(await b.win.textContent('.upd-warn'), /isn’t Pear Drops’ own repository\. The app installs whatever it releases/);
+    const [content, box] = await b.win.evaluate(() => {
+      const p = document.querySelector('.settings-pane');
+      return [p.scrollHeight, p.clientHeight];
+    });
+    assert.ok(content <= box + 1, `the Updates tab needs ${content - box}px of scrolling`);
+    await b.win.screenshot({ path: path.join(os.tmpdir(), 'pd-updates-elsewhere.png') });
+    await b.win.click('.upd-warn [data-action="update-home-repo"]');
+    await until(b.win, () => !document.querySelector('.upd-warn'), 'the warning to go');
+    assert.equal(await b.win.inputValue('.upd-repo input'), 'pearorchard/pear-drops');
+    // The same repository, written differently, is no stranger.
+    await b.win.fill('.upd-repo input', 'PearOrchard/Pear-Drops');
+    await b.win.click('.upd-repo .btn');
+    await b.win.waitForTimeout(300);
+    assert.equal(await b.win.locator('.upd-warn').count(), 0);
+    assert.deepEqual(b.errors, []);
+  } finally {
+    await b.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

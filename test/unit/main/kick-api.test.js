@@ -75,3 +75,15 @@ test("eventStreams pages an event's live streams by cursor, as the category list
   assert.deepEqual(list.map((s) => s.channel.id), [1, 2, 3], 'each channel once');
   assert.deepEqual(list[0], { title: 'Stream 1', viewer_count: 500, thumbnail: { src: 'https://t/1.jpg' }, language: 'en', is_mature: false, channel: { id: 1, slug: 'ch1', username: 'Ch1', profile_pic: 'https://p/1.png' }, fromEvent: true });
 });
+
+test('signing out: the pages using the login close first, then its data, cache and saved HTTP logins go, and the cookie file is written', async () => {
+  const { wipeSession } = require('../../../src/main/kick-api');
+  const steps = [];
+  const step = (name, fail = false) => async () => {
+    steps.push(name);
+    if (fail) throw new Error(`${name} failed`);
+  };
+  const ses = { clearStorageData: step('storage'), clearCache: step('cache', true), clearAuthCache: step('auth'), cookies: { flushStore: step('flush') } };
+  await wipeSession({ ses, closePages: step('close pages', true) });
+  assert.deepEqual(steps, ['close pages', 'storage', 'cache', 'auth', 'flush'], 'in order, and one failing step doesn’t stop the rest');
+});

@@ -124,6 +124,16 @@ test('up to date, no repository, a bad repository name and errors', async () => 
   assert.equal(missing.error, 'notfound');
 });
 
+test('the status says which repository the app was built from, so the page can warn about any other', () => {
+  const { updates } = setup();
+  assert.equal(updates.status().homeRepo, 'me/pear-drops');
+  assert.equal(updates.status().repo, 'me/pear-drops');
+  assert.equal(updates.settings({ repo: 'stranger/pear-drops' }).repo, 'stranger/pear-drops');
+  assert.equal(updates.status().homeRepo, 'me/pear-drops', 'still the one it was built from');
+  assert.equal(setup({ pkgRepo: '' }).updates.status().homeRepo, '');
+  assert.equal(setup({ pkgRepo: 'not a repo' }).updates.status().homeRepo, '');
+});
+
 test('an update that isn’t this app is refused', async () => {
   const { updates, appRoot } = setup({ release: RELEASE, files: { 'package.json': JSON.stringify({ name: 'other', version: '9.0.0' }), 'src/main/main.js': 'x', 'src/renderer/index.html': 'y' } });
   const s = await updates.check();

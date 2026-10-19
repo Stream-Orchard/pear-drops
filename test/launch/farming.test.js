@@ -470,6 +470,40 @@ test('links leave for the browser, but demo mode only records them: it never ope
   assert.deepEqual(opened.filter((u) => /player\.kick\.com|\/popout\//.test(u)), []);
 });
 
+test('a Kick page opens nothing by itself: no other app, no pop-up without a click; the app’s own window never leaves', async () => {
+  const main = (fn, arg) => a.app.evaluate(fn, arg);
+  const opened = () => main(() => global.pdOpened.slice());
+  const before = (await opened()).length;
+  const kick = (js) => main((_e, code) => global.pdDebug.watcher.view.webContents.executeJavaScript(code).catch(() => {}), js);
+  // Another app's protocol, by a link or a pop-up, and a website pop-up with no click: nothing.
+  await kick("location.href = 'search-ms:query=pear'");
+  await kick("window.open('ms-msdt:/id PCWDiagnostic')");
+  await kick("window.open('https://ads.example.com/popup'); 1");
+  await a.win.waitForTimeout(400);
+  assert.deepEqual((await opened()).slice(before), [], 'nothing opened');
+  assert.ok(await main(() => global.pdDebug.farmer.current?.slug), 'still watching');
+  // Just after a click in the page, a link opens in the browser.
+  await main(() => {
+    const wc = global.pdDebug.watcher.view.webContents;
+    wc.sendInputEvent({ type: 'mouseDown', x: 5, y: 5, button: 'left', clickCount: 1 });
+    wc.sendInputEvent({ type: 'mouseUp', x: 5, y: 5, button: 'left', clickCount: 1 });
+  });
+  await a.win.waitForTimeout(100);
+  await kick("window.open('https://example.com/clicked'); 1");
+  await a.win.waitForTimeout(300);
+  assert.deepEqual((await opened()).slice(before), ['https://example.com/clicked']);
+  // The dashboard is never sent to a website (which would get the app's bridge): a link goes to the browser.
+  await a.win.evaluate(() => (location.href = 'https://example.com/away'));
+  await a.win.waitForTimeout(400);
+  assert.match(a.win.url(), /^file:.*index\.html/);
+  assert.ok((await opened()).includes('https://example.com/away'));
+  // Pages get no camera, microphone or clipboard reading.
+  assert.deepEqual(
+    await a.win.evaluate(async () => Promise.all(['camera', 'microphone', 'clipboard-read', 'geolocation'].map((name) => navigator.permissions.query({ name }).then((p) => p.state)))),
+    ['denied', 'denied', 'denied', 'denied'],
+  );
+});
+
 test('a raid sends the player to another channel: it moves on to the next stream, and nothing opens in the browser', async () => {
   const main = (fn) => a.app.evaluate(fn);
   const before = await main(() => global.pdDebug.farmer.current?.slug);

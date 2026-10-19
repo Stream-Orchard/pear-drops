@@ -10,7 +10,8 @@ const MINUTES = 30; // the traffic chart's span
 const PING = 'link.ping';
 
 const blank = () => ({ sent: 0, received: 0, bytesOut: 0, bytesIn: 0, problems: 0, pings: 0, ping: null, since: null });
-const isProblem = (e) => e.kind === 'error' || e.tone === 'bad' || e.tone === 'warn';
+// A hello refused while one of the apps waits for Allow is how pairing works, not a problem.
+const isProblem = (e) => (e.kind === 'error' && !e.pairing) || e.tone === 'bad' || e.tone === 'warn';
 const FILTERS = {
   all: () => true,
   out: (e) => e.dir === 'out',
@@ -55,8 +56,11 @@ class ActivityLog {
     return e;
   }
 
-  /** One of Grapevine's messages ({ at, app, dir, kind, method, id, ms, bytes, data }). */
-  add(m) {
+  /**
+   * One of Grapevine's messages ({ at, app, dir, kind, method, id, ms, bytes, data }). pairing: it's a
+   * hello refused while an app waits for its user to allow the pairing.
+   */
+  add(m, { pairing = false } = {}) {
     const app = m.app ?? null;
     if (app) {
       const t = this.totalsOf(app);
@@ -80,7 +84,7 @@ class ActivityLog {
     }
     if (app) this.count(app, m.at, m.dir === 'out' ? 'out' : 'in');
     const { at, dir, kind, method = null, id, ms, bytes, data } = m;
-    return this.push({ at, app, dir, kind, method, id, ms, bytes, data });
+    return this.push({ at, app, dir, kind, method, id, ms, bytes, data, ...(pairing ? { pairing: true } : {}) });
   }
 
   /** The link to an app ended: its heartbeat starts again with the next connection. */

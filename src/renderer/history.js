@@ -55,6 +55,7 @@ const EVENT_KIND = {
   'link-connected': ['Linked', 'link', 'green'],
   'link-disconnected': ['Unlinked', 'link', 'muted'],
   'link-unpaired': ['Unpaired', 'link', 'amber'],
+  'link-allowed': ['Allowed', 'link', 'green'],
 };
 
 const hist = {

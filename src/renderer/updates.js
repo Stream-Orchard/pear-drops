@@ -146,6 +146,11 @@ function updatesPane() {
     ? `<div class="upd-blocked"><button class="btn sm" data-action="update-privacy">${icon('settings')} Open System Settings</button><button class="btn sm ghost" data-action="update-dmg">Use the disk image instead</button></div>`
     : '';
   const toggle = `<button class="switch ${u.auto ? 'on' : ''}" data-action="update-auto" ${u.devCopy ? 'disabled' : ''}></button>`;
+  // Updates from someone else's repository: the app installs whatever it releases.
+  const elsewhere = u.repo && u.homeRepo && u.repo.toLowerCase() !== u.homeRepo.toLowerCase();
+  const warning = elsewhere
+    ? `<div class="upd-warn">${icon('alert')}<span>This isn’t Pear Drops’ own repository. The app installs whatever it releases, so only use one you trust.</span><button class="btn sm" data-action="update-home-repo">Use ${esc(u.homeRepo)}</button></div>`
+    : '';
   const repo = `<form class="upd-repo" data-update-repo><span class="upd-gh">github.com/</span><input name="repo" value="${esc(u.repo || '')}" placeholder="owner/repository" spellcheck="false" autocomplete="off" /><button class="btn sm">Save</button></form>`;
 
   return `<div class="upd-hero ${m.tone}">
@@ -165,6 +170,7 @@ function updatesPane() {
     ${release}
     <div class="setting"><div class="text"><b>Update automatically</b><span>Downloads new versions in the background; they install when you restart.</span></div>${toggle}</div>
     <div class="setting"><div class="text"><b>GitHub repository</b><span>Where new versions come from. It must be public.</span></div>${repo}</div>
+    ${warning}
     ${release ? '' : `<h4 class="upd-h">What's new</h4>${changelogTimeline()}`}
     <p class="pane-note">Updating replaces the app, keeping the old version as a backup. Your login, settings, history and saved drops aren't touched.</p>`;
 }
@@ -221,6 +227,11 @@ const updateActions = {
     }
   },
   'update-auto': () => window.pd.updates.settings({ auto: !upd.status?.auto }).then(setUpdateStatus),
+  'update-home-repo': () =>
+    window.pd.updates.settings({ repo: upd.status?.homeRepo ?? '' }).then((s) => {
+      setUpdateStatus(s);
+      if (s.repo && s.state !== 'error') window.pd.updates.check();
+    }),
   'update-page': () => window.pd.updates.openPage(),
   'update-privacy': () => window.pd.updates.privacySettings(),
   'update-dmg': () => window.pd.updates.useDmg(),
