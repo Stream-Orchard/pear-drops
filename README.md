@@ -12,7 +12,7 @@ Game drops that need a linked game account are skipped unless you turn them on.
 
 ## Install
 
-Download the installer for your computer from the [latest release](https://github.com/Stream-Orchard/pear-drops/releases/latest), under **Assets**:
+Download the installer for your computer from the [latest release](https://github.com/StreamOrchard/pear-drops/releases/latest), under **Assets**:
 
 | Computer | File |
 |---|---|
@@ -58,7 +58,7 @@ Pear Drops updates itself: Settings › Updates shows when there's a new version
 - **Menu bar / tray:** closing or minimizing keeps it farming. The tray icon is a progress ring, and its popover shows the current drop, ETAs and quick controls.
 - **Stream and chat** dock beside the dashboard. You can collapse them, and stream sound is always muted at the window. Its header has a Follow / Following button (the same Kick calls as kick.com's own button); followed channels are watched first.
 - **Updates from GitHub** (Settings › Updates): checks the project's latest release, with its notes and a What's new timeline. Installed copies download the new installer (on a Mac, the app swaps itself in on restart); copies run from source get the new files, keeping a backup. After an update, the app shows what changed once.
-- **Connected apps** (Settings › Connected apps): links Pear Drops with [Stream Multiview](https://github.com/GlowingPear/stream-window-multiview) on the same computer, through [Grapevine](https://github.com/Stream-Orchard/grapevine). Off until you switch it on in both apps. While you farm, multiview can sign its Kick players out so they don't take the drop credit, and show what you're farming. If its signed-in players do take the credit, the banner says so. Each app's card shows its logo, what it is, where to get it, what the two share and how the link is going. **Activity** on the card shows every message between the two since Pear Drops started, in plain words: the totals each way, the heartbeat, a chart of the last 30 minutes, and each message's fields.
+- **Connected apps** (Settings › Connected apps): links Pear Drops with [Stream Multiview](https://github.com/GlowingPear/stream-window-multiview) on the same computer, through [Grapevine](https://github.com/StreamOrchard/grapevine). Off until you switch it on in both apps. While you farm, multiview can sign its Kick players out so they don't take the drop credit, and show what you're farming. If its signed-in players do take the credit, the banner says so. Each app's card shows its logo, what it is, where to get it, what the two share and how the link is going. **Activity** on the card shows every message between the two since Pear Drops started, in plain words: the totals each way, the heartbeat, a chart of the last 30 minutes, and each message's fields.
 - **Desktop notifications** (Settings › Notifications): pick which ones you want, all off to start with. They cover a drop claimed or ready to claim, a stream ending or raiding, stream problems, credit going to another stream, signing in again, everything collected or nothing live, and new drops on Kick. They can be limited to when Pear Drops isn't in front. "Send a test" checks your computer allows them, and a button opens its notification settings.
 - **Font** (Settings › App): your computer's own font on macOS and Windows, or Inter, which comes with the app and looks the same everywhere. Linux uses Inter by default.
 
@@ -145,7 +145,7 @@ The app's own pages never use system pop-ups such as `alert`, native message box
 
 ### Releases and updates
 
-The app updates from the GitHub repository in `package.json`'s `updateRepo` (or the one entered in Settings › Updates). Until one is set, Settings › Updates says so and nothing is checked.
+The app updates from the GitHub repository in `package.json`'s `updateRepo` (or the one entered in Settings › Updates). Until one is set, Settings › Updates says so and nothing is checked. When the repository moves (a rename), its old names go in `formerUpdateRepos`: installs that saved an old name follow to the new one. Releases already out reach the new name through GitHub's redirect from the old one.
 
 Pull requests never change the version or `CHANGELOG.md`. Write their titles as one line a user would understand: they become the What's new entries.
 

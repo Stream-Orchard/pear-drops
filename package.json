@@ -5,7 +5,10 @@
   "description": "Desktop farmer for Kick emote and badge drops",
   "license": "GPL-3.0-only",
   "main": "src/main/main.js",
-  "updateRepo": "Stream-Orchard/pear-drops",
+  "updateRepo": "StreamOrchard/pear-drops",
+  "formerUpdateRepos": [
+    "Stream-Orchard/pear-drops"
+  ],
   "private": true,
   "scripts": {
     "start": "node scripts/harden.js && electron .",

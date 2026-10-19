@@ -49,14 +49,20 @@ function makeZip(entries) {
 
 /**
  * Starts the stand-in: GET /repos/<repo>/releases/latest answers `release` (with the zip's
- * address filled in), GET /zip serves `zip`. -> { url, close, hits }
+ * address filled in), GET /zip serves `zip`. Names in `moved` are the repository's old ones:
+ * like GitHub after a rename, they answer 301 to /repositories/<id>/... -> { url, close, hits }
  */
-function standInGitHub({ repo, release, zip }) {
+function standInGitHub({ repo, release, zip, moved = [] }) {
   const hits = [];
   const server = http.createServer((req, res) => {
     hits.push(req.url);
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === `/repos/${repo}/releases/latest`) {
+    const old = moved.find((m) => req.url.startsWith(`/repos/${m}/`));
+    if (old) {
+      res.writeHead(301, { location: `${base}/repositories/1/${req.url.slice(`/repos/${old}/`.length)}` });
+      return res.end();
+    }
+    if (req.url === `/repos/${repo}/releases/latest` || req.url === '/repositories/1/releases/latest') {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ zipball_url: `${base}/zip`, ...release }));
     }

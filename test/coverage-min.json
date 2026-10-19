@@ -9,9 +9,10 @@
   "src/main/farmer.js": 93,
   "src/main/guard.js": 100,
   "src/main/history.js": 99,
-  "src/main/kick-api.js": 59,
+  "src/main/kick-api.js": 61,
   "src/main/notifier.js": 100,
+  "src/main/security.js": 30,
   "src/main/updater.js": 95,
-  "src/main/updates.js": 86,
+  "src/main/updates.js": 87,
   "src/main/watcher.js": 43
 }
