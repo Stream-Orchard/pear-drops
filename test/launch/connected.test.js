@@ -41,15 +41,26 @@ test('off to start with, and nothing listens; not installed shows a Download but
   assert.ok(scroll <= client, `the tab fits without scrolling (${scroll} > ${client})`);
 });
 
-test('switched on: waiting, then connected to Stream Multiview, with its players and the pairing date', async () => {
+test('switched on: waiting, then it asks to pair, Allow, and connected to Stream Multiview, with its players and the pairing date', async () => {
   await openTab();
   await a.demo((d) => d.multiview({ stop: true })); // installed, not running
   await a.win.click('.app-card [data-action="connected-toggle"]');
   await until(a.win, () => /isn’t open, or its Connect switch is off/.test(document.querySelector('.app-card')?.textContent ?? ''), 'waiting');
   assert.ok(await a.win.locator('.app-card .switch.on').count());
   assert.equal(await a.app.evaluate(() => global.pdDebug.store.get().connectedApps['com.glowingpear.streammultiview'].enabled), true);
-  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto' }));
+  // A first pairing waits for Allow: another program can't pair as Stream Multiview by itself. It's
+  // running, so it asks even when its folder isn't there (a test or dev folder).
+  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto', installed: false }));
+  await until(a.win, () => document.querySelector('.app-card.confirm'), 'it asks to pair', 15000);
+  assert.match(await card(), /Asks to pair/);
+  assert.doesNotMatch(await card(), /Not installed/);
+  assert.match(await a.win.textContent('.app-foot .app-line'), /^Stream Multiview \(stand-in\) 0\.4\.0 asks to pair\. Allow it only if you just switched on Connect in Stream Multiview\.$/);
+  assert.equal(await a.app.evaluate((_e, id) => global.pdDebug.connected.link.keys.get(id), MV), null, 'nothing paired yet');
+  assert.equal(await a.win.evaluate(() => window.pd.connected.activity('com.glowingpear.streammultiview', { limit: 50 }).then((p) => p.problems)), 0, 'waiting for Allow is no problem');
+  await a.win.click('.app-card [data-action="connected-allow"].primary');
   await until(a.win, () => document.querySelector('.app-card.connected'), 'connected', 15000);
+  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto' })); // installed again
+  await until(a.win, () => document.querySelector('.app-card.connected'), 'still paired', 15000);
   await until(a.win, () => /signed out while you farm/.test(document.querySelector('.app-card').textContent), 'its players');
   assert.match(await card(), /Connected · 0\.4\.0/);
   assert.match(await card(), /Paired (\d+ \w+|\w+ \d+)/, 'the date in the computer’s own order (18 Oct, Oct 18)');
@@ -177,5 +188,5 @@ test('Disconnect forgets the pairing and switches it off; History has the link c
   assert.equal(await a.app.evaluate(() => global.pdDebug.connected.state().running), false);
   assert.equal(await a.app.evaluate((_e, id) => global.pdDebug.connected.link.keys.get(id), MV), null);
   const types = await a.win.evaluate(async () => (await window.pd.history({ range: 'all' })).events.map((e) => e.type));
-  for (const t of ['link-connected', 'link-unpaired']) assert.ok(types.includes(t), t);
+  for (const t of ['link-allowed', 'link-connected', 'link-unpaired']) assert.ok(types.includes(t), t);
 });
