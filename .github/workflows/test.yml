@@ -4,14 +4,34 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Mondays: the dependency audit alone, for holes found since the last change.
+  schedule:
+    - cron: '0 6 * * 1'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Known holes in the packages the app installs (npm audit), at moderate or worse.
+  audit:
+    name: Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=moderate
+
   unit:
+    if: github.event_name != 'schedule'
     name: Unit (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -31,6 +51,7 @@ jobs:
       - run: npm test
 
   app:
+    if: github.event_name != 'schedule'
     name: App and coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20

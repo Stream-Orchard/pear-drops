@@ -1,0 +1,14 @@
+# Pull requests for dependency updates: the app's npm packages (Electron first of all: an old one stops
+# getting security fixes) and the GitHub Actions the workflows use. Weekly, a few at a time.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
