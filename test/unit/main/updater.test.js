@@ -139,6 +139,27 @@ test('latestInfo reads the newest release, its notes and installers', async () =
   assert.deepEqual(info.assets.map((a) => a.name), ['a.dmg'], 'only https downloads');
 });
 
+test('a download from this computer (http://127.0.0.1) only counts with a stand-in GitHub', async () => {
+  const release = (url) => fakeFetch([['/releases/latest', reply(200, { tag_name: 'v0.2.0', assets: [{ name: 'local.exe', browser_download_url: url, size: 3 }] })]]);
+  const seen = [];
+  const recording = async (url, opts) => (seen.push(url), release('http://127.0.0.1:9/local.exe')(url, opts));
+  // The real GitHub: a local download is a sign something is wrong.
+  assert.deepEqual((await u.latestInfo('me/pear-drops', release('http://127.0.0.1:9/local.exe'))).assets, []);
+  await assert.rejects(u.downloadTo(async () => assert.fail('never fetched'), 'http://127.0.0.1:9/local.exe', path.join(os.tmpdir(), 'pd-never')), /not https/);
+  await assert.rejects(u.downloadTo(async () => assert.fail('never fetched'), 'file:///etc/passwd', path.join(os.tmpdir(), 'pd-never')), /not https/);
+  try {
+    u.useServer({ api: 'http://127.0.0.1:9' });
+    const info = await u.latestInfo('me/pear-drops', recording);
+    assert.deepEqual(info.assets.map((a) => a.name), ['local.exe']);
+    assert.match(seen[0], /^http:\/\/127\.0\.0\.1:9\/repos\/me\/pear-drops\/releases\/latest$/);
+    // Still only this computer, not any http address.
+    assert.deepEqual((await u.latestInfo('me/pear-drops', release('http://example.com/a.exe'))).assets, []);
+  } finally {
+    u.useServer();
+  }
+  assert.deepEqual((await u.latestInfo('me/pear-drops', release('http://127.0.0.1:9/local.exe'))).assets, [], 'back to the real GitHub');
+});
+
 test('latestInfo falls back to package.json on the main branch, and reports missing repositories', async () => {
   const info = await u.latestInfo('me/pear-drops', fakeFetch([['/repos/me/pear-drops/releases', reply(404, {})], ['/package.json', reply(200, { version: '0.1.5' })], ['/repos/me/pear-drops', reply(200, { default_branch: 'main' })]]));
   assert.equal(info.version, '0.1.5');
@@ -241,5 +262,5 @@ test('downloadTo saves a download with progress', async () => {
   const file = await u.downloadTo(fetchFn, 'https://x/a', path.join(dir, 'a.bin'), (p) => seen.push(+p.toFixed(2)));
   assert.equal(fs.readFileSync(file, 'utf8'), 'abcdefg');
   assert.deepEqual(seen, [0.43, 1]);
-  await assert.rejects(u.downloadTo(async () => ({ ok: false, status: 404 }), 'x', path.join(dir, 'b')), /download 404/);
+  await assert.rejects(u.downloadTo(async () => ({ ok: false, status: 404 }), 'https://x/b', path.join(dir, 'b')), /download 404/);
 });
