@@ -17,7 +17,7 @@ const binary = (buf) => {
   return { ok: true, status: 200, headers: { get: () => String(buf.length) }, body: { getReader: () => ({ read: async () => (sent ? { done: true } : ((sent = true), { done: false, value: buf })) }) } };
 };
 
-function setup({ release, installed = false, platform = 'linux', devCopy = false, pkgRepo = 'me/pear-drops', saved, files } = {}) {
+function setup({ release, installed = false, platform = 'linux', devCopy = false, pkgRepo = 'me/pear-drops', formerRepos, saved, files } = {}) {
   const appRoot = tmp('pd-app-');
   fs.writeFileSync(path.join(appRoot, 'package.json'), JSON.stringify(PKG));
   const dataDir = tmp('pd-data-');
@@ -52,6 +52,7 @@ function setup({ release, installed = false, platform = 'linux', devCopy = false
     execPath: '/usr/bin/pear-drops',
     pid: 1,
     pkgRepo,
+    formerRepos,
     devCopy,
     fetch,
     runTool: async () => '',
@@ -132,6 +133,27 @@ test('the status says which repository the app was built from, so the page can w
   assert.equal(updates.status().homeRepo, 'me/pear-drops', 'still the one it was built from');
   assert.equal(setup({ pkgRepo: '' }).updates.status().homeRepo, '');
   assert.equal(setup({ pkgRepo: 'not a repo' }).updates.status().homeRepo, '');
+});
+
+test('only a repository that was picked is saved, so the home one can move', () => {
+  const { updates, db } = setup();
+  assert.equal(updates.status().repo, 'me/pear-drops');
+  assert.equal('repo' in db.get('updates'), false, 'the home repository isn’t saved');
+  updates.settings({ repo: 'stranger/pear-drops' });
+  assert.equal(db.get('updates').repo, 'stranger/pear-drops');
+  updates.settings({ repo: 'Me/Pear-Drops' });
+  assert.equal('repo' in db.get('updates'), false, 'back home, written differently');
+  assert.equal(setup({ saved: { repo: 'stranger/pear-drops' } }).updates.status().repo, 'stranger/pear-drops', 'a picked one stays');
+});
+
+test('a repository saved under one of the app’s former names follows it to the new one', () => {
+  const formerRepos = ['Me-Old/pear-drops'];
+  const { updates, db } = setup({ formerRepos, saved: { repo: 'me-old/pear-drops', auto: false } });
+  assert.equal(updates.status().repo, 'me/pear-drops');
+  assert.equal(updates.status().homeRepo, 'me/pear-drops', 'so no warning');
+  assert.equal(updates.status().auto, false, 'the rest is kept');
+  assert.equal('repo' in db.get('updates'), false);
+  assert.equal(setup({ formerRepos, saved: { repo: 'stranger/pear-drops' } }).updates.status().repo, 'stranger/pear-drops', 'any other stays');
 });
 
 test('an update that isn’t this app is refused', async () => {

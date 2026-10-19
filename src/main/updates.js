@@ -21,11 +21,15 @@ function parseChangelog(text) {
   return out;
 }
 
+/** GitHub names are the same whatever their case. */
+const sameRepo = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
 class Updates extends EventEmitter {
   /**
    * deps: version, installed (a packaged app), platform, appRoot, dataDir, saved (where its
    * settings are kept: { load(), save(value) }, a db.js slot), execPath, pid,
-   * pkgRepo, devCopy (a git checkout or dev copy: check only, never install), and the
+   * pkgRepo, formerRepos (the names pkgRepo had before, which installs may have saved as
+   * their repository), devCopy (a git checkout or dev copy: check only, never install), and the
    * side effects: fetch, runTool, spawn, openExternal, openPath, quit, relaunch, tempDir,
    * downloadsDir.
    */
@@ -44,8 +48,10 @@ class Updates extends EventEmitter {
       saved = this.d.saved.load() || {};
     } catch {}
     const ok = (r) => updater.REPO_RE.test(r || '');
+    // A repository saved under one of the app's former names is its home one, moved: it follows.
+    const moved = (this.d.formerRepos || []).some((r) => sameRepo(r, saved.repo));
     this.cfg = {
-      repo: ok(saved.repo) ? saved.repo : ok(this.d.pkgRepo) ? this.d.pkgRepo : '',
+      repo: ok(saved.repo) && !moved ? saved.repo : this.homeRepo(),
       auto: saved.auto !== false,
       lastCheck: +saved.lastCheck || 0,
       seenVersion: saved.seenVersion ?? null,
@@ -57,9 +63,16 @@ class Updates extends EventEmitter {
     return this;
   }
 
+  /** The repository this copy was built from ('' if none). */
+  homeRepo() {
+    return updater.REPO_RE.test(this.d.pkgRepo || '') ? this.d.pkgRepo : '';
+  }
+
+  /** Saves the settings; the repository only if it was picked, so the home one can move. */
   save() {
+    const { repo, ...rest } = this.cfg;
     try {
-      this.d.saved.save(this.cfg);
+      this.d.saved.save(sameRepo(repo, this.homeRepo()) ? rest : this.cfg);
     } catch {}
   }
 
@@ -69,7 +82,7 @@ class Updates extends EventEmitter {
       current: this.d.version,
       repo: this.cfg.repo,
       // The repository this copy was built from: updates from any other one get a warning.
-      homeRepo: updater.REPO_RE.test(this.d.pkgRepo || '') ? this.d.pkgRepo : '',
+      homeRepo: this.homeRepo(),
       auto: this.cfg.auto,
       lastCheck: this.cfg.lastCheck,
       devCopy: !!this.d.devCopy,

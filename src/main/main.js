@@ -653,8 +653,11 @@ function setupUpdates() {
   require('./updater').useServer({ api: env('PD_UPDATE_API'), raw: env('PD_UPDATE_RAW') });
   // The repository comes from the folder being updated, so a test's stand-in folder brings its own.
   let pkgRepo = '';
+  let formerRepos = [];
   try {
-    pkgRepo = String(require(path.join(appRoot, 'package.json')).updateRepo || '');
+    const pkg = require(path.join(appRoot, 'package.json'));
+    pkgRepo = String(pkg.updateRepo || '');
+    if (Array.isArray(pkg.formerUpdateRepos)) formerRepos = pkg.formerUpdateRepos.map(String);
   } catch {}
   updates = new Updates({
     version: app.getVersion(),
@@ -668,6 +671,7 @@ function setupUpdates() {
     execPath: process.execPath,
     pid: process.pid,
     pkgRepo,
+    formerRepos,
     // A git checkout or a dev copy only checks: installing would overwrite the work in progress.
     devCopy: !app.isPackaged && !env('PD_UPDATE_APP_ROOT') && (fs.existsSync(path.join(APP_ROOT, '.git')) || !!env('PD_DEV_DATA')),
     fetch: (url, opts) => net.fetch(url, opts),

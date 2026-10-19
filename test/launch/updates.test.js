@@ -9,6 +9,7 @@ const { launchApp, until, readDb } = require('./app');
 const { makeZip, standInGitHub } = require('./github');
 
 const REPO = 'pearfarmer/pear-drops';
+const OLD_REPO = 'pear-farmer/pear-drops'; // its name before a rename
 const PKG = { name: 'pear-drops', version: '0.1.0', main: 'src/main/main.js' };
 let gh;
 let a;
@@ -24,6 +25,7 @@ test.before(async () => {
   ]);
   gh = await standInGitHub({
     repo: REPO,
+    moved: [OLD_REPO],
     zip,
     release: {
       tag_name: 'v0.2.0',
@@ -113,6 +115,52 @@ test('updates from a repository other than the one the app was built from carry 
     await b.win.click('.upd-repo .btn');
     await b.win.waitForTimeout(300);
     assert.equal(await b.win.locator('.upd-warn').count(), 0);
+    assert.deepEqual(b.errors, []);
+  } finally {
+    await b.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('after a rename: a saved old name follows the app to the new one, and copies built with the old name reach it through the redirect', async () => {
+  const seen = require('../../package.json').version;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-approot-'));
+  // A newer build knows the old name; the install saved it on an earlier start.
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ ...PKG, updateRepo: REPO, formerUpdateRepos: [OLD_REPO] }));
+  let b = await launchApp({
+    size: { width: 1512, height: 944 },
+    files: { 'updates.json': { seenVersion: seen, auto: false, repo: OLD_REPO } },
+    env: { PD_UPDATE_API: gh.url, PD_UPDATE_APP_ROOT: root },
+  });
+  try {
+    await b.farming();
+    await b.win.click('button.icon-only[data-action="settings"]');
+    await b.win.click('[data-action="settings-tab"][data-id="updates"]');
+    await until(b.win, () => document.querySelector('.upd-repo input'), 'the Updates pane');
+    await b.win.screenshot({ path: path.join(os.tmpdir(), 'pd-updates-renamed.png') });
+    assert.equal(await b.win.inputValue('.upd-repo input'), REPO);
+    assert.equal(await b.win.locator('.upd-warn').count(), 0, 'its own repository: no warning');
+    assert.equal('repo' in readDb(b.data, (db) => db.get('updates')), false, 'the old name is gone');
+    assert.deepEqual(b.errors, []);
+  } finally {
+    await b.close();
+  }
+  // A build from before the rename only knows the old name: GitHub's redirect takes it to the new one.
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ ...PKG, updateRepo: OLD_REPO }));
+  b = await launchApp({
+    size: { width: 1512, height: 944 },
+    files: { 'updates.json': { seenVersion: seen, auto: false } },
+    env: { PD_UPDATE_API: gh.url, PD_UPDATE_APP_ROOT: root },
+  });
+  try {
+    await b.farming();
+    await b.win.click('button.icon-only[data-action="settings"]');
+    await b.win.click('[data-action="settings-tab"][data-id="updates"]');
+    await until(b.win, () => document.querySelector('[data-action="update-check"]:not([disabled])'), 'Check now');
+    const before = gh.hits.length;
+    await b.win.click('[data-action="update-check"]');
+    await until(b.win, () => /Version\s+0\.2\.0 is out/.test(document.querySelector('.upd-state')?.textContent ?? ''), 'the new version, found through the redirect');
+    assert.deepEqual(gh.hits.slice(before, before + 2), [`/repos/${OLD_REPO}/releases/latest`, '/repositories/1/releases/latest']);
     assert.deepEqual(b.errors, []);
   } finally {
     await b.close();
