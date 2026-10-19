@@ -7,6 +7,7 @@
   "src/main/db.js": 100,
   "src/main/demo.js": 87,
   "src/main/farmer.js": 93,
+  "src/main/guard.js": 100,
   "src/main/history.js": 99,
   "src/main/kick-api.js": 59,
   "src/main/notifier.js": 100,
