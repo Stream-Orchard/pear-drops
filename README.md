@@ -149,7 +149,7 @@ The app updates from the GitHub repository in `package.json`'s `updateRepo` (or 
 
 Pull requests never change the version or `CHANGELOG.md`. Write their titles as one line a user would understand: they become the What's new entries.
 
-Dependabot opens weekly pull requests for the npm packages and the GitHub Actions (`.github/dependabot.yml`). Patch and minor updates, and new major versions of Actions, merge themselves once the required checks pass (`.github/workflows/dependabot-automerge.yml`); other majors, and Grapevine past a patch, wait for review. Release notes leave them out (`.github/release.yml`).
+Dependabot opens weekly pull requests for the npm packages and the GitHub Actions (`.github/dependabot.yml`; all the Actions ones together, in one). Patch and minor updates, and new major versions of Actions, merge themselves once the required checks pass (`.github/workflows/dependabot-automerge.yml`); other majors, and Grapevine past a patch, wait for review. Release notes leave them out (`.github/release.yml`).
 
 **Publishing an update:**
 1. **Releases → Draft a new release.** Tag it with the new version (e.g. `v0.2.0`, *Create new tag on publish*, target `main`).
