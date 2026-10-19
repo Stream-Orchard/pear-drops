@@ -291,7 +291,9 @@ class DemoApi {
     return { slug, is_banned: false, livestream: { is_live: true, session_title: title, viewer_count: viewers, categories: [{ id: Number(catId) }] } };
   }
 
-  async signOut() {
+  /** As the real one: the pages using the login close first (closePages). */
+  async signOut({ closePages } = {}) {
+    await closePages?.();
     this.loggedIn = false;
   }
 
