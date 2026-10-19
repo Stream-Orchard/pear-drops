@@ -158,7 +158,7 @@ jobs:
       - name: Build
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx --yes electron-builder@25.1.8 ${{ matrix.target }} --publish never
+        run: npx --yes electron-builder@26.15.3 ${{ matrix.target }} --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: installer-${{ runner.os }}
