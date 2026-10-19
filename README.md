@@ -16,8 +16,8 @@ Download the installer for your computer from the [latest release](https://githu
 
 | Computer | File |
 |---|---|
-| **Windows** 10 or 11 | `Pear-Drops-Setup-<version>.exe` |
-| **Mac** (Apple silicon or Intel), macOS 12 or newer | `Pear-Drops-<version>-mac.dmg` |
+| **Windows** 10 or 11, 64-bit | `Pear-Drops-Setup-<version>.exe` |
+| **Mac** (Apple silicon or Intel), macOS 13 or newer | `Pear-Drops-<version>-mac.dmg` |
 
 The app is free, and it isn't signed with a paid Apple or Microsoft certificate yet, so your computer warns you the first time. That's expected:
 
@@ -96,7 +96,9 @@ The app never sends watch events itself. It runs the real kick.com channel page,
 - *Settings › Forget my login when I quit* signs you out on every quit. If the app crashed, it does this at the next start instead.
 - Everything the app keeps stays on your computer, in its data folder: settings in `settings.json`, the history, the drop archive and the startup cache in one database, `pear-drops.db`, and drop artwork in `drop-images/`. Versions up to 0.1.5 kept files instead (`history.jsonl`, `drops.json`, `cache.json`); the first start of a newer one copies them in and leaves them as they were.
 - The database is backed up to `backups/` in the data folder every day (or week, or not at all: **Settings › Privacy & data**), keeping the last 3 copies (or 7 or 14), and before any update that changes how it's stored. If it's ever damaged, the app puts the newest good copy back by itself and says so in History.
-- Connected apps talk only on this computer, through a private local socket (a named pipe on Windows), after you've switched the link on in both. Pear Drops tells them what it's farming, never your login. Pairing keys are kept in `grapevine.json`, encrypted with your system keychain.
+- Connected apps talk only on this computer, through a private local socket (a named pipe on Windows), after you've switched the link on in both. The first time, Pear Drops asks before it pairs (**Allow** on the card), so another program can't pair as Stream Multiview by itself. Pear Drops tells them what it's farming, never your login. Pairing keys are kept in `grapevine.json`, encrypted with your system keychain.
+- Kick's pages can't reach the app (`src/main/guard.js`): the app only answers messages from its own windows, a Kick page opens a link in your browser only just after you clicked in it, and only web addresses ever open (never another app's protocol). The sign-in window stays on Kick and its sign-in providers. No page gets the camera, microphone, screen or clipboard reading.
+- Installed copies ignore the `PD_` settings that tests and developer copies use (a stand-in GitHub, demo mode, another data folder), refuse debugging switches such as `--remote-debugging-port`, and only run the app files they were built with (Electron's asar integrity fuses).
 
 ## Development
 
@@ -127,7 +129,8 @@ src/main/        Electron main process
   notifier.js    desktop notifications: which kinds are on, repeats, Send a test
   connected.js   Settings › Connected apps: the Grapevine link with other apps, what Pear Drops tells them
   activity.js    the Activity log: every message each way this run, kept in memory
-  security.js    login encryption migration, forget-on-quit, session lock-down
+  security.js    login encryption migration, forget-on-quit, where links and pop-ups go
+  guard.js       what the app lets in: who may send its messages, what pages may ask for, the PD_ settings
   demo.js        stand-in Kick for tests, demos and the trailer
 src/preload/     bridges for the app pages and the channel page
 src/renderer/    the dashboard, history and tray pages (plain JS, no build step)
