@@ -68,6 +68,8 @@ class Updates extends EventEmitter {
     return {
       current: this.d.version,
       repo: this.cfg.repo,
+      // The repository this copy was built from: updates from any other one get a warning.
+      homeRepo: updater.REPO_RE.test(this.d.pkgRepo || '') ? this.d.pkgRepo : '',
       auto: this.cfg.auto,
       lastCheck: this.cfg.lastCheck,
       devCopy: !!this.d.devCopy,
