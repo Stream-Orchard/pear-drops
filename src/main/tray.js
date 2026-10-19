@@ -13,6 +13,12 @@ const COLORS = {
   idle: [150, 156, 166],
 };
 
+// The popover's size is kept here, not read back from the window: Windows with display scaling
+// reports a frameless, fixed-size window a little bigger than it was set, so resizing from what it
+// reports grows it on every update.
+const WIDTH = 360;
+const HEIGHT = 520;
+
 /** A progress ring as a bitmap (no canvas in the main process). */
 function ringIcon(fraction, tone, { size = 18, scale = 2 } = {}) {
   const px = size * scale;
@@ -60,14 +66,16 @@ function ringIcon(fraction, tone, { size = 18, scale = 2 } = {}) {
 
 class TrayController {
   /** ipc: where its page's messages are handled (main.js passes one that only answers the popover). */
-  constructor({ preload, onShowMain, onQuit, onAction, ipc = ipcMain }) {
+  constructor({ preload, onShowMain, onQuit, onAction, ipc = ipcMain, screen: display = screen }) {
     this.preload = preload;
+    this.screen = display;
     this.onShowMain = onShowMain;
     this.onQuit = onQuit;
     this.tray = null;
     this.popover = null;
     this.iconKey = '';
     this.hiddenAt = 0;
+    this.height = HEIGHT;
 
     ipc.handle('tray:show-main', () => {
       this.hidePopover();
@@ -101,9 +109,10 @@ class TrayController {
   ensurePopover() {
     if (this.popover && !this.popover.isDestroyed()) return this.popover;
     const mac = process.platform === 'darwin';
+    this.height = HEIGHT;
     this.popover = new BrowserWindow({
-      width: 360,
-      height: 520,
+      width: WIDTH,
+      height: HEIGHT,
       show: false,
       frame: false,
       resizable: false,
@@ -156,25 +165,25 @@ class TrayController {
     const win = this.window;
     if (!win || !this.tray) return;
     const t = this.tray.getBounds();
-    const [w, h] = win.getSize();
-    const display = screen.getDisplayNearestPoint({ x: t.x, y: t.y });
+    const [w, h] = [WIDTH, this.height];
+    const display = this.screen.getDisplayNearestPoint({ x: t.x, y: t.y });
     const area = display.workArea;
     let x = Math.round(t.x + t.width / 2 - w / 2);
     // Menu bar at the top (macOS) vs taskbar at the bottom (Windows, most Linux).
     let y = t.y < area.y + area.height / 2 ? Math.round(t.y + t.height + 6) : Math.round(t.y - h - 6);
     x = Math.max(area.x + 8, Math.min(x, area.x + area.width - w - 8));
     y = Math.max(area.y + 4, Math.min(y, area.y + area.height - h - 4));
-    win.setPosition(x, y, false);
+    win.setBounds({ x, y, width: w, height: h }, false);
   }
 
   resize(height) {
     const win = this.window;
     if (!win) return;
     const h = Math.max(200, Math.min(720, Math.round(height)));
-    const [w, cur] = win.getSize();
-    if (h === cur) return;
-    win.setSize(w, h, false);
+    if (h === this.height) return;
+    this.height = h;
     if (win.isVisible()) this.position();
+    else win.setSize(WIDTH, h, false);
   }
 
   destroy() {
@@ -184,4 +193,4 @@ class TrayController {
   }
 }
 
-module.exports = { TrayController, ringIcon };
+module.exports = { TrayController, ringIcon, WIDTH };
