@@ -54,6 +54,9 @@ test('each message in plain words, either way', () => {
   assert.equal(say({ dir: 'in', kind: 'reply', method: 'link.subscribe', data: { subscribed: [] } }).text, 'Stream Multiview will send nothing');
   assert.equal(say({ dir: 'in', kind: 'event', method: 'link.bye', data: { reason: 'quitting' } }).text, 'Goodbye: quitting');
   assert.equal(say({ dir: 'in', kind: 'error', method: 'players.get', data: { code: -32601, message: 'No such method' } }).text, 'No such method (-32601)');
+  // A hello refused while an app waits for Allow: no data (hellos carry none), and not an error.
+  assert.deepEqual({ ...say({ dir: 'out', kind: 'error', method: 'link.hello', pairing: true }) }, { title: 'link.hello', kind: 'waiting', text: 'Waits until you allow Stream Multiview to pair' });
+  assert.equal(say({ dir: 'in', kind: 'error', method: 'link.hello', pairing: true }).text, 'Stream Multiview waits until you allow the pairing there');
   assert.equal(say({ dir: 'in', kind: 'event', method: 'clips.changed', data: { seq: 1, at: '', clips: [] } }).text, 'clips', 'one it has no words for: its fields');
   assert.deepEqual({ ...say({ kind: 'status', tone: 'ok', text: 'Connected to Stream Multiview' }) }, { title: 'Link', kind: 'status', text: 'Connected to Stream Multiview' });
 });

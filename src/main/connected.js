@@ -82,10 +82,12 @@ class Connected extends EventEmitter {
       place,
       appDataDir,
       log,
+      // A first pairing waits for Allow on the card, so another program can't pair as Stream Multiview by itself.
+      confirmPairing: true,
     });
     this.link.on('message', (m) => {
       // A heartbeat heard isn't an entry, but the Heartbeat tile shows it.
-      if (this.activity.add(m) || (m.method === 'link.ping' && m.dir === 'in')) this.emit('activity');
+      if (this.activity.add(m, { pairing: this.waitsForAllow(m) }) || (m.method === 'link.ping' && m.dir === 'in')) this.emit('activity');
     });
     // What Grapevine refused or dropped, in the log of the app it was about.
     this.link.on('log', (level, text) => {
@@ -113,6 +115,15 @@ class Connected extends EventEmitter {
       show();
       return { shown: true };
     });
+  }
+
+  /**
+   * A refused hello while an app waits for Allow (here: its card asks to pair; there: confirm-there).
+   * Hellos carry no data, so the card's status at that moment tells it apart from a real refusal.
+   */
+  waitsForAllow(m) {
+    if (m.kind !== 'error' || m.method !== 'link.hello') return false;
+    return this.link.peers().some((p) => (!m.app || p.id === m.app) && (p.status === 'confirm' || p.reason === 'confirm-there'));
   }
 
   nameOf(id) {
@@ -174,6 +185,13 @@ class Connected extends EventEmitter {
 
   pairAgain(id) {
     this.link.pairAgain(id);
+  }
+
+  /** Allow on the card: the app asking to pair may (for the next two minutes). */
+  allowPairing(id) {
+    if (!this.knownApps.some((a) => a.id === id) || id === APP_ID) return;
+    this.link.allowPairing(id);
+    this.record('link-allowed', id, (name) => `Allowed ${name} to pair`, 'ok');
   }
 
   /** Test on the card: a round trip, or in words why not (Grapevine's link.test). */

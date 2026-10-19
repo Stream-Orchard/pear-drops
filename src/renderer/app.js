@@ -994,13 +994,15 @@ function connectedPane() {
   const farming = farm()?.current;
   const card = (p) => {
     const name = esc(p.name);
-    const notInstalled = p.installed === false && p.status !== 'connected';
+    // Something asking to pair is running, whatever "installed" says (a test or dev folder).
+    const notInstalled = p.installed === false && p.status !== 'connected' && p.status !== 'confirm';
     const chip = notInstalled
       ? '<span class="chip">Not installed</span>'
       : {
           connected: `<span class="chip green"><span class="live-dot green"></span>Connected${p.version ? ` · ${esc(p.version)}` : ''}</span>`,
           waiting: '<span class="chip amber"><span class="live-dot amber"></span>Waiting</span>',
           'pair-again': '<span class="chip amber">Pair again</span>',
+          confirm: '<span class="chip amber"><span class="live-dot amber"></span>Asks to pair</span>',
           incompatible: '<span class="chip red">Can’t connect</span>',
           off: '<span class="chip">Off</span>',
         }[p.status];
@@ -1021,6 +1023,10 @@ function connectedPane() {
         line = `The pairing doesn’t match ${name}’s any more (one of the apps was reinstalled, say). Pair again to start afresh.`;
         action = `<button class="btn sm" data-action="connected-pair-again" data-id="${esc(p.id)}">${icon('link')} Pair again</button>`;
       } else line = `The pairing doesn’t match. Press <b>Pair again</b> in ${name}’s Connected apps.`;
+    } else if (p.status === 'confirm') {
+      const who = esc([p.asking?.name ?? p.name, p.asking?.version].filter(Boolean).join(' '));
+      [line, tone] = [`<b>${who}</b> asks to pair. Allow it only if you just switched on Connect in ${name}.`, 'warn'];
+      action = `<button class="btn sm primary" data-action="connected-allow" data-id="${esc(p.id)}">${icon('check')} Allow</button>`;
     } else if (p.status === 'incompatible') [line, tone] = [esc(p.report?.text ?? 'Can’t connect: update one of the apps.'), 'bad'];
     else if (p.status === 'waiting')
       line =
@@ -1028,7 +1034,9 @@ function connectedPane() {
           ? `${name} is open, but its own Connect switch is off.`
           : p.reason === 'disconnected-there'
             ? `Disconnected in ${name}. Switch it on there to link again.`
-            : `${name} isn’t open, or its Connect switch is off.`;
+            : p.reason === 'confirm-there'
+              ? `Press <b>Allow</b> in ${name}’s Connected apps to pair.`
+              : `${name} isn’t open, or its Connect switch is off.`;
     else line = 'Off. Nothing listens until you switch it on.';
     // A tile for each capability the two share: what Pear Drops tells it, and what it tells Pear Drops.
     const tile = (cap, way) => {
@@ -1444,6 +1452,7 @@ const actions = {
   },
   'connected-disconnect': (el) => window.pd.connected.disconnect(el.dataset.id),
   'connected-pair-again': (el) => window.pd.connected.pairAgain(el.dataset.id),
+  'connected-allow': (el) => window.pd.connected.allow(el.dataset.id),
   'connected-test': async (el) => {
     const id = el.dataset.id;
     ui.appTests = { ...ui.appTests, [id]: { running: true, at: Date.now() } };

@@ -84,3 +84,17 @@ test('the chart: messages a minute each way over the last half hour, with proble
   assert.equal(chart.reduce((n, m) => n + m.out + m.in, 0), 3);
   assert.deepEqual(log.page(OTHER).minutes.at(-1), { out: 0, in: 0, bad: 0 });
 });
+
+test('a hello refused while an app waits for Allow is kept, but isn’t a problem', () => {
+  const log = new ActivityLog({ now: () => T });
+  const waiting = log.add(msg(T, { dir: 'out', kind: 'error', method: 'link.hello', id: 1 }), { pairing: true });
+  assert.equal(waiting.pairing, true);
+  log.add(msg(T + 1, { dir: 'out', kind: 'error', method: 'players.get', id: 2, data: { code: -32601, message: 'Unknown method' } }));
+  const p = log.page(MV, { now: T + 1 });
+  assert.equal(p.total, 2);
+  assert.equal(p.problems, 1, 'only the real refusal');
+  assert.equal(p.totals.problems, 1);
+  assert.deepEqual(log.page(MV, { filter: 'problems' }).entries.map((e) => e.method), ['players.get']);
+  assert.equal(p.minutes.reduce((n, m) => n + m.bad, 0), 1, 'one red mark on the chart');
+  assert.equal(log.add(msg(T, { dir: 'out', kind: 'event', method: 'drops.farming.changed' })).pairing, undefined, 'only when said');
+});
