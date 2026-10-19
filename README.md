@@ -1,4 +1,4 @@
-<p align="center"><img src=".github/assets/hero.jpg" alt="Pear Drops: collects your Kick emote and badge drops with Kick's own player" width="100%"></p>
+<p align="center"><img src=".github/assets/hero.svg" alt="Pear Drops: collects your Kick emote and badge drops with Kick's own player. A drop fills up as watch time is credited, and each reward is claimed as it unlocks" width="100%"></p>
 
 # Pear Drops
 
@@ -138,7 +138,8 @@ test/unit/       node --test unit tests
 test/launch/     Playwright launch tests against the real app
 scripts/         dev, coverage, hardening, icon and release tools
 build/           installer hooks and icon source
-.github/assets/  the README's hero image (hero.jpg) and the repo's social preview (og.png), with the pages they're drawn from
+.github/assets/  the README's animated hero image (hero.svg, drawn by scripts/build.py in StreamOrchard/.github) and the
+                 repo's social preview (og.png, drawn from og.html)
 ```
 
 The app's own pages never use system pop-ups such as `alert`, native message boxes or date pickers. `test/unit/no-system-popups.test.js` checks for them.
