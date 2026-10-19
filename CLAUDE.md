@@ -31,7 +31,7 @@ An Electron app that farms Kick emote and badge drops. `src/main/` is the Electr
 
 ## Connected apps (Grapevine)
 
-- **How it works.** `connected.js` links Pear Drops with other StreamOrchard apps (Stream Multiview) through `@streamorchard/grapevine`. That package (repo `Stream-Orchard/grapevine`) owns:
+- **How it works.** `connected.js` links Pear Drops with other StreamOrchard apps (Stream Multiview) through `@streamorchard/grapevine`. That package (repo `StreamOrchard/grapevine`) owns:
   - the protocol and the capability schemas (`drops.farming`, which Pear Drops provides, and `players`, which it uses)
   - the list of apps that can link
 - **What goes where:**

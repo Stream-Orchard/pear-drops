@@ -14,7 +14,7 @@ Run `npm run grapevine:check` (after `npm install`, or in the new worktree). Not
 - **"Nothing to record" or "is recorded":** carry on.
 - **It lists releases:**
   1. Tell the developer which releases, and that until they're recorded those capability versions could still be changed in place.
-  2. Offer to record them first. That's Grapevine's `app-shipped` skill, in a Grapevine checkout (`../grapevine` next to this repo, or clone `Stream-Orchard/grapevine`): run each `npm run released -- …` line it printed, then a pull request and a patch release there.
+  2. Offer to record them first. That's Grapevine's `app-shipped` skill, in a Grapevine checkout (`../grapevine` next to this repo, or clone `StreamOrchard/grapevine`): run each `npm run released -- …` line it printed, then a pull request and a patch release there.
   3. Then carry on with the change here.
 
 ## 1. What's the change?
