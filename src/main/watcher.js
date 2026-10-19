@@ -1,11 +1,13 @@
-const { WebContentsView, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, WebContentsView, BrowserWindow, ipcMain } = require('electron');
 const { EventEmitter } = require('events');
 const path = require('path');
 const { PARTITION, KICK } = require('./kick-api');
+const { devEnv } = require('./guard');
+const { openLink } = require('./security');
 
 // Capture mode (trailer, screenshots): the player (and in light mode its chat) render offscreen
 // and their frames are mirrored into the main window, so a recording of that window includes them.
-const MIRROR = !!process.env.PD_MIRROR_PLAYER;
+const MIRROR = !!devEnv({ packaged: !!app?.isPackaged })('PD_MIRROR_PLAYER');
 
 // Two ways to show the stream in the docked panel. Both run Kick's own player code,
 // which sends the watch-time events that earn drops:
@@ -118,7 +120,8 @@ class Watcher extends EventEmitter {
     });
     // The player page asks for the quality to start at before Kick's code runs.
     ipcMain.on('watch:quality', (event) => {
-      const q = this.getSettings().playerQuality;
+      const ours = [this.view, this.chatView].some((v) => v && event.sender === v.webContents);
+      const q = ours ? this.getSettings().playerQuality : null;
       event.returnValue = typeof q === 'number' ? q : null;
     });
   }
@@ -170,8 +173,10 @@ class Watcher extends EventEmitter {
     view.setBackgroundColor('#0b0d10');
     const wc = view.webContents;
     wc.setAudioMuted(true);
+    // Links from Kick's page open in the browser: http(s) only, and just after you clicked in it.
+    const open = (url) => openLink(url, { from: wc });
     wc.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
+      open(url);
       return { action: 'deny' };
     });
     const css = role === 'chat' ? CHAT_CSS : this.mode === 'full' ? PAGE_CSS : '';
@@ -197,14 +202,14 @@ class Watcher extends EventEmitter {
     wc.on('will-navigate', (event, url) => {
       if (!this.slug || this.isStreamUrl(url)) return;
       event.preventDefault();
-      if (!movedOn(url) && !samePage(at, url) && !isPlayer(url)) shell.openExternal(url);
+      if (!movedOn(url) && !samePage(at, url) && !isPlayer(url)) open(url);
     });
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!isMainFrame) return;
       const from = at;
       at = url;
       if (!this.slug || this.isStreamUrl(url) || samePage(from, url) || movedOn(url)) return;
-      if (!isPlayer(url)) shell.openExternal(url);
+      if (!isPlayer(url)) open(url);
       if (wc.navigationHistory?.canGoBack()) wc.navigationHistory.goBack();
       else this.load(role);
     });

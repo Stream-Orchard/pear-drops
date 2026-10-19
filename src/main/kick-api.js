@@ -1,7 +1,8 @@
-const { BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
+const { devEnv } = require('./guard');
 
 // Demo mode uses a throwaway session with the stand-in Kick (src/main/demo.js).
-const PARTITION = process.env.PD_DEMO ? 'pd-demo' : 'persist:kick';
+const PARTITION = devEnv({ packaged: !!app?.isPackaged })('PD_DEMO') ? 'pd-demo' : 'persist:kick';
 const KICK = 'https://kick.com';
 const WEB = 'https://web.kick.com';
 const ASSETS = 'https://ext.kick.com/';
@@ -211,13 +212,31 @@ class KickApi {
     return this.request(`${KICK}/api/v2/channels/${encodeURIComponent(slug)}/info`, { auth: false });
   }
 
-  async signOut() {
-    if (this.win && !this.win.isDestroyed()) this.win.destroy();
-    this.win = null;
-    await this.session.clearStorageData().catch(() => {});
-    await this.session.clearCache().catch(() => {});
-    await this.session.cookies.flushStore().catch(() => {});
+  /** Signs out: its own page and the others using the login (closePages) close, then the login is wiped. */
+  async signOut({ closePages } = {}) {
+    await wipeSession({
+      closePages: async () => {
+        if (this.win && !this.win.isDestroyed()) this.win.destroy();
+        this.win = null;
+        await closePages?.();
+      },
+    });
   }
+}
+
+/**
+ * Removes the Kick login and everything Kick saved. The pages using it close first (closePages), so
+ * none of them writes it back; then the stored data, the cache and saved HTTP logins go, and the
+ * cookie file is written out at once.
+ */
+async function wipeSession({ closePages = () => {}, ses = session.fromPartition(PARTITION) } = {}) {
+  try {
+    await closePages();
+  } catch {}
+  await ses.clearStorageData().catch(() => {});
+  await ses.clearCache().catch(() => {});
+  await ses.clearAuthCache().catch(() => {});
+  await ses.cookies.flushStore().catch(() => {});
 }
 
 // Kick's follow lists, best first: followed-page gives 20 a page (live first),
@@ -264,4 +283,4 @@ function eventStream(s) {
   };
 }
 
-module.exports = { KickApi, ApiError, PARTITION, KICK, assetUrl, followsFrom, FOLLOW_APIS, eventOf, eventStream };
+module.exports = { KickApi, ApiError, PARTITION, KICK, assetUrl, wipeSession, followsFrom, FOLLOW_APIS, eventOf, eventStream };

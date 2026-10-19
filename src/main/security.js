@@ -4,9 +4,11 @@
 //      before that are re-saved once here so they get encrypted too.
 //   2. Optional "forget my login when I quit": the Kick session is wiped on quit, and
 //      at the next start if the app closed without getting to (e.g. it crashed).
-//   3. Kick pages get no extra permissions and can't open windows inside the app.
+//   3. Pages get no extra permissions (guard.js) and can't open windows inside the app. Links open
+//      in the browser (http and https only), and from a Kick page only just after you clicked in it.
 const { app, session, shell } = require('electron');
-const { PARTITION } = require('./kick-api');
+const { PARTITION, wipeSession } = require('./kick-api');
+const { webUrl, popupFor, mayNavigate } = require('./guard');
 
 // Where its own small state is saved (setupSecurity's `saved`, a db.js slot).
 let saved = { load: () => ({}), save: () => {} };
@@ -37,12 +39,8 @@ async function encryptionState() {
   }
 }
 
-async function wipe() {
-  const ses = session.fromPartition(PARTITION);
-  await ses.clearStorageData().catch(() => {});
-  await ses.clearCache().catch(() => {});
-  await ses.cookies.flushStore().catch(() => {});
-}
+/** "Forget my login": the same wipe as signing out (kick-api.js). */
+const wipe = (opts) => wipeSession(opts);
 
 // Cookies written before encryption was switched on stay unencrypted on disk until
 // they are written again.
@@ -71,29 +69,72 @@ async function encryptOldLogins(sec) {
   save(sec);
 }
 
-function lockDownSession() {
-  const ses = session.fromPartition(PARTITION);
-  // Autoplay is handled by a command-line switch; nothing on Kick needs more than this.
-  ses.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'fullscreen'));
-  ses.setPermissionCheckHandler((_wc, permission) => permission === 'fullscreen');
+// When you last clicked or typed in each page: a Kick page opens links in the browser only just after that.
+const lastInput = new WeakMap();
+const RECENT_MS = 5000;
+const recentInput = (contents) => Date.now() - (lastInput.get(contents) || 0) < RECENT_MS;
+
+/**
+ * Opens an address in the browser: http and https only (never another app's protocol), and for a
+ * Kick page (`from`) only just after you clicked or typed in it. -> whether it opened.
+ */
+function openLink(url, { from = null } = {}) {
+  const href = webUrl(url);
+  if (!href || (from && !recentInput(from))) return false;
+  Promise.resolve(shell.openExternal(href)).catch(() => {});
+  return true;
 }
 
-function guardContents(contents) {
-  // Links that try to open new windows go to the real browser instead.
+/**
+ * Every page the app makes (main.js calls this for each). isApp(contents) says whether it's one of the
+ * app's own windows. Its pop-ups go to the browser (a Kick page's only just after a click), and the
+ * app's own pages never leave their file: a link in one opens in the browser.
+ */
+function guardContents(contents, { isApp = () => false } = {}) {
+  contents.on('input-event', (_event, input) => {
+    if (/^(mouseDown|rawKeyDown|keyDown|gestureTap|touchStart)$/.test(input?.type)) lastInput.set(contents, Date.now());
+  });
   contents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    const fromApp = !!isApp(contents);
+    if (popupFor(url, { fromApp, recent: recentInput(contents) }) === 'external') openLink(url);
     return { action: 'deny' };
   });
+  contents.on('will-navigate', (event, url) => {
+    if (!/^file:/i.test(contents.getURL())) return;
+    event.preventDefault();
+    if (isApp(contents)) openLink(url);
+  });
+}
+
+/**
+ * The sign-in window and its pop-ups (Google, Apple): they stay on Kick and its sign-in providers,
+ * and anything else opens in the browser. Their own pop-ups get the same rules.
+ */
+function keepOnKick(contents, popupOptions) {
+  const keep = (event, url) => {
+    if (event?.isMainFrame === false || mayNavigate(url)) return;
+    event.preventDefault();
+    openLink(url, { from: contents });
+  };
+  contents.on('will-navigate', keep);
+  contents.on('will-redirect', keep);
+  contents.setWindowOpenHandler(({ url }) => {
+    const how = popupFor(url, { login: true, recent: recentInput(contents) });
+    if (how === 'app') return { action: 'allow', overrideBrowserWindowOptions: popupOptions() };
+    if (how === 'external') openLink(url);
+    return { action: 'deny' };
+  });
+  contents.on('did-create-window', (win) => keepOnKick(win.webContents, popupOptions));
 }
 
 /**
  * Call once the app is ready. Returns { encryption, setForget } for main.js.
  * getForget() reads the current "forget my login" setting; `slot` is where its state is saved.
+ * closePages() closes the pages using the login before it's wiped on quit.
  */
-async function setupSecurity(getForget, slot) {
+async function setupSecurity(getForget, slot, { closePages } = {}) {
   if (slot) saved = slot;
   const sec = load();
-  lockDownSession();
 
   // Last run had "forget" on but never got to wipe: do it now.
   if (sec.pendingWipe) {
@@ -118,7 +159,7 @@ async function setupSecurity(getForget, slot) {
     event.preventDefault();
     sec.pendingWipe = true;
     save(sec);
-    wipe().finally(() => {
+    wipe({ closePages }).finally(() => {
       wiped = true;
       sec.pendingWipe = false;
       save(sec);
@@ -129,4 +170,4 @@ async function setupSecurity(getForget, slot) {
   return { encryption, setForget };
 }
 
-module.exports = { setupSecurity, guardContents, wipe };
+module.exports = { setupSecurity, guardContents, keepOnKick, openLink, recentInput, wipe };
