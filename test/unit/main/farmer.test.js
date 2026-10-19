@@ -131,6 +131,15 @@ test('picks a followed stream first and records the watch session', async () => 
   assert.deepEqual(start.campaignIds, ['a']);
 });
 
+test('the watch session is recorded at the very time the watch started, so a quick restart carries on from it', async (t) => {
+  let clock = Date.now();
+  t.mock.method(Date, 'now', () => clock++); // every read a millisecond later
+  const { farmer, history } = setup({ campaigns: [campaign('a')], streams: { 1: [live('s', 1)] } });
+  await farmer.tick();
+  const start = history.all().find((e) => e.type === 'watch-start');
+  assert.equal(start.t, farmer.current.startedWatchingAt);
+});
+
 test('game-only campaigns are ignored unless game drops are included', async () => {
   const game = campaign('g', { org: 'Riot Games', connect: 'https://riot', rewards: [{ id: 'g1', name: 'Skin', required_units: 30 }] });
   const { farmer, watcher } = setup({ campaigns: [game], streams: { 1: [live('s', 1)] } });

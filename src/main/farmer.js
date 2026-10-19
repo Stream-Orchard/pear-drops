@@ -1285,7 +1285,9 @@ class Farmer extends EventEmitter {
       manual,
       session: `${now.toString(36)}-${stream.slug}`,
     };
+    // At the same time as the watch: a quick restart carries on from this event's time.
     this.record('watch-start', {
+      t: now,
       ...this.streamCtx(),
       campaigns: campaignIds.map((id) => this.ctx(id).campaign),
       manual,
