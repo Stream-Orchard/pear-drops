@@ -1,0 +1,32 @@
+name: Dependabot auto-merge
+
+# Dependabot's pull requests merge themselves once the required checks pass: patch and minor
+# updates, and new major versions of GitHub Actions. Other majors (a new Electron, say) wait
+# for a person, and so does Grapevine past a patch: it's ours, and a 0.x minor can break its API.
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Auto-merge
+    # Only Dependabot's own pull requests, and only while Dependabot is the one pushing to them.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge once the checks pass
+        if: >-
+          (steps.meta.outputs.package-ecosystem == 'github_actions'
+          || (steps.meta.outputs.update-type != 'version-update:semver-major'
+          && (!contains(steps.meta.outputs.dependency-names, '@streamorchard/grapevine')
+          || steps.meta.outputs.update-type == 'version-update:semver-patch')))
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
