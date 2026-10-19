@@ -2,7 +2,13 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.8 (current)
+## 0.1.9 (current)
+- Notices: leaving a stream shows a proper notice instead of a broken toggle, and each kind has its own colour
+- Activity log: clearer Kick player wording, a steady heartbeat, and why players sign back in minutes after farming stops
+- Playwright comes with npm install, so the launch tests no longer need a separate setup step
+- Security: Kick's pages can't open other apps or reach the app, Connected apps ask before pairing, and safer updates and releases
+
+## 0.1.8
 - Chart: a stream that just started draws cleanly, its label stays clear of the line, and the radar sits in the middle
 - Chart: the radar is a full circle, and the past starts at the first reading
 
