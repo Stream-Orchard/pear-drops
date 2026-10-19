@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.10 (current)
+## 0.1.11 (current)
+- The tray popover no longer grows wider and wider on Windows
+
+## 0.1.10
 - Updates come from the renamed StreamOrchard org, and older installs follow without a warning
 - A quick restart keeps the exact time the stream started
 
