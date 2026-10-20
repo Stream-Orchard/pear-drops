@@ -37,6 +37,18 @@ test('each message in plain words, either way', () => {
   assert.equal(say({ dir: 'in', kind: 'request', method: 'drops.farming.get', data: {} }).text, 'Stream Multiview asked what’s being farmed');
   assert.equal(say({ dir: 'in', kind: 'request', method: 'drops.farming.show', data: {} }).text, 'Stream Multiview asked to show Pear Drops');
   assert.equal(say({ dir: 'out', kind: 'reply', method: 'drops.farming.show', data: { shown: true } }).text, 'Shown');
+  // The daily reward (rewards.daily).
+  assert.equal(say({ dir: 'out', kind: 'event', method: 'rewards.daily.changed', data: { state: 'earning', minutes: 37, threshold: 60 } }).text, 'Daily reward · 37 of 60 min watched');
+  assert.equal(say({ dir: 'out', kind: 'event', method: 'rewards.daily.changed', data: { state: 'earning' } }).text, 'Daily reward · earning');
+  assert.equal(say({ dir: 'out', kind: 'event', method: 'rewards.daily.changed', data: { state: 'ready' } }).text, 'Daily reward is ready to claim');
+  assert.equal(say({ dir: 'out', kind: 'event', method: 'rewards.daily.changed', data: { state: 'claimed' } }).text, 'Daily reward claimed for today');
+  assert.equal(say({ dir: 'out', kind: 'event', method: 'rewards.daily.changed', data: { state: 'event-crate' } }).text, 'Daily reward: event-crate');
+  assert.equal(say({ dir: 'out', kind: 'reply', method: 'rewards.daily.get', data: { state: 'signed-out' } }).text, 'Signed out of Kick');
+  assert.equal(say({ dir: 'out', kind: 'reply', method: 'rewards.daily.get', data: null }).text, 'The daily reward');
+  assert.equal(say({ dir: 'in', kind: 'request', method: 'rewards.daily.get', data: {} }).text, 'Stream Multiview asked about the daily reward');
+  assert.equal(say({ dir: 'in', kind: 'request', method: 'rewards.daily.show', data: {} }).text, 'Stream Multiview asked to show the daily reward');
+  assert.equal(say({ dir: 'out', kind: 'reply', method: 'rewards.daily.show', data: { shown: true } }).text, 'Shown');
+  assert.equal(say({ dir: 'out', kind: 'request', method: 'rewards.daily.show', data: {} }).text, 'Asked Stream Multiview to show the daily reward');
   const players = { platforms: { kick: { signedIn: false, mode: 'auto', account: null, open: [{ slug: 'pixelpear' }, { slug: 'moonlitmaple' }] } } };
   assert.equal(say({ dir: 'in', kind: 'event', method: 'players.changed', data: players }).text, '2 Kick players open, signed out while Pear Drops farms');
   // The state and why in one phrase: Auto signed in isn't "signed in · signed out while you farm".

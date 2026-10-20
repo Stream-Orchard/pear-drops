@@ -1,8 +1,9 @@
 // Connected apps (Settings › Connected apps): other StreamOrchard apps on this computer, linked
 // through Grapevine (@streamorchard/grapevine). Pear Drops tells them what it's farming
 // (drops.farming), so Stream Multiview can sign its Kick players out and leave the credit here,
-// and hears whether those players are signed in (players), so the credit banner can say when
-// they're what's taking it. Off until switched on: nothing listens before then.
+// and where Kick's daily reward is at (rewards.daily), so it can show the chest. It hears whether
+// those players are signed in (players), so the credit banner can say when they're what's taking
+// it. Off until switched on: nothing listens before then.
 const { EventEmitter } = require('events');
 const { createLink, KNOWN_APPS, iconDataUrl } = require('@streamorchard/grapevine');
 const { assetUrl } = require('./kick-api');
@@ -48,11 +49,15 @@ class Connected extends EventEmitter {
    * @param {{add(type: string, data: object): void}} [o.history]
    * @param {(level: string, text: string) => void} [o.log]
    * @param {() => void} [o.show] brings Pear Drops' window to the front (drops.farming.show)
+   * @param {() => object | null} [o.reward] Kick's daily reward, as daily-reward.js's snapshot()
+   * @param {() => void} [o.showReward] brings the window to the front with the daily reward open (rewards.daily.show)
    * @param {typeof KNOWN_APPS} [o.knownApps] the apps it can link with (Grapevine's list; tests add their own)
    * @param {typeof createLink} [o.make]
    */
-  constructor({ store, farmer, auth, version, keys, place, appDataDir, history = null, show = () => {}, knownApps = KNOWN_APPS, log = () => {}, make = createLink }) {
+  constructor({ store, farmer, auth, version, keys, place, appDataDir, history = null, show = () => {}, reward = () => null, showReward = show, knownApps = KNOWN_APPS, log = () => {}, make = createLink }) {
     super();
+    this.reward = reward;
+    this.lastReward = null; // the rewards.daily state last sent, without seq and at
     this.store = store;
     this.farmer = farmer;
     this.auth = auth;
@@ -113,6 +118,12 @@ class Connected extends EventEmitter {
     // A click on another app's farming widget.
     this.link.handle('drops.farming.show', () => {
       show();
+      return { shown: true };
+    });
+    // A click on another app's daily reward chest. (rewards.daily.get answers itself: Grapevine
+    // replies with the last rewards.daily.changed.)
+    this.link.handle('rewards.daily.show', () => {
+      showReward();
       return { shown: true };
     });
   }
@@ -284,6 +295,31 @@ class Connected extends EventEmitter {
     if (wait === 0) return go();
     this.timer = setTimeout(go, wait);
     this.timer.unref?.();
+  }
+
+  /** Where Kick's daily reward is at, as rewards.daily's fields: enough for a chest in a toolbar. */
+  dailyReward() {
+    const a = this.auth();
+    const account = a.status === 'signed-in' && a.user?.username ? { platform: 'kick', user: a.user.username } : null;
+    const r = account ? this.reward() : null;
+    if (!account || !r) return { state: 'signed-out', account };
+    const known = ['earning', 'ready', 'claimed'].includes(r.state);
+    return compact({
+      state: known ? r.state : 'unavailable',
+      account,
+      minutes: known && Number.isFinite(r.minutes) ? Math.round(r.minutes) : undefined,
+      threshold: known && Number.isFinite(r.threshold) ? Math.round(r.threshold) : undefined,
+      endsAt: known ? iso(r.endsAt) : undefined,
+    });
+  }
+
+  /** Tells the other apps when the daily reward changes: its state, or a minute more of the hour. */
+  updateReward() {
+    const r = this.dailyReward();
+    const key = JSON.stringify(r);
+    if (key === this.lastReward) return;
+    this.lastReward = key;
+    this.link.publish('rewards.daily.changed', r);
   }
 
   /**

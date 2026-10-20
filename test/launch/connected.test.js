@@ -93,6 +93,42 @@ test('switched on: waiting, then it asks to pair, Allow, and connected to Stream
   assert.deepEqual(await a.app.evaluate(() => global.pdDemo.multiviewPeer.link.request('com.streamorchard.peardrops', 'drops.farming.show')), { shown: true });
 });
 
+test('what the two share: a line each, by direction, the whole sentence in its tooltip; the card still fits', async () => {
+  await openTab();
+  await until(a.win, () => document.querySelector('.app-card.connected'), 'connected', 15000);
+  const sides = await a.win.$$eval('.app-flow', (els) => els.map((el) => [el.querySelector('.app-flow-head').textContent.trim(), [...el.querySelectorAll('.app-cap')].map((c) => c.textContent.trim())]));
+  assert.deepEqual(sides, [
+    ['Pear Drops tells it', ['What you’re farming · progress', 'Your daily reward · the chest']],
+    ['It tells Pear Drops', ['Its Kick players · signed in or not']],
+  ]);
+  assert.match(await a.win.getAttribute('.app-cap >> nth=1', 'data-tip'), /daily reward chest/);
+  const lines = await a.win.$$eval('.app-cap', (els) => els.map((el) => el.getClientRects().length === 1 && el.scrollWidth <= el.clientWidth + 1));
+  assert.ok(lines.every(Boolean), 'each on one line, nothing cut off');
+  const [scroll, client] = await a.win.evaluate(() => {
+    const el = document.querySelector('.settings-pane .modal-section');
+    return [el.scrollHeight, el.clientHeight];
+  });
+  assert.ok(scroll <= client, 'no scrolling');
+});
+
+test('rewards.daily: the stand-in hears the daily reward, and a click on its chest opens the card', async () => {
+  const peer = () => a.app.evaluate((_e, m) => global.pdDemo.multiviewPeer.link.request('com.streamorchard.peardrops', m), 'rewards.daily.get');
+  const got = await peer();
+  assert.equal(got.state, 'earning');
+  assert.equal(got.threshold, 60);
+  assert.equal(got.account.user, 'pearfarmer');
+  await a.app.evaluate(() => global.pdDemo.daily({ minutes: 60 }));
+  await until(a.win, () => true, 'x').then(async () => {
+    for (let i = 0; i < 60 && (await peer()).state !== 'ready'; i++) await a.win.waitForTimeout(100);
+  });
+  assert.equal((await peer()).state, 'ready');
+  await a.win.keyboard.press('Escape');
+  assert.deepEqual(await a.app.evaluate(() => global.pdDemo.multiviewPeer.link.request('com.streamorchard.peardrops', 'rewards.daily.show')), { shown: true });
+  await until(a.win, () => document.querySelector('.dr-pop .dr-card.state-ready'), 'the daily reward card, open');
+  await a.win.keyboard.press('Escape');
+  await openTab(); // where the next test expects to be
+});
+
 test('players that stay signed in: a warning on the card, and the credit banner names Stream Multiview', async () => {
   await a.demo((d) => d.multiview({ signedIn: true, mode: 'signed-in' }));
   await until(a.win, () => document.querySelector('.app-foot.warn'), 'the warning', 15000);

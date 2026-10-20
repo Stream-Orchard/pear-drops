@@ -104,12 +104,13 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@streamorchard/grapevine": "^0.9.0"
+    "@streamorchard/grapevine": "^0.10.0"
   },
   "grapevine": {
     "app": "com.streamorchard.peardrops",
     "provides": {
-      "drops.farming": "1.0"
+      "drops.farming": "1.0",
+      "rewards.daily": "1.0"
     },
     "uses": {
       "players": "1.0"
