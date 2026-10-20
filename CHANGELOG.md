@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.15 (current)
+## 0.1.16 (current)
+- On macOS the tray icon matches the menu bar (white or black) while quiet, and keeps its colour while farming, in trouble, or the daily reward waits
+
+## 0.1.15
 - The tray icon is the logo while no stream is live, and a hopping chest while the daily reward waits
 
 ## 0.1.14
