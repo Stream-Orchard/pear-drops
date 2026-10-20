@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.12 (current)
+## 0.1.13 (current)
+- The daily reward chest's landing burst animates again
+- The daily reward's crate opens properly when there's no video
+
+## 0.1.12
 - Kick's daily reward: a chest in the title bar and tray, claimed with Kick's reveal
 - Connected apps: Stream Multiview can show Kick's daily reward chest, and the card lists what the apps share a line each
 
