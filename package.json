@@ -104,7 +104,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@streamorchard/grapevine": "^0.10.0"
+    "@streamorchard/grapevine": "^0.10.2"
   },
   "grapevine": {
     "app": "com.streamorchard.peardrops",
