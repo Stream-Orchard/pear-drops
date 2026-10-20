@@ -737,7 +737,7 @@
   height: 100%;
   display: grid;
   place-items: center;
-  transition: opacity 0.6s;
+  transition: opacity 0.6s, transform 0.6s var(--ease);
 }
 /* Kick's opening fills the whole layer, so its flash has no edges. */
 .dr-unbox video {
@@ -750,45 +750,196 @@
 .dr-unbox .dr-crate-art {
   width: 70%;
 }
-.dr-reveal[data-phase='openBox'] .dr-crate-art.opening .crate-lid {
-  animation: dr-lid-off 1.6s var(--ease) forwards;
+/* Our crate opening (demo mode, or when Kick's video doesn't play), 1.9 s: it shakes, the latch
+   flashes, the lid swings up on its hinge, light pours out and pixels burst from it. Each part turns
+   about its own box, never the drawing's corner. */
+.dr-crate-art.opening {
+  overflow: visible;
 }
-.dr-reveal[data-phase='openBox'] .dr-crate-art.opening .crate-body {
-  animation: dr-shake 0.9s ease-in-out;
+.dr-crate-art.opening .crate-all,
+.dr-crate-art.opening .crate-lid,
+.dr-crate-art.opening .crate-lid-open,
+.dr-crate-art.opening .crate-beam,
+.dr-crate-art.opening .crate-burst,
+.dr-crate-art.opening .crate-sparks rect,
+.dr-crate-art.opening .crate-latch {
+  transform-box: fill-box;
 }
-.dr-reveal[data-phase='openBox'] .dr-crate-art.opening .crate-burst {
-  animation: dr-burst-out 1.6s ease-out forwards;
+.dr-crate-art.opening .crate-all {
+  transform-origin: 50% 100%;
 }
-@keyframes dr-shake {
-  20%,
-  60% {
-    transform: translateX(-3px) rotate(-1deg);
-  }
-  40%,
-  80% {
-    transform: translateX(3px) rotate(1deg);
-  }
+/* The lid is hinged along the back of the box's top. Seen from the front, its face folds down onto
+   the hinge, then its underside rises behind the box, leaning back, lit by what's inside. */
+.dr-crate-art.opening .crate-lid,
+.dr-crate-art.opening .crate-lid-open {
+  transform-origin: 50% 100%;
 }
-@keyframes dr-lid-off {
+.dr-crate-art.opening .crate-lid-open {
+  transform: scaleY(0);
+}
+.dr-crate-art.opening .crate-glow-in {
+  opacity: 0;
+}
+.dr-crate-art.opening .crate-beam {
+  transform-origin: 50% 100%;
+  transform: scaleY(0);
+  opacity: 0;
+  filter: blur(6px); /* light, not a shape */
+}
+.dr-crate-art.opening .crate-burst {
+  transform-origin: 50% 50%;
+}
+.dr-crate-art.opening .crate-latch {
+  transform-origin: 50% 50%;
+}
+.dr-crate-art.opening .crate-sparks rect {
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+.dr-crate-art.opening .crate-sparks .g {
+  fill: var(--green);
+}
+.dr-crate-art.opening .crate-sparks .t {
+  fill: var(--teal);
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-all {
+  animation: dr-crate-shake 0.6s ease-in-out;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-latch {
+  animation: dr-crate-latch 0.75s ease-out forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-lid {
+  animation: dr-crate-lid 1.9s linear forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-lid-open {
+  animation: dr-crate-lid-open 1.9s linear forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-glow-in {
+  animation: dr-crate-glow-in 1.9s ease-out forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-beam {
+  animation: dr-crate-beam 1.9s ease-out forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-burst {
+  animation: dr-crate-burst 1.9s ease-out forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-sparks rect {
+  animation: dr-crate-spark 1.9s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+@keyframes dr-crate-shake {
+  15%,
   55% {
-    transform: none;
+    transform: rotate(-2.5deg);
+  }
+  35%,
+  75% {
+    transform: rotate(2.5deg);
+  }
+}
+@keyframes dr-crate-latch {
+  60% {
+    transform: scale(1);
+    filter: none;
+  }
+  80% {
+    transform: scale(2.2);
+    filter: drop-shadow(0 0 6px #53fc18);
   }
   100% {
-    transform: translate(28px, -70px) rotate(24deg);
-    opacity: 0;
+    transform: scale(1.4);
+    filter: drop-shadow(0 0 4px #53fc18);
   }
 }
-@keyframes dr-burst-out {
-  50% {
+@keyframes dr-crate-lid {
+  0%,
+  32% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
+  }
+  42%,
+  100% {
+    transform: scaleY(0);
+  }
+}
+@keyframes dr-crate-lid-open {
+  0%,
+  42% {
+    transform: scaleY(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  52% {
+    transform: scaleY(1.12);
+    animation-timing-function: ease-in-out;
+  }
+  60% {
+    transform: scaleY(0.95);
+  }
+  68%,
+  100% {
+    transform: scaleY(1);
+  }
+}
+@keyframes dr-crate-glow-in {
+  0%,
+  38% {
     opacity: 0;
   }
+  48%,
   100% {
     opacity: 1;
-    transform: scale(1.6);
   }
 }
+@keyframes dr-crate-beam {
+  0%,
+  42% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1.05);
+    opacity: 0.85;
+  }
+}
+@keyframes dr-crate-burst {
+  0%,
+  30% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1.3);
+  }
+}
+@keyframes dr-crate-spark {
+  0%,
+  36% {
+    opacity: 0;
+    transform: none;
+  }
+  45% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(90deg);
+  }
+}
+/* Once the reel starts, the open crate (still open: its animations keep their end) fades and sinks away. */
 .dr-reveal:not([data-phase='openBox']) .dr-unbox {
   opacity: 0;
+  transform: scale(0.94) translateY(10px);
 }
 
 .dr-reel {
