@@ -129,21 +129,21 @@ function chestTip(dr) {
 
 /**
  * The chest: a ring that fills over the hour, a glowing "Claim reward" chip when it's ready,
- * and a full ring in the winner's colour once claimed.
+ * and, once claimed, just the chest in the winning card's colour.
  * @param {object} dr the daily reward state
  * @param {{ where?: 'titlebar'|'tray', tight?: boolean, open?: boolean }} o
  */
 function rewardChest(dr, { where = 'titlebar', tight = false, open = false } = {}) {
   if (!dr || dr.state === 'signed-out' || dr.state === 'hidden') return '';
   const ready = dr.state === 'ready';
-  const frac = dr.state === 'claimed' ? 1 : dr.state === 'earning' ? Math.min(1, dr.minutes / Math.max(1, dr.threshold)) : 0;
+  const frac = dr.state === 'earning' ? Math.min(1, dr.minutes / Math.max(1, dr.threshold)) : 0;
   const tone = dr.state === 'claimed' ? `r-${esc(dr.today?.winner?.rarity ?? 'common')}` : '';
   const c = 2 * Math.PI * 9;
   const ring = `<svg class="dr-ring" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" stroke="rgba(255,255,255,.08)" stroke-width="2" fill="none"/>
     <circle class="dr-ring-value" cx="11" cy="11" r="9" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - frac)).toFixed(2)}" transform="rotate(-90 11 11)"/></svg>`;
   const cls = `dr-chest at-${where} state-${esc(dr.state)} ${tone} ${open ? 'open' : ''} ${ready && !tight && where === 'titlebar' ? 'chip' : ''}`;
   const label = ready && !tight && where === 'titlebar' ? '<span>Claim reward</span>' : '';
-  return `<button class="${cls}" data-action="reward-open" data-tip="${esc(chestTip(dr))}" aria-label="Daily reward">${ready ? '' : ring}${chestMark()}${label}</button>`;
+  return `<button class="${cls}" data-action="reward-open" data-tip="${esc(chestTip(dr))}" aria-label="Daily reward">${dr.state === 'earning' ? ring : ''}${chestMark()}${label}</button>`;
 }
 
 // ------------------------------------------------------------------ the card
@@ -232,14 +232,10 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
     actions = `<div class="dr-actions"><button class="btn primary lg dr-claim" data-action="reward-claim" ${ready && !dr.claiming ? '' : 'disabled'}>${label}</button></div>`;
   }
   // Other crates: an event's, or Kick's one-time Welcome Reward (unlocked by its sign-up questions).
+  // Kick's other crates: ready to claim, or filling as you watch.
   const extras = (dr.extras ?? []).map((e) => {
-    const what = e.state === 'ready' ? 'Ready to open' : e.condition === 'onboarding_completed' ? 'Answer Kick’s sign-up questions to unlock it' : `${e.minutes} of ${e.threshold} min watched`;
-    const act =
-      e.state === 'ready'
-        ? `<button class="btn sm primary" data-action="reward-claim" data-id="${esc(e.id)}">Claim</button>`
-        : e.condition === 'onboarding_completed'
-          ? `<button class="btn sm icon-only" data-action="reward-kick" data-tip="Open Kick">${icon('external')}</button>`
-          : '';
+    const what = e.state === 'ready' ? 'Ready to open' : `${e.minutes} of ${e.threshold} min watched`;
+    const act = e.state === 'ready' ? `<button class="btn sm primary" data-action="reward-claim" data-id="${esc(e.id)}">Claim</button>` : '';
     return `<div class="dr-extra">${chestMark()}<span><b>${esc(e.name || 'Reward')}</b><small>${what}</small></span>${act}</div>`;
   });
   return `<div class="dr-card at-${where} state-${dr.state} ${revealing ? 'revealing' : ''}">${top}${stage}

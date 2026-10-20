@@ -66,7 +66,7 @@ test('the card opens under the chest, fits the window without scrolling, and clo
   assert.match(text, /37 of 60 min/);
   assert.match(text, /12-day streak/);
   assert.match(text, /Level 42/);
-  assert.match(text, /Welcome Reward/);
+  assert.doesNotMatch(text, /Welcome Reward/, 'it waits on Kick’s sign-up steps, which no link reaches: nothing to do here');
   assert.equal(await a.win.isDisabled('.dr-pop .dr-claim'), true);
   assert.match(await a.win.textContent('.dr-pop .dr-claim'), /Claim in 23 min/);
   await a.win.mouse.click(300, 400);
@@ -121,8 +121,9 @@ test('ready: the chest becomes a "Claim reward" chip and hops, and claiming play
   assert.equal(claim.text, 'Rare emote, new to your collection');
   assert.equal(claim.by, 'you');
   await a.win.keyboard.press('Escape');
-  // Claimed: a full ring in the card's colour.
+  // Claimed: just the chest, in the card's colour, no ring.
   await until(a.win, () => document.querySelector('#titlebar-actions .dr-chest.state-claimed.r-rare'), 'the claimed chest');
+  assert.equal(await a.win.locator('#titlebar-actions .dr-chest .dr-ring').count(), 0);
 });
 
 test('Replay plays the reel again, and Collection opens Kick’s own page', async () => {
@@ -132,6 +133,15 @@ test('Replay plays the reel again, and Collection opens Kick’s own page', asyn
   await claimDone(a.win);
   await a.win.click('.dr-pop [data-action="reward-collection"]');
   assert.ok((await a.app.evaluate(() => global.pdOpened)).includes('https://kick.com/collectibles'));
+  await a.win.keyboard.press('Escape');
+});
+
+test('the Welcome Reward shows once it can be claimed, and claims from the card', async () => {
+  await a.app.evaluate(() => global.pdDemo.daily({ welcome: 'claimable', winner: 'card-uncommon-1' }));
+  await a.win.click(chest);
+  await until(a.win, () => /Welcome Reward\s*Ready to open/.test(document.querySelector('.dr-pop .dr-extra')?.textContent ?? ''), 'the Welcome Reward, ready');
+  await a.win.click('.dr-pop .dr-extra [data-action="reward-claim"]');
+  await until(a.win, () => !document.querySelector('.dr-card.revealing') && !document.querySelector('.dr-pop .dr-extra'), 'claimed, and gone from the card', 40000);
   await a.win.keyboard.press('Escape');
 });
 
@@ -156,7 +166,7 @@ test('the tray: the chest at the top right opens the card, and a claim plays rig
   // The popover is as tall as the card: nothing cut off.
   const fits = await pop.evaluate(() => document.querySelector('.dr-actions').getBoundingClientRect().bottom <= innerHeight);
   assert.ok(fits);
-  assert.equal(events().filter((e) => e.type === 'daily-reward').length, 2);
+  assert.equal(events().filter((e) => e.type === 'daily-reward').length, 3, 'the daily one, the Welcome Reward, and this');
   await pop.click('[data-action="reward-back"]');
   await until(pop, () => document.querySelector('.tray-now'), 'back to farming');
 });
