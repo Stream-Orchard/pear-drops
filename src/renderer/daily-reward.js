@@ -12,6 +12,8 @@ const RARITIES = [
   ['mythic', 'Mythic'],
 ];
 const rarityName = (r) => RARITIES.find(([id]) => id === r)?.[1] ?? 'Common';
+/** A count as people read it: 1,234. */
+const n = (v) => Number(v ?? 0).toLocaleString();
 
 /** A chance as people say it: 55%, 4.7%, 0.3%, and "1 in 200,000" once it's tiny. */
 function fmtChance(fraction) {
@@ -26,14 +28,14 @@ function fmtChance(fraction) {
 // rest of the set. When the reward is ready it hops the way kick.com's does, and lands in a burst
 // of pixels (daily-reward.css); no video, so it works offline, in demo mode and stops for reduced motion.
 const BURST = [
-  [2.2, 20.6, 'g'], [4.4, 22.3, 't'], [7.6, 23.2, 'g'], [11, 23.6, 't'], [14.4, 23.4, 'g'], [17.8, 22.9, 't'],
-  [20.6, 21.6, 'g'], [21.4, 19.6, 't'], [1.6, 18.8, 't'], [19.2, 18.4, 'g'],
+  [2.2, 20.1, 'g'], [4.4, 21.8, 't'], [7.6, 22.7, 'g'], [11, 23.1, 't'], [14.4, 22.9, 'g'], [17.8, 22.4, 't'],
+  [20.6, 21.1, 'g'], [21.4, 19.1, 't'], [1.6, 18.3, 't'], [19.2, 17.9, 'g'],
 ];
 function chestMark(cls = '') {
   return `<svg class="icon chest ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <g class="chest-burst" stroke="none">${BURST.map(([x, y, c]) => `<rect class="${c}" x="${x - 0.7}" y="${y - 0.7}" width="1.4" height="1.4"/>`).join('')}</g>
-    <g class="chest-box"><path class="chest-body" d="M3.5 9 5.5 5h13l2 4v10a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 10h17M8.5 5v15"/>
-      <path class="chest-latch" d="M12.6 10v2.8l2.65 2.1 2.65-2.1V10"/></g>
+    <g class="chest-box"><path class="chest-body" d="M3.5 8.5 5.5 4.5h13l2 4v10a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 9.5h17M8.5 4.5v15"/>
+      <path class="chest-latch" d="M12.6 9.5v2.8l2.65 2.1 2.65-2.1V9.5"/></g>
   </svg>`;
 }
 
@@ -79,7 +81,7 @@ function winnerLine(t, { short = false } = {}) {
   const kind = `<b>${cardKind(t.winner)}</b>`;
   if (!t.duplicate) return `${kind}<span class="chip green new">New</span>`;
   if (short) return `${kind}<span class="chip">Duplicate</span>`;
-  const xp = t.xpMinutes ? `<span class="dr-xp">+${fmtDur(t.xpMinutes * MIN)}</span> watch time${t.levelTo ? ` to Level ${t.levelTo}` : ''}` : 'Turned into level progress';
+  const xp = t.xpMinutes ? `<span class="dr-xp">+${fmtDur(t.xpMinutes * MIN)}</span> watch time${t.levelTo ? ` to Level ${n(t.levelTo)}` : ''}` : 'Turned into level progress';
   return `<span class="dr-dupe">You already have this ${kind}</span><span class="dr-sub">${xp}</span>`;
 }
 
@@ -108,7 +110,7 @@ function rewardChest(dr, { where = 'titlebar', tight = false, open = false } = {
   const c = 2 * Math.PI * 9;
   const ring = `<svg class="dr-ring" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" stroke="rgba(255,255,255,.08)" stroke-width="2" fill="none"/>
     <circle class="dr-ring-value" cx="11" cy="11" r="9" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - frac)).toFixed(2)}" transform="rotate(-90 11 11)"/></svg>`;
-  const cls = `dr-chest ${where} state-${esc(dr.state)} ${tone} ${open ? 'open' : ''} ${ready && !tight && where === 'titlebar' ? 'chip' : ''}`;
+  const cls = `dr-chest at-${where} state-${esc(dr.state)} ${tone} ${open ? 'open' : ''} ${ready && !tight && where === 'titlebar' ? 'chip' : ''}`;
   const label = ready && !tight && where === 'titlebar' ? '<span>Claim reward</span>' : '';
   return `<button class="${cls}" data-action="reward-open" data-tip="${esc(chestTip(dr))}" aria-label="Daily reward">${ready ? '' : ring}${chestMark()}${label}</button>`;
 }
@@ -124,7 +126,7 @@ function rarityTable(dr) {
     ${RARITIES.map(([id, name]) => {
       const c = by[id] ?? { owned: 0, total: 0 };
       return `<div class="dr-rarity r-${id}"><span class="name"><i></i>${name}</span><span class="pct">${odds[id] == null ? '—' : fmtChance(odds[id])}</span>
-        <span class="own"><span class="bar"><i style="width:${c.total ? (c.owned / c.total) * 100 : 0}%"></i></span><span class="count"><b>${c.owned}</b>/${c.total}</span></span></div>`;
+        <span class="own"><span class="bar"><i style="width:${c.total ? (c.owned / c.total) * 100 : 0}%"></i></span><span class="count"><b>${n(c.owned)}</b>/${n(c.total)}</span></span></div>`;
     }).join('')}
   </div>`;
 }
@@ -141,10 +143,10 @@ function dupeRing(fraction, size = 30) {
 function factsRow(dr) {
   const lv = dr.level;
   return `<div class="dr-facts">
-    <span class="dr-fact" data-tip="Days in a row you’ve claimed the daily reward">${icon('bolt')}<b>${dr.streak ?? 0}-day</b> streak</span>
+    <span class="dr-fact streak" data-tip="Your daily reward streak on Kick">${icon('bolt')}<b>${n(dr.streak)}-day</b> streak</span>
     ${
       lv
-        ? `<span class="dr-fact level" data-tip="Your Kick level. Duplicates turn into progress towards the next one">${lv.badge ? img(lv.badge, 'dr-level-badge') : icon('trophy')}<b>Level ${lv.level}</b>
+        ? `<span class="dr-fact level" data-tip="Your Kick level. Duplicates turn into progress towards the next one">${lv.badge ? img(lv.badge, 'dr-level-badge') : icon('trophy')}<b>Level ${n(lv.level)}</b>
           <span class="bar"><i style="width:${lv.toNext ? Math.min(100, (lv.progress / (lv.progress + lv.toNext)) * 100) : 0}%"></i></span></span>`
         : ''
     }
@@ -169,7 +171,7 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
   const top = `<div class="dr-head">${close}${chestMark()}<b>Daily reward</b>${head ? `<span class="dr-head-sub">${head}</span>` : ''}<span class="spacer"></span>${x}</div>`;
 
   if (dr.state === 'unavailable' || dr.state === 'loading') {
-    return `<div class="dr-card ${where} state-${dr.state}">${top}
+    return `<div class="dr-card at-${where} state-${dr.state}">${top}
       <div class="dr-stage">${crateArt('idle dim')}<div class="dr-stage-msg">${dr.state === 'loading' ? '<span class="spinner"></span>Asking Kick…' : `${icon('alert')}Kick’s daily reward isn’t answering. Pear Drops tries again in a few minutes.`}</div></div>
       <div class="dr-actions"><button class="btn" data-action="reward-kick">${icon('external')} Open on Kick</button></div></div>`;
   }
@@ -185,7 +187,7 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
       <div class="dr-result">${winnerLine(t)}</div>`
       : `<div class="dr-stage">${crateArt('dim')}<div class="dr-stage-msg">${icon('check')}Claimed today, outside Pear Drops.</div></div>`;
     middle = `${factsRow(dr)}${rarityTable(dr)}
-      <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>Tomorrow, with ${dr.collection?.owned ?? 0} of Kick’s ${dr.collection?.total ?? 0} cards yours</small></span></div>`;
+      <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate tomorrow</b><small>${n(dr.collection?.owned)} of Kick’s ${n(dr.collection?.total)} cards are yours</small></span></div>`;
     actions = `<div class="dr-actions">${t.replay ? `<button class="btn" data-action="reward-replay">${icon('play')} Replay</button>` : ''}<button class="btn" data-action="reward-collection" data-tip="Every card, and which are yours, on kick.com">${icon('external')} Collection</button></div>`;
   } else {
     const ready = dr.state === 'ready';
@@ -194,7 +196,7 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
     stage = `<div class="dr-stage ${ready ? 'ready' : 'earning'}">${crateStage(dr)}${ready ? '<span class="chip green dr-ready">Ready</span>' : ''}${preload}</div>
       ${ready ? '' : `<div class="dr-progress"><span class="label">Watched today</span><span class="bar"><i style="width:${(dr.minutes / Math.max(1, dr.threshold)) * 100}%"></i></span><span><b>${dr.minutes}</b> of ${dr.threshold} min</span></div>`}`;
     middle = `${factsRow(dr)}${rarityTable(dr)}
-      <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>You have ${dr.collection?.owned ?? 0} of Kick’s ${dr.collection?.total ?? 0} cards</small></span></div>`;
+      <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>${n(dr.collection?.owned)} of Kick’s ${n(dr.collection?.total)} cards are yours</small></span></div>`;
     const label = dr.claiming ? 'Claiming…' : ready ? 'Claim' : dr.watching ? `Claim in ${left} min` : `Watch ${left} more min`;
     actions = `<div class="dr-actions"><button class="btn primary lg dr-claim" data-action="reward-claim" ${ready && !dr.claiming ? '' : 'disabled'}>${label}</button></div>`;
   }
@@ -209,12 +211,23 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
           : '';
     return `<div class="dr-extra">${chestMark()}<span><b>${esc(e.name || 'Reward')}</b><small>${what}</small></span>${act}</div>`;
   });
-  return `<div class="dr-card ${where} state-${dr.state} ${revealing ? 'revealing' : ''}">${top}${stage}
+  return `<div class="dr-card at-${where} state-${dr.state} ${revealing ? 'revealing' : ''}">${top}${stage}
     <div class="dr-body">${middle}${extras.join('')}</div>${actions}
     <div class="dr-reveal" hidden></div></div>`;
 }
 
 // ------------------------------------------------------------------ the reveal
+
+/** Puts the card back as it was before a reveal (a redraw won't, when nothing else changed). */
+function endReveal(card) {
+  if (!card) return;
+  card.classList.remove('revealing');
+  const layer = card.querySelector('.dr-reveal');
+  if (!layer) return;
+  layer.hidden = true;
+  layer.replaceChildren();
+  delete layer.dataset.phase;
+}
 
 const REEL = { speed: 3.5, ease: 'cubic-bezier(0.18, 0.58, 0.12, 1)', pulse: 'cubic-bezier(0.45, 0.05, 0.55, 0.95)' };
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;

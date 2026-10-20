@@ -1,4 +1,4 @@
-/* global rewardChest, rewardCard, playReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
+/* global rewardChest, rewardCard, playReveal, endReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 let page = 'main'; // or 'reward': the daily reward's card, claimed right here
@@ -135,6 +135,7 @@ function render() {
 function fit() {
   window.pd.tray.resize(Math.ceil($('#tray').getBoundingClientRect().height) + 2);
 }
+new ResizeObserver(() => fit()).observe($('#tray'));
 
 const actions = {
   show: () => window.pd.tray.showMain(),
@@ -167,8 +168,8 @@ async function reveal(card, get) {
     card.classList.add('revealing');
     await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile: 92 });
   }
+  endReveal(card);
   revealing = false;
-  card.classList.remove('revealing');
   render();
 }
 

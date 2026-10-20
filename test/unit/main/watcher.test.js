@@ -65,4 +65,10 @@ test("the page's reports: a video that ended or failed, and Kick's realtime even
   page.slug = null;
   report({ kind: 'realtime', event: 'App\\Events\\StopStreamBroadcast' });
   assert.equal(hints.length, 3, 'nothing watched: nothing to check');
+  // The daily reward's hour is done: passed on whatever is watched, and never as a hint.
+  const heard = [];
+  page.on('gamification', (g) => heard.push(g.event));
+  report({ kind: 'realtime', event: 'App\\Events\\GamificationWatchTimeGoalReached' });
+  assert.deepEqual(heard, ['GamificationWatchTimeGoalReached']);
+  assert.equal(hints.length, 3);
 });

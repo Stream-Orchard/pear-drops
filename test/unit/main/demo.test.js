@@ -99,3 +99,31 @@ test("the stand-in stream page: the player sends watch events, and tests can fre
   const chat = streamPage(slug, 120, 'chat');
   assert.ok(chat.includes("if(\"chat\"!=='chat')"), 'the chat sends no watch events');
 });
+
+test('the stand-in daily reward: the hour fills from watching, a claim picks a card, a duplicate gives level progress', async () => {
+  const { api } = createDemo();
+  await assert.rejects(api.dailyChallenges(), { status: 401 }, 'signed out');
+  api.loggedIn = true;
+  const [daily] = (await api.dailyChallenges()).data;
+  assert.equal(daily.status, 'in_progress');
+  assert.equal(daily.condition.progress, 37);
+  assert.equal(daily.animations, null, 'no Kick videos: demo mode never goes to the network');
+  assert.equal((await api.dailyChallenges({ recurrence: 'one_off' })).data[0].condition.type, 'onboarding_completed');
+  const cards = (await api.collectibles()).data;
+  assert.equal(cards.length, 72);
+  assert.ok(cards.every((c) => c.card_url.startsWith('data:image/svg+xml')));
+  await assert.rejects(api.claimDaily(daily.id), { status: 400 }, 'not ready yet');
+  for (let i = 0; i < 12; i++) api.creditWatch('pixelpear');
+  assert.equal((await api.dailyChallenges()).data[0].status, 'claimable');
+  api.nextWinner = cards.find((c) => c.owned).id;
+  const { data: won } = await api.claimDaily(daily.id);
+  assert.equal(won.roulette.length, 24);
+  assert.equal(won.consolation.watch_time_minutes, 12);
+  assert.equal((await api.streak()).data.length_days, 13);
+  assert.equal((await api.level()).data.progress_xp, 352);
+  assert.equal((await api.dailyChallenges()).data[0].status, 'claimed');
+  api.welcome.status = 'claimable';
+  api.nextWinner = cards.find((c) => !c.owned).id;
+  assert.equal((await api.claimDaily('welcome-demo')).data.consolation, null, 'a new card');
+  assert.equal((await api.streak()).data.length_days, 13, 'only the daily one keeps the streak');
+});

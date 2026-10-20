@@ -516,15 +516,15 @@ span.img-missing {
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 11px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 11px;
   background: transparent;
   color: var(--text-2);
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: 13px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -535,13 +535,17 @@ span.img-missing {
   color: var(--text);
 }
 .tb-btn .icon {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
 }
 .tb-btn.icon-only {
-  width: 34px;
+  width: 38px;
   padding: 0;
   justify-content: center;
+}
+.tb-btn.icon-only .icon {
+  width: 19px;
+  height: 19px;
 }
 .tb-btn.resume {
   color: #0a1406;
@@ -555,23 +559,24 @@ span.img-missing {
 /* Refresh: the countdown ring wraps the refresh icon. */
 .tb-refresh {
   position: relative;
-  padding: 0 10px 0 6px;
+  padding: 0 12px 0 5px;
   color: var(--muted);
 }
 .tb-refresh .countdown-ring {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
 }
+/* The refresh icon sits in the ring's centre: the ring starts after the padding (5px) and is 28px. */
 .tb-refresh > .icon {
   position: absolute;
-  left: 11px;
-  width: 12px;
-  height: 12px;
+  left: 12px;
+  width: 14px;
+  height: 14px;
   color: var(--text-2);
 }
 .tb-refresh .num {
-  width: 26px;
-  font: 600 11.5px var(--mono);
+  width: 30px;
+  font: 600 12.5px var(--mono);
   text-align: left;
 }
 .tb-refresh.busy > .icon {
@@ -645,8 +650,8 @@ span.img-missing {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 36px;
-  padding: 0 10px 0 4px;
+  height: 38px;
+  padding: 0 11px 0 4px;
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
@@ -664,8 +669,8 @@ span.img-missing {
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px rgba(83, 252, 24, 0.55);
 }
 .user-btn .avatar {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
 }
 
 .layout {
@@ -5118,20 +5123,20 @@ input[type='range']::-webkit-slider-thumb {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 30px;
-  padding: 0 12px 0 10px;
+  height: 34px;
+  padding: 0 14px 0 11px;
   margin-right: 6px;
   border-radius: 999px;
   border: 1px solid rgba(83, 252, 24, 0.3);
   background: rgba(83, 252, 24, 0.08);
   color: var(--green);
   font-weight: 650;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 .tb-update .icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 .tb-update.ready {
   color: #0a1406;

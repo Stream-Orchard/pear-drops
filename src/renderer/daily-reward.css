@@ -64,7 +64,7 @@
 .icon.chest .chest-box,
 .icon.chest .chest-burst {
   transform-box: view-box;
-  transform-origin: 12px 20px;
+  transform-origin: 12px 19.5px;
 }
 
 /* Kick's hop, timed from its own 1.29 s loop: a crouch, a leap that stretches, a rattle in the
@@ -164,22 +164,25 @@
 }
 
 /* ------------------------------------------------------------- the chest button */
+/* Like the title bar's other controls: no box until hovered. The ring and the chest share one
+   grid cell, so the chest sits exactly in the ring's centre. */
 .dr-chest {
   -webkit-app-region: no-drag;
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 34px;
-  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 11px;
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s, width 0.35s var(--ease);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dr-chest > * {
+  grid-area: 1 / 1;
 }
 .dr-chest:hover,
 .dr-chest.open {
@@ -187,20 +190,20 @@
   border-color: var(--border);
   color: var(--text);
 }
+.dr-chest.at-titlebar {
+  margin-right: 2px;
+}
 .dr-chest .dr-ring {
-  position: absolute;
-  inset: 5px;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
 }
 .dr-chest .dr-ring-value {
   stroke: var(--green);
   transition: stroke-dashoffset 0.6s var(--ease);
 }
 .dr-chest .icon.chest {
-  position: relative;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   --chest-bg: var(--bg);
 }
 .dr-chest.state-claimed .dr-ring-value {
@@ -214,7 +217,7 @@
   opacity: 0.55;
 }
 
-/* Ready: no ring, and the chest hops. A chip with words where there's room. */
+/* Ready: no ring; the chest hops. A chip with words where there's room. */
 .dr-chest.state-ready {
   color: var(--green);
   border-color: rgba(83, 252, 24, 0.3);
@@ -222,20 +225,21 @@
   animation: dr-glow 2.4s ease-in-out infinite;
 }
 .dr-chest.state-ready .icon.chest {
-  width: 17px;
-  height: 17px;
+  width: 21px;
+  height: 21px;
   --chest-bg: #0f1a0b;
 }
-.dr-chest.titlebar {
-  margin-right: 6px;
-}
 .dr-chest.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   width: auto;
-  height: 30px;
-  padding: 0 12px 0 9px;
+  height: 34px;
+  padding: 0 15px 0 11px;
+  margin-right: 8px;
   border-radius: 999px;
   font-weight: 650;
-  font-size: 12px;
+  font-size: 13px;
 }
 .dr-chest.chip:hover {
   background: rgba(83, 252, 24, 0.14);
@@ -249,22 +253,23 @@
 }
 
 /* In the tray's header: the same chest, as tall as the status pill beside it. */
-.dr-chest.tray {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  border-color: var(--border);
-  background: var(--surface-2);
+.dr-chest.at-tray {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
 }
-.dr-chest.tray .dr-ring {
-  inset: 2px;
+.dr-chest.at-tray .dr-ring {
+  width: 26px;
+  height: 26px;
 }
-.dr-chest.tray .icon.chest {
+.dr-chest.at-tray .icon.chest {
+  width: 16px;
+  height: 16px;
   --chest-bg: #1a1d22;
 }
-.dr-chest.tray.state-ready .icon.chest {
-  width: 15px;
-  height: 15px;
+.dr-chest.at-tray.state-ready .icon.chest {
+  width: 19px;
+  height: 19px;
 }
 
 /* ------------------------------------------------------------- the card */
@@ -368,6 +373,7 @@
 .dr-stage .dr-crate-art {
   width: 62%;
   height: auto;
+  margin-top: 4px; /* its shadow sits under it: this centres the crate itself */
 }
 .dr-crate-art .crate-burst {
   opacity: 0;
@@ -597,9 +603,10 @@
   color: var(--muted);
 }
 .dr-rarity .own .count {
-  min-width: 40px;
+  width: 68px;
   justify-content: flex-end;
   display: inline-flex;
+  flex: none;
 }
 .dr-rarity .own b {
   color: var(--text-2);
@@ -607,6 +614,7 @@
 }
 .dr-rarity .own .bar {
   height: 4px;
+  min-width: 28px;
 }
 .dr-rarity .own .bar > i {
   background: var(--r-fill);
@@ -688,17 +696,17 @@
 }
 
 /* The card as the tray's whole page: the tray has its own padding. */
-.dr-card.tray {
+.dr-card.at-tray {
   padding: 0;
   gap: 11px;
 }
-.dr-card.tray .dr-head > .icon.chest {
+.dr-card.at-tray .dr-head > .icon.chest {
   --chest-bg: #14171b;
 }
-.dr-card.tray .dr-stage {
+.dr-card.at-tray .dr-stage {
   height: 150px;
 }
-.dr-card.tray .dr-won-card {
+.dr-card.at-tray .dr-won-card {
   height: 128px;
 }
 
@@ -713,7 +721,7 @@
   display: grid;
   place-items: center;
 }
-.dr-card.tray .dr-reveal {
+.dr-card.at-tray .dr-reveal {
   inset: 39px 0 0;
   border-radius: 12px;
 }

@@ -19,8 +19,8 @@ const COLORS = {
 const WIDTH = 360;
 const HEIGHT = 520;
 
-/** A progress ring as a bitmap (no canvas in the main process), with a green dot at its top right when `badge`. */
-function ringIcon(fraction, tone, { size = 18, scale = 2, badge = false } = {}) {
+/** A progress ring as BGRA pixels (no canvas in the main process), with a green dot at its top right when `badge`. */
+function ringPixels(fraction, tone, { size = 18, scale = 2, badge = false } = {}) {
   const px = size * scale;
   const buf = Buffer.alloc(px * px * 4);
   const c = px / 2;
@@ -69,6 +69,11 @@ function ringIcon(fraction, tone, { size = 18, scale = 2, badge = false } = {}) 
       buf[i + 3] = A;
     }
   }
+  return { buf, px };
+}
+
+function ringIcon(fraction, tone, { size = 18, scale = 2, badge = false } = {}) {
+  const { buf, px } = ringPixels(fraction, tone, { size, scale, badge });
   return nativeImage.createFromBitmap(buf, { width: px, height: px, scaleFactor: scale });
 }
 
@@ -201,4 +206,4 @@ class TrayController {
   }
 }
 
-module.exports = { TrayController, ringIcon, WIDTH };
+module.exports = { TrayController, ringIcon, ringPixels, WIDTH };

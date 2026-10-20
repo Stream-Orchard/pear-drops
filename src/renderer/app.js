@@ -1,4 +1,4 @@
-/* global rewardChest, rewardCard, playReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -1149,7 +1149,8 @@ async function claimReward(card, id, tile) {
     card.classList.add('revealing');
     await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dr.media?.unbox, tile });
   } else if (r?.error) toast({ title: 'Couldn’t open the daily reward', body: r.error, kind: 'alert' });
-  // Claimed already (Stream Multiview or kick.com got there first): the card shows what it was.
+  // Claimed already (kick.com got there first): the card shows what it was.
+  endReveal(card);
   ui.revealing = false;
   render();
 }
@@ -1162,8 +1163,8 @@ async function replayReward(card, tile) {
   ui.revealing = true;
   card.classList.add('revealing');
   await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile });
+  endReveal(card);
   ui.revealing = false;
-  card.classList.remove('revealing');
   render();
 }
 
