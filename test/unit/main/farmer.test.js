@@ -53,10 +53,15 @@ class FakeApi {
       .filter((c) => this.units[c.id] !== undefined)
       .map((c) => ({ id: c.id, name: c.name, progress_units: this.units[c.id], rewards: c.rewards.map((r) => ({ id: r.id, claimed: this.claimed.has(r.id), progress: Math.min(1, this.units[c.id] / r.required_units) })) }));
   }
-  async livestreams(categoryId) {
+  async livestreams(categoryId, opts = {}) {
+    (this.listed ??= []).push([categoryId, opts.maxPages]);
     return (this.streams[categoryId] ?? []).filter((s) => !this.offline.has(s.channel.slug));
   }
   async channelInfo(slug) {
+    (this.asked ??= []).push(slug);
+    // Live but beyond what the category's listing returns (a small channel in a big category).
+    const hidden = this.hidden?.[slug];
+    if (hidden && !this.offline.has(slug)) return { livestream: { is_live: true, session_title: `${slug} live`, viewer_count: 3, categories: [{ id: hidden }] } };
     const cat = Object.entries(this.streams).find(([, list]) => list.some((s) => s.channel.slug === slug));
     if (!cat || this.offline.has(slug)) return { livestream: null };
     return { livestream: { is_live: true, categories: [{ id: Number(cat[0]) }] } };
@@ -1005,4 +1010,161 @@ test('Claimed today counts the history\'s claims since midnight, so a restart ke
   farmer.history = null;
   farmer.stats.claims = 3;
   assert.equal(farmer.claimsToday(), 3, 'without a history, this run\'s claims');
+});
+
+// ---- queue rows: a drop limited to certain channels gets a row of its own ----
+
+const CHAT = { id: 7, name: 'Just Chatting' };
+const ch = (slug, id) => ({ slug, id });
+
+test('drops go in rows: a category\'s open drops together, a channel-only drop on its own, drops on the same channels sharing one', async () => {
+  const open = campaign('open', { category: CHAT });
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11), ch('lane', 12)], endsIn: 2 });
+  const owl2 = campaign('owl2', { category: CHAT, channels: [ch('lane', 12), ch('owl', 11)], endsIn: 4 });
+  const solo = campaign('solo', { category: { id: 8, name: 'Markets' }, channels: [ch('drift', 21)] });
+  const { farmer } = setup({ campaigns: [open, owl, owl2, solo], units: { open: 1, owl: 1, owl2: 1, solo: 1 } });
+  await farmer.refresh({ force: true });
+  const rows = Object.fromEntries(farmer.model.categories.map((r) => [r.id, r]));
+  assert.deepEqual(Object.keys(rows).sort(), ['7', 'ch:11,12', 'ch:21']);
+  assert.equal(rows[7].kind, 'category');
+  assert.deepEqual(rows[7].campaigns.map((c) => c.id), ['open']);
+  const pair = rows['ch:11,12'];
+  assert.equal(pair.kind, 'channels');
+  assert.equal(pair.name, 'Campaign owl', 'named after the drop that ends first');
+  assert.equal(pair.otherDrops, 1);
+  assert.deepEqual(pair.channels.map((c) => c.slug), ['owl', 'lane']);
+  assert.deepEqual(pair.category, { id: 7, name: 'Just Chatting', slug: undefined, image: null });
+  assert.equal(pair.categoryId, 7);
+  // Markets has only a channel-only drop: no row of its own, just the drop's.
+  assert.equal(rows[8], undefined);
+  assert.equal(rows['ch:21'].category.name, 'Markets');
+});
+
+test('a long list of channels gets a short row id, and an event\'s drop a row of the event', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => ch(`c${i}`, 100000 + i));
+  const big = campaign('big', { category: CHAT, channels: many });
+  const ev = { ...campaign('ev', { category: CHAT, channels: [ch('owl', 11)] }), url: 'https://kick.com/events/cozy-week' };
+  const { farmer } = setup({ campaigns: [big, ev], units: { big: 1, ev: 1 } });
+  await farmer.refresh({ force: true });
+  const ids = farmer.model.categories.map((r) => r.id);
+  assert.ok(ids.includes('ev:cozy-week'));
+  const long = ids.find((id) => id.startsWith('ch:'));
+  assert.match(long, /^ch:#[0-9a-z]+$/);
+  assert.ok(long.length < 20);
+});
+
+test('a new row goes right after its category in the order, and is off if its category is off; then either can change on its own', async () => {
+  const open = campaign('open', { category: CHAT });
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11)] });
+  const other = campaign('other', { category: { id: 9, name: 'Other' } });
+  const { farmer } = setup({ campaigns: [open, owl, other], units: { open: 1, owl: 1, other: 1 } }, { categoryOrder: [9, 7], disabledCategories: [7] });
+  await farmer.refresh({ force: true });
+  const s = farmer.store.get();
+  assert.deepEqual(s.categoryOrder, [9, 7, 'ch:11']);
+  assert.deepEqual(s.disabledCategories, [7, 'ch:11']);
+  assert.deepEqual(s.knownRows, ['ch:11']);
+  assert.deepEqual(farmer.model.categories.map((r) => [r.id, r.enabled]), [[9, true], [7, false], ['ch:11', false]]);
+  // Switched on by itself, with its category still off: it stays on.
+  farmer.store.set({ disabledCategories: [7] });
+  farmer.buildModel();
+  assert.equal(farmer.model.categories.find((r) => r.id === 'ch:11').enabled, true);
+  assert.deepEqual(farmer.store.get().categoryOrder, [9, 7, 'ch:11'], 'placed once');
+});
+
+test('with no saved order a new row is just remembered, and sorts like any other', async () => {
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11)], endsIn: 1 });
+  const open = campaign('open', { category: CHAT, endsIn: 5 });
+  const { farmer } = setup({ campaigns: [open, owl], units: { open: 1, owl: 1 } });
+  await farmer.refresh({ force: true });
+  assert.deepEqual(farmer.store.get().categoryOrder, []);
+  assert.deepEqual(farmer.store.get().knownRows, ['ch:11']);
+  assert.deepEqual(farmer.model.categories.map((r) => r.id), ['ch:11', 7], 'the one ending first');
+});
+
+test('a channel row finds its channels: in the category\'s first page, else asked about one by one, a followed offline one skipped', async () => {
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11), ch('lane', 12), ch('fol', 13)] });
+  const { farmer, api, watcher } = setup({ campaigns: [owl], units: { owl: 1 }, streams: { 7: [live('owl', 11)] } });
+  api.hidden = { lane: 7 };
+  api.followed = Object.assign(new Set(['fol']), { live: new Set() });
+  farmer.directGapMs = 0;
+  await farmer.tick();
+  const asked = api.asked.filter((slug) => slug !== watcher.watching);
+  assert.deepEqual(asked, ['lane'], 'owl was listed, fol is followed and the follow list says it\'s offline');
+  assert.equal(api.listed[0][1], 1, 'only the first page');
+  const row = farmer.model.categories[0];
+  assert.deepEqual(row.liveChannels.sort(), [11, 12]);
+  assert.equal(row.streamCount, 2);
+  // Asked again only once the streams are due, not at every refresh.
+  api.asked.length = 0;
+  await farmer.tick();
+  assert.equal(api.asked.filter((slug) => slug === 'lane').length, 0);
+});
+
+test('a channel the direct check finds live elsewhere, or not at all, is offline for the row', async () => {
+  const owl = campaign('owl', { category: CHAT, channels: [ch('lane', 12), ch('gone', 14)] });
+  const { farmer, api } = setup({ campaigns: [owl], units: { owl: 1 }, streams: { 7: [] } });
+  api.hidden = { lane: 99 };
+  api.channelInfo = async (slug) => {
+    if (slug === 'gone') throw Object.assign(new Error('HTTP 404'), { status: 404 });
+    return { livestream: { is_live: true, categories: [{ id: 99 }] } };
+  };
+  farmer.directGapMs = 0;
+  await farmer.tick();
+  assert.equal(farmer.model.categories[0].streamCount, 0);
+  assert.equal(farmer.status.code, 'waiting');
+  assert.equal(farmer.direct.get('gone').ls, null);
+});
+
+test('a drop on many channels searches the category deeper instead of asking about each', async () => {
+  const many = Array.from({ length: 12 }, (_, i) => ch(`c${i}`, 200 + i));
+  const big = campaign('big', { category: CHAT, channels: many });
+  const { farmer, api } = setup({ campaigns: [big], units: { big: 1 }, streams: { 7: [live('c3', 203)] } });
+  await farmer.tick();
+  assert.equal(api.listed[0][1], 5);
+  assert.deepEqual((api.asked ?? []).filter((slug) => slug !== 'c3'), []);
+});
+
+test('a stream on a channel row\'s channel counts for the category\'s open drop too, and is watched for both', async () => {
+  const open = campaign('open', { category: CHAT });
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11)] });
+  const { farmer, watcher, history } = setup({ campaigns: [owl, open], units: { open: 1, owl: 1 }, streams: { 7: [live('big', 50, 900), live('owl', 11, 10)] } }, { categoryOrder: ['ch:11', 7], knownRows: ['ch:11'] });
+  await farmer.tick();
+  assert.equal(watcher.watching, 'owl');
+  assert.deepEqual(farmer.current.campaignIds.sort(), ['open', 'owl']);
+  assert.equal(farmer.current.targetId, 'ch:11');
+  assert.equal(farmer.current.categoryId, 7);
+  assert.equal(farmer.current.targetName, 'Campaign owl');
+  const start = history.range(0).find((e) => e.type === 'watch-start');
+  assert.equal(start.targetId, 'ch:11');
+  assert.match(start.text, /Watching owl for Campaign owl/);
+  const snap = farmer.snapshot();
+  assert.equal(snap.current.targetId, 'ch:11');
+  // The open drop's row lists the bigger stream first: it counts only for the open drop.
+  assert.deepEqual(farmer.model.categories.find((r) => r.id === 7).streams.map((s) => s.slug), ['owl', 'big'], 'one that counts for both first');
+});
+
+test('how often a row is live is its own: a channel row\'s history, and a session\'s row kept in History', async () => {
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11)] });
+  const { farmer, history } = setup({ campaigns: [owl], units: { owl: 1 }, streams: { 7: [live('owl', 11)] } });
+  await farmer.tick();
+  assert.equal(farmer.availability.seen('ch:11').live, 1);
+  assert.equal(farmer.availability.seen(7).hours, 0, 'the category has no row, so no history');
+  farmer.stopWatching('test');
+  const session = history.sessions(history.range(0), Date.now()).at(-1);
+  assert.equal(session.targetId, 'ch:11');
+  farmer.availability = new (require('../../../src/main/availability').Availability)();
+  farmer.availabilityFromHistory();
+  assert.equal(farmer.availability.seen('ch:11').live, 1, 'rebuilt from the session');
+});
+
+test('a finished channel row records its drop, not a category', async () => {
+  const owl = campaign('owl', { category: CHAT, channels: [ch('owl', 11)] });
+  const { farmer, api, history } = setup({ campaigns: [owl], units: { owl: 10 } });
+  await farmer.refresh({ force: true });
+  api.claimed.add('owl-r1');
+  api.units.owl = 60;
+  await farmer.tick();
+  const types = history.range(0).map((e) => e.type);
+  assert.ok(types.includes('campaign-complete'));
+  assert.ok(!types.includes('category-complete'));
 });
