@@ -1,6 +1,13 @@
-/* global previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
+/* global rewardChest, rewardCard, playReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
+let page = 'main'; // or 'reward': the daily reward's card, claimed right here
+let revealing = false;
+
+/** Kick's daily reward, or null before the first answer. */
+function dailyReward() {
+  return state?.dailyReward ?? null;
+}
 
 function campaignsOf(f) {
   return f.categories.flatMap((c) => c.campaigns);
@@ -48,6 +55,13 @@ function render() {
     );
     return fit();
   }
+  const dr = dailyReward();
+  if (page === 'reward' && dr && !['signed-out', 'hidden'].includes(dr.state)) {
+    // The reveal owns the card until it's over.
+    if (!revealing) setHTML(root, rewardCard(dr, { where: 'tray' }));
+    return fit();
+  }
+  page = 'main';
   const f = state.farm;
   const cur = f.current;
   const p = primary(f);
@@ -85,7 +99,7 @@ function render() {
   setHTML(
     root,
     `<div class="tray-head">${brandMark(24)}<b>Pear <span>Drops</span></b><span class="spacer"></span>
-      <span class="status-pill ${tone}">${tone === 'farming' ? '<span class="live-dot green"></span>' : '<span class="status-dot"></span>'}<span class="label">${esc(text)}</span></span></div>
+      <span class="status-pill ${tone}">${tone === 'farming' ? '<span class="live-dot green"></span>' : '<span class="status-dot"></span>'}<span class="label">${esc(text)}</span></span>${rewardChest(dr, { where: 'tray' })}</div>
     ${noticeLine(f)}
     ${f.conflict ? `<div class="tray-alert">${icon('alert')}<span><b>Close other Kick streams.</b> ${f.eventsSinceCredit} watch events got no credit.</span></div>` : ''}
     ${now}
@@ -128,11 +142,40 @@ const actions = {
   pause: () => window.pd.tray.action('pause'),
   resume: () => window.pd.tray.action('resume'),
   skip: () => window.pd.tray.action('skip'),
+  'reward-open': () => {
+    page = 'reward';
+    render();
+  },
+  'reward-back': () => {
+    if (revealing) return;
+    page = 'main';
+    render();
+  },
+  'reward-claim': (el) => reveal(el.closest('.dr-card'), () => window.pd.dailyReward.claim(el.dataset.id)),
+  'reward-replay': (el) => reveal(el.closest('.dr-card'), () => window.pd.dailyReward.lastClaim()),
+  'reward-insights': () => window.pd.tray.showMain('daily'),
+  'reward-collection': () => window.pd.tray.showMain('daily'),
+  'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
 };
+
+/** Claims (or replays) the daily reward, with the whole reveal in the popover. */
+async function reveal(card, get) {
+  if (revealing || !card) return;
+  revealing = true;
+  card.querySelector('.dr-claim')?.setAttribute('disabled', '');
+  const r = await get();
+  if (r?.items?.length) {
+    card.classList.add('revealing');
+    await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile: 92 });
+  }
+  revealing = false;
+  card.classList.remove('revealing');
+  render();
+}
 
 document.addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
-  if (target) actions[target.dataset.action]?.();
+  if (target) actions[target.dataset.action]?.(target);
 });
 
 async function refresh() {

@@ -1,4 +1,4 @@
-/* global activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rewardChest, rewardCard, playReveal, dailyPanel, collectionView, chestMark, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -12,9 +12,18 @@ const ui = {
   modal: null,
   seenToasts: new Set(),
   firstState: true,
+  rewardOpen: false, // the daily reward's card, under its chest
+  revealing: false, // the reveal is playing: the card isn't redrawn under it
+  collection: null, // Kick's whole card list, fetched when the collection opens
+  colFilter: { rarity: 'all', show: 'all' },
 };
 
 // ------------------------------------------------------------------ derived data
+
+/** Kick's daily reward (src/main/daily-reward.js), or null before the first answer. */
+function dailyReward() {
+  return state?.dailyReward ?? null;
+}
 
 function farm() {
   return state?.farm;
@@ -145,7 +154,7 @@ function renderTitlebar() {
     : '';
   setHTML(
     $('#titlebar-actions'),
-    `${updateChip()}${refresh}
+    `${updateChip()}${rewardChest(dailyReward(), { open: ui.rewardOpen, tight: innerWidth < 1240 })}${refresh}
     ${
       f?.paused
         ? `<button class="tb-btn resume" data-action="resume" data-tip="Start collecting again">${icon('play')}<span>Resume</span></button>`
@@ -842,11 +851,19 @@ function renderSide() {
     ['streams', 'eye', 'Streams', streams ? `${streams} live` : ''],
     ['activity', 'pulse', 'Activity', ''],
   ];
-  const body = ui.sideTab === 'streams' ? streamsPanel(f) : ui.sideTab === 'activity' ? activityPanel(f) : ui.sideTab === 'done' ? donePanel(f) : queuePanel(f);
+  // The daily reward's tab, while Kick has one for this account.
+  const dr = dailyReward();
+  if (dr && !['signed-out', 'hidden'].includes(dr.state)) tabs.push(['daily', 'chest', 'Daily', dr.state === 'ready' ? 'Ready' : dr.state === 'earning' ? `${Math.max(0, dr.threshold - dr.minutes)}m` : '']);
+  else if (ui.sideTab === 'daily') ui.sideTab = 'queue';
+  const body =
+    ui.sideTab === 'streams' ? streamsPanel(f) : ui.sideTab === 'activity' ? activityPanel(f) : ui.sideTab === 'done' ? donePanel(f) : ui.sideTab === 'daily' ? dailyPanel(dr) : queuePanel(f);
   setHTML(
     el,
     `<div class="side-tabs">${tabs
-      .map(([id, ic, label, badge]) => `<button class="side-tab ${ui.sideTab === id ? 'active' : ''}" data-action="side-tab" data-id="${id}">${icon(ic)}${label}${badge ? `<em>${badge}</em>` : ''}</button>`)
+      .map(
+        ([id, ic, label, badge]) =>
+          `<button class="side-tab ${ui.sideTab === id ? 'active' : ''}" data-action="side-tab" data-id="${id}">${ic === 'chest' ? chestMark() : icon(ic)}${label}${badge ? `<em class="${badge === 'Ready' ? 'ready' : ''}">${badge}</em>` : ''}</button>`,
+      )
       .join('')}</div>
     <div class="side-body" data-tab="${ui.sideTab}">${body}</div>`,
   );
@@ -1106,9 +1123,74 @@ function backupRows(row, seg) {
     ${row('Backups', status, `<button class="btn sm" data-action="backup-now" ${b.running || !b.possible ? 'disabled' : ''}>${icon('database')} Back up now</button><button class="btn sm" data-action="backup-show">${icon('folder')} Show</button>`)}`;
 }
 
+/** The daily reward's card, under its chest in the title bar. */
+function renderRewardPop() {
+  const root = $('#reward-pop');
+  const dr = dailyReward();
+  if (!ui.rewardOpen || !dr) return setHTML(root, '');
+  // The reveal owns the card until it's over.
+  if (ui.revealing) return;
+  const chest = $('#titlebar-actions .dr-chest')?.getBoundingClientRect();
+  const w = 392;
+  const at = chest ? chest.left + chest.width / 2 : innerWidth - 60;
+  // Pinned to the chest's right edge, which stays put when the chip shrinks back to a chest.
+  const left = Math.round(Math.max(12, Math.min(innerWidth - w - 12, (chest?.right ?? innerWidth) + 64 - w)));
+  setHTML(root, `<div class="dr-pop" data-stop style="top:${Math.round((chest?.bottom ?? 54) + 10)}px;left:${left}px;--notch:${Math.round(at - left)}px">${rewardCard(dr)}</div>`);
+}
+
+function openReward(open = !ui.rewardOpen) {
+  if (ui.rewardOpen === open) return;
+  ui.rewardOpen = open;
+  // The docked stream is drawn over the page, so it steps aside like it does for a modal.
+  if (!ui.modal) window.pd.suspendPlayer(open);
+  render();
+}
+
+/** Claims the reward (or the event crate `id`) and plays the reveal in `card`. */
+async function claimReward(card, id, tile) {
+  const dr = dailyReward();
+  if (ui.revealing || !dr) return;
+  ui.revealing = true;
+  card.querySelector('.dr-claim')?.setAttribute('disabled', '');
+  const r = await window.pd.dailyReward.claim(id);
+  if (r?.items?.length) {
+    card.classList.add('revealing');
+    await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dr.media?.unbox, tile });
+  } else if (r?.error) toast({ title: 'Couldn’t open the daily reward', body: r.error, kind: 'alert' });
+  // Claimed already (Stream Multiview or kick.com got there first): the card shows what it was.
+  ui.revealing = false;
+  render();
+}
+
+/** The last claim's reel again (an automatic claim's, say). */
+async function replayReward(card, tile) {
+  if (ui.revealing) return;
+  const r = await window.pd.dailyReward.lastClaim();
+  if (!r?.items?.length) return;
+  ui.revealing = true;
+  card.classList.add('revealing');
+  await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile });
+  ui.revealing = false;
+  card.classList.remove('revealing');
+  render();
+}
+
+/** Every card Kick has, with yours in colour. */
+function collectionModal() {
+  const total = ui.collection?.cards?.length ?? 0;
+  const owned = ui.collection?.cards?.filter((c) => c.owned).length ?? 0;
+  return `<div class="modal-backdrop" data-action="close-modal">
+    <div class="modal dr-col-modal" data-stop>
+      <div class="modal-head"><h3>${chestMark()}Collection<span class="muted">${owned} of ${total}</span></h3><button class="btn sm icon-only ghost" data-action="close-modal" data-tip="Close (Esc)">${icon('x')}</button></div>
+      <div class="modal-section">${ui.collection ? collectionView(ui.collection, ui.colFilter, dailyReward()) : '<div class="skeleton" style="height:100%"></div>'}</div>
+    </div>
+  </div>`;
+}
+
 function renderModal() {
   const root = $('#modal-root');
   if (ui.modal === 'whatsnew') return setHTML(root, whatsNewModal());
+  if (ui.modal === 'collection') return setHTML(root, collectionModal());
   if (ui.modal !== 'settings') return setHTML(root, '');
   const s = state.settings;
   const user = state.auth.user;
@@ -1321,6 +1403,7 @@ function render({ tick = false } = {}) {
     if (!tick) renderHistory();
     renderPlayer();
     renderModal();
+    renderRewardPop();
     checkToasts();
     return;
   }
@@ -1331,6 +1414,7 @@ function render({ tick = false } = {}) {
   renderSide();
   renderPlayer();
   renderModal();
+  renderRewardPop();
   checkToasts();
 }
 
@@ -1391,6 +1475,31 @@ const actions = {
   },
   'side-tab': (el) => {
     ui.sideTab = el.dataset.id;
+    render();
+  },
+  'reward-open': () => openReward(),
+  'reward-close': () => openReward(false),
+  'reward-claim': (el) => claimReward(el.closest('.dr-card'), el.dataset.id, 120),
+  'reward-replay': (el) => replayReward(el.closest('.dr-card'), 120),
+  'reward-insights': () => {
+    openReward(false);
+    ui.view = 'dashboard';
+    ui.sideTab = 'daily';
+    render();
+  },
+  'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
+  'reward-collection': async () => {
+    openReward(false);
+    openModal('collection');
+    ui.collection = (await window.pd.dailyReward.collection()) ?? { cards: [], wins: {} };
+    render();
+  },
+  'col-rarity': (el) => {
+    ui.colFilter.rarity = el.dataset.id;
+    render();
+  },
+  'col-show': (el) => {
+    ui.colFilter.show = el.dataset.id;
     render();
   },
   'past-filter': (el) => {
@@ -1619,6 +1728,8 @@ function moveCategory(id, dir) {
 }
 
 document.addEventListener('click', (event) => {
+  // The daily reward's card closes on a click anywhere else (but not during its reveal).
+  if (ui.rewardOpen && !ui.revealing && !event.target.closest('.dr-pop, .dr-chest')) openReward(false);
   const target = event.target.closest('[data-action]');
   if (!target) return;
   // Clicks inside a modal shouldn't fall through to its backdrop (which closes it).
@@ -1638,6 +1749,7 @@ document.addEventListener('change', (event) => {
   if (key) window.pd.setSettings({ [key]: Number(event.target.value) });
 });
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && ui.rewardOpen && !ui.modal) return ui.revealing || openReward(false);
   if (event.key === 'Escape' && ui.modal === 'settings' && ui.settingsTab === 'apps' && act.app) closeActivity();
   else if (event.key === 'Escape' && ui.modal) closeModal();
 });

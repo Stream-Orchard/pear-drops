@@ -18,10 +18,15 @@ contextBridge.exposeInMainWorld('pd', {
     return () => ipcRenderer.removeListener('player:frame', listener);
   },
   tray: {
-    showMain: () => ipcRenderer.invoke('tray:show-main'),
+    showMain: (view) => ipcRenderer.invoke('tray:show-main', view),
     quit: () => ipcRenderer.invoke('tray:quit'),
     resize: (height) => ipcRenderer.invoke('tray:resize', height),
     action: (name) => ipcRenderer.invoke('tray:action', name),
+  },
+  dailyReward: {
+    claim: (id) => ipcRenderer.invoke('daily:claim', id),
+    lastClaim: () => ipcRenderer.invoke('daily:last-claim'),
+    collection: () => ipcRenderer.invoke('daily:collection'),
   },
   history: (opts) => ipcRenderer.invoke('history:view', opts),
   onHistoryChanged: (callback) => {
