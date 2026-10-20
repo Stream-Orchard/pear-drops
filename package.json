@@ -109,7 +109,8 @@
   "grapevine": {
     "app": "com.streamorchard.peardrops",
     "provides": {
-      "drops.farming": "1.0"
+      "drops.farming": "1.0",
+      "rewards.daily": "1.0"
     },
     "uses": {
       "players": "1.0"

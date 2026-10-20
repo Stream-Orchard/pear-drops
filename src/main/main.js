@@ -129,6 +129,12 @@ function showMain() {
   mainWindow.focus();
 }
 
+/** The window to the front with the daily reward's card open (a click on Stream Multiview's chest). */
+function showReward() {
+  showMain();
+  sendTo(mainWindow, 'show-view', 'reward');
+}
+
 function hideToTray() {
   mainWindow?.hide();
   if (process.platform === 'darwin') app.dock.hide();
@@ -137,6 +143,7 @@ function hideToTray() {
 function setAuth(next) {
   auth = { ...auth, ...next };
   connected?.update();
+  connected?.updateReward();
   sendState();
 }
 
@@ -443,7 +450,7 @@ function setupDemo() {
     },
     /**
      * A stand-in Stream Multiview, linked through Grapevine the way the real one is: it uses
-     * drops.farming and says whether its Kick players are signed in. Off with { stop: true }.
+     * drops.farming and rewards.daily, and says whether its Kick players are signed in. Off with { stop: true }.
      */
     multiview: async ({ signedIn = false, mode = 'auto', open = ['pixelpear', 'moonlitmaple'], installed = true, stop = false } = {}) => {
       const { standInPeer } = require('@streamorchard/grapevine/stand-in-peer');
@@ -459,7 +466,7 @@ function setupDemo() {
         dir: linkDir,
         version: '0.4.0',
         provides: { players: '1.0' },
-        uses: { 'drops.farming': '1.0' },
+        uses: { 'drops.farming': '1.0', 'rewards.daily': '1.0' },
         keys: fileKeyStore(path.join(app.getPath('userData'), 'demo-multiview-keys.json')),
         timing: { pollMs: 300, backoffMs: [200, 500, 1000] },
       });
@@ -854,6 +861,8 @@ app.whenReady().then(async () => {
     version: app.getVersion(),
     history,
     show: showMain, // a click on Stream Multiview's farming widget
+    reward: () => (auth.status === 'signed-in' ? dailyReward.snapshot() : null),
+    showReward, // a click on its daily reward chest
     keys: fileKeyStore(path.join(app.getPath('userData'), 'grapevine.json'), crypt),
     // Grapevine reads GRAPEVINE_DIR itself: an installed copy always uses the shared place.
     place: { env: { ...process.env, GRAPEVINE_DIR: linkDir ?? '' } },
@@ -871,7 +880,9 @@ app.whenReady().then(async () => {
     }, 300);
   });
   farmer.on('update', () => connected.update());
+  dailyReward.on('change', () => connected.updateReward());
   connected.sync();
+  connected.updateReward();
   // Stored images replace Kick's links as they arrive.
   archive.on('images', () => {
     farmer.buildModel();

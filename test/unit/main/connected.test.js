@@ -28,7 +28,9 @@ let shown = 0;
  * A Connected with a fake farmer and settings, linked through its own folder. allow: Stream Multiview
  * may pair at once, as if Allow had been pressed (pairing waits for it otherwise).
  */
-function setup({ enabled = false, status = 'farming', signedIn = true, allow = true } = {}) {
+let rewardShown = 0;
+
+function setup({ enabled = false, status = 'farming', signedIn = true, allow = true, reward = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-link-'));
   let settings = { connectedApps: { [MV]: { enabled } } };
   const store = { get: () => settings, set: (patch) => (settings = { ...settings, ...patch }) };
@@ -40,11 +42,12 @@ function setup({ enabled = false, status = 'farming', signedIn = true, allow = t
   const auth = { status: signedIn ? 'signed-in' : 'signed-out', user: signedIn ? { username: 'pearfan' } : null };
   const history = { events: [], add: (type, data) => history.events.push({ type, ...data }) };
   const place = { env: { ...process.env, GRAPEVINE_DIR: dir } };
-  const c = new Connected({ store, farmer, auth: () => auth, version: '0.1.5', history, keys: memoryKeyStore(), place, appDataDir: dir, show: () => (shown += 1) });
+  const daily = { value: reward };
+  const c = new Connected({ store, farmer, auth: () => auth, version: '0.1.5', history, keys: memoryKeyStore(), place, appDataDir: dir, show: () => (shown += 1), reward: () => daily.value, showReward: () => (rewardShown += 1) });
   c.link.timing = { ...c.link.timing, pollMs: 40, backoffMs: [20, 40, 80] };
   if (allow) c.link.allowPairing(MV);
   c.store = store;
-  return { c, dir, store, farmer, auth, history, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+  return { c, dir, store, farmer, auth, history, daily, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
 
 test('drops.farming says what Pear Drops is doing, in its own words', () => {
@@ -429,7 +432,7 @@ test('what Pear Drops speaks comes from package.json, where grapevine-check read
   assert.equal(grapevine.app, APP_ID);
   assert.equal(APP_ID, 'com.streamorchard.peardrops');
   const { c, cleanup } = setup();
-  assert.deepEqual(c.link.mine, { provides: { 'drops.farming': ['1.0'] }, uses: { players: ['1.0'] } });
+  assert.deepEqual(c.link.mine, { provides: { 'drops.farming': ['1.0'], 'rewards.daily': ['1.0'] }, uses: { players: ['1.0'] } });
   cleanup();
 });
 
@@ -459,4 +462,59 @@ test('Test on the card: off, not open, a round trip, and a link that cannot star
   };
   assert.deepEqual(await broken.c.test(MV), { ok: false, reason: 'not-started', text: 'Another copy of Pear Drops is already using Grapevine' });
   broken.cleanup();
+});
+
+test('rewards.daily says where the daily reward is at: enough for a chest, and nothing about cards or claims', () => {
+  const endsAt = Date.parse('2026-10-21T00:00:00Z');
+  const { c, daily, auth, cleanup } = setup({ reward: { state: 'earning', minutes: 37.4, threshold: 60, endsAt, streak: 12, collection: { owned: 37 } } });
+  assert.deepEqual(c.dailyReward(), { state: 'earning', account: { platform: 'kick', user: 'pearfan' }, minutes: 37, threshold: 60, endsAt: '2026-10-21T00:00:00.000Z' });
+  daily.value = { state: 'ready', minutes: 60, threshold: 60, endsAt };
+  assert.equal(c.dailyReward().state, 'ready');
+  daily.value = { state: 'loading' };
+  assert.deepEqual(c.dailyReward(), { state: 'unavailable', account: { platform: 'kick', user: 'pearfan' } }, 'not known yet: nothing to show');
+  daily.value = null;
+  assert.equal(c.dailyReward().state, 'signed-out');
+  daily.value = { state: 'claimed', minutes: 60, threshold: 60, endsAt: NaN };
+  assert.deepEqual(c.dailyReward(), { state: 'claimed', account: { platform: 'kick', user: 'pearfan' }, minutes: 60, threshold: 60, endsAt: null });
+  auth.status = 'signed-out';
+  auth.user = null;
+  assert.deepEqual(c.dailyReward(), { state: 'signed-out', account: null });
+  cleanup();
+});
+
+test('rewards.daily goes out when it changes, only then; get answers with it, and show opens the card', async () => {
+  const { c, dir, daily, cleanup } = setup({ enabled: true, reward: { state: 'earning', minutes: 37, threshold: 60, endsAt: Date.parse('2026-10-21T00:00:00Z') } });
+  const peer = await standInPeer({ as: MV, dir, version: '0.5.0', provides: { players: '1.0' }, uses: { 'drops.farming': '1.0', 'rewards.daily': '1.0' }, timing: { pollMs: 40 } });
+  const heard = [];
+  peer.link.on('event', (_from, name, params) => name === 'rewards.daily.changed' && heard.push(params));
+  try {
+    await c.sync();
+    await until(() => c.state().peers[0].status === 'connected', 'connected');
+    assert.deepEqual(c.state().peers[0].shares.out, ['drops.farming', 'rewards.daily'], 'what Pear Drops tells it');
+    c.updateReward();
+    c.updateReward();
+    await until(() => heard.length === 1, 'the state');
+    assert.equal(heard[0].minutes, 37);
+    daily.value = { ...daily.value, minutes: 38 };
+    c.updateReward();
+    daily.value = { ...daily.value, state: 'ready', minutes: 60 };
+    c.updateReward();
+    await until(() => heard.length === 3, 'a minute more, then ready');
+    assert.deepEqual(
+      heard.map((h) => [h.state, h.minutes, h.seq]),
+      [
+        ['earning', 37, 1],
+        ['earning', 38, 2],
+        ['ready', 60, 3],
+      ],
+    );
+    const got = await peer.link.request(APP_ID, 'rewards.daily.get');
+    assert.equal(got.state, 'ready');
+    assert.deepEqual(await peer.link.request(APP_ID, 'rewards.daily.show'), { shown: true }, 'a chest click');
+    assert.equal(rewardShown, 1, 'brought Pear Drops forward with the card');
+  } finally {
+    await peer.stop().catch(() => {});
+    await c.stop();
+    cleanup();
+  }
 });

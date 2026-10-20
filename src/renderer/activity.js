@@ -48,6 +48,13 @@ function farmingWords(f) {
   return { farming: 'Farming', paused: 'Paused', done: 'Every drop is done', 'signed-out': 'Signed out of Kick', waiting: 'Waiting for a stream with drops' }[f.state] ?? `State: ${f.state}`;
 }
 
+/** rewards.daily's state, in words. */
+function rewardWords(r) {
+  if (!r || typeof r !== 'object' || !r.state) return 'The daily reward';
+  if (r.state === 'earning') return `Daily reward · ${Number.isFinite(r.minutes) ? `${r.minutes} of ${r.threshold ?? 60} min watched` : 'earning'}`;
+  return { ready: 'Daily reward is ready to claim', claimed: 'Daily reward claimed for today', unavailable: 'Kick’s daily reward isn’t answering', 'signed-out': 'Signed out of Kick' }[r.state] ?? `Daily reward: ${r.state}`;
+}
+
 /** players' state, in words: signed in or out, and why (Auto: out while Pear Drops farms). */
 function playersWords(p) {
   const k = p?.platforms?.kick;
@@ -81,6 +88,9 @@ function describeActivity(e, name) {
     'drops.farming.changed': { event: farmingWords(d) },
     'drops.farming.get': { request: mine ? `Asked ${them} what’s being farmed` : `${them} asked what’s being farmed`, reply: farmingWords(d) },
     'drops.farming.show': { request: mine ? `Asked ${them} to come to the front` : `${them} asked to show Pear Drops`, reply: d.shown ? 'Shown' : 'Answered' },
+    'rewards.daily.changed': { event: rewardWords(d) },
+    'rewards.daily.get': { request: mine ? `Asked ${them} about the daily reward` : `${them} asked about the daily reward`, reply: rewardWords(d) },
+    'rewards.daily.show': { request: mine ? `Asked ${them} to show the daily reward` : `${them} asked to show the daily reward`, reply: d.shown ? 'Shown' : 'Answered' },
     'players.changed': { event: playersWords(d) },
     'players.get': { request: mine ? `Asked ${them} about its players` : `${them} asked about the players`, reply: playersWords(d) },
   }[e.method]?.[e.kind];

@@ -4302,33 +4302,60 @@ input[type='range']::-webkit-slider-thumb {
   padding: 0 16px 14px;
 }
 .app-flow {
-  display: grid;
-  grid-template-columns: 22px 1fr;
-  gap: 9px;
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px 8px;
   border: 1px solid var(--border);
   border-radius: var(--r);
   background: rgba(0, 0, 0, 0.18);
-  color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.4;
 }
-.app-flow b {
-  display: block;
+.app-flow-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
   color: var(--text);
-  margin-bottom: 1px;
+  font: 650 12px/1 var(--font);
 }
-.app-flow > .icon {
-  width: 22px;
-  height: 22px;
-  padding: 4px;
-  border-radius: 7px;
+.app-flow-head > .icon {
+  width: 20px;
+  height: 20px;
+  padding: 3.5px;
+  border-radius: 6px;
   background: var(--green-soft);
   color: var(--green);
 }
-.app-flow.in > .icon {
+.app-flow.in .app-flow-head > .icon {
   background: rgba(110, 168, 255, 0.12);
   color: var(--blue);
+}
+/* A capability: one line, its whole sentence in the tooltip. */
+.app-cap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+  padding: 0 2px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: default;
+}
+.app-cap > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-cap > .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+.app-cap b {
+  color: var(--text);
+  font-weight: 600;
 }
 .app-foot {
   display: flex;

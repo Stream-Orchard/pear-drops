@@ -957,12 +957,17 @@ const SETTINGS_TABS = [
  * `in` when the other app does. `status` gives the card's line while connected, from what the app
  * last sent (heard). A capability that isn't here gets a plain tile with its name.
  */
+// What each capability the apps share is, in a line: [icon, what, more], and the whole sentence for
+// its tooltip. The card lists them by direction, one line each, so a new one adds a line, not a tile.
 const CAPABILITIES = {
   'drops.farming': {
-    out: ['Pear Drops tells it', 'what you’re farming, so its Kick players can leave the drop credit here, and it can show your progress.'],
+    out: ['pulse', 'What you’re farming', 'progress', 'So its Kick players can leave the drop credit here, and it can show your progress.'],
+  },
+  'rewards.daily': {
+    out: ['chest', 'Your daily reward', 'the chest', 'So it can show Kick’s daily reward chest, and bring Pear Drops forward to claim it.'],
   },
   players: {
-    in: ['It tells Pear Drops', 'whether its Kick players are signed in right now.'],
+    in: ['users', 'Its Kick players', 'signed in or not', 'Whether its Kick players are signed in right now.'],
     status: (p, name, farming) => {
       const k = p.heard['players.changed']?.platforms?.kick;
       if (!k) return [`Linked. Waiting to hear about ${name}’s players.`, ''];
@@ -1047,12 +1052,15 @@ function connectedPane() {
               ? `Press <b>Allow</b> in ${name}’s Connected apps to pair.`
               : `${name} isn’t open, or its Connect switch is off.`;
     else line = 'Off. Nothing listens until you switch it on.';
-    // A tile for each capability the two share: what Pear Drops tells it, and what it tells Pear Drops.
-    const tile = (cap, way) => {
-      const [title, text] = CAPABILITIES[cap]?.[way] ?? [way === 'out' ? 'Pear Drops tells it' : 'It tells Pear Drops', `“${esc(cap)}”`];
-      return `<div class="app-flow ${way}">${icon(way === 'out' ? 'arrowRight' : 'arrowLeft')}<span><b>${title}</b>${text}</span></div>`;
+    // What the two share, by direction: what Pear Drops tells it, and what it tells Pear Drops, a line
+    // for each capability (one with no words here still gets a line, with its name).
+    const capLine = (cap, way) => {
+      const [ic, what, more, tip] = CAPABILITIES[cap]?.[way] ?? ['link', esc(cap), '', ''];
+      return `<div class="app-cap" ${tip ? `data-tip="${esc(tip)}"` : ''}>${icon(ic)}<span><b>${what}</b>${more ? ` · ${more}` : ''}</span></div>`;
     };
-    const flows = [...p.shares.out.map((cap) => tile(cap, 'out')), ...p.shares.in.map((cap) => tile(cap, 'in'))].join('');
+    const side = (way, title) =>
+      p.shares[way].length ? `<div class="app-flow ${way}"><div class="app-flow-head">${icon(way === 'out' ? 'arrowRight' : 'arrowLeft')}${title}</div>${p.shares[way].map((cap) => capLine(cap, way)).join('')}</div>` : '';
+    const flows = side('out', 'Pear Drops tells it') + side('in', 'It tells Pear Drops');
     // A Test just run: its answer stands in for the line for a moment, unless the line itself
     // changes meanwhile (a new warning matters more than the test).
     const tested = ui.appTests?.[p.id];
@@ -1735,6 +1743,12 @@ document.documentElement.addEventListener('pointerleave', () => (ui.comingHover 
 
 // A desktop notification was clicked: the app came forward, on the view it's about.
 window.pd.onShowView((view) => {
+  // Stream Multiview's chest was clicked: the daily reward's card, open on the dashboard.
+  if (view === 'reward') {
+    ui.view = 'dashboard';
+    if (ui.modal) closeModal();
+    return openReward(true);
+  }
   if (!['dashboard', 'history'].includes(view) || ui.view === view) return;
   ui.view = view;
   if (view === 'history') loadHistory();
