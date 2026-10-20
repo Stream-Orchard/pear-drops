@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.13 (current)
+## 0.1.14 (current)
+- Daily reward: no dead-end Welcome Reward row, and no ring on the chest once claimed
+- Drops limited to certain channels get queue rows of their own, named after the drop and pictured by its channels
+
+## 0.1.13
 - The daily reward chest's landing burst animates again
 - The daily reward's crate opens properly when there's no video
 
