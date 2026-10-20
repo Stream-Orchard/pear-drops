@@ -231,7 +231,7 @@ test('Settings › Notifications: all off to start with; switches are saved, a t
   await a.win.click('button.icon-only[data-action="settings"]');
   await a.win.click('[data-action="settings-tab"][data-id="notifications"]');
   const switches = await a.win.$$eval('[data-action="notify-toggle"]', (els) => els.map((e) => [e.dataset.kind, e.classList.contains('on')]));
-  assert.equal(switches.length, 8);
+  assert.equal(switches.length, 10);
   assert.ok(switches.every(([, on]) => !on), 'all off to start with');
 
   await a.win.click('[data-action="notify-test"]');

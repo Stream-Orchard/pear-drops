@@ -19,8 +19,8 @@ const COLORS = {
 const WIDTH = 360;
 const HEIGHT = 520;
 
-/** A progress ring as a bitmap (no canvas in the main process). */
-function ringIcon(fraction, tone, { size = 18, scale = 2 } = {}) {
+/** A progress ring as BGRA pixels (no canvas in the main process), with a green dot at its top right when `badge`. */
+function ringPixels(fraction, tone, { size = 18, scale = 2, badge = false } = {}) {
   const px = size * scale;
   const buf = Buffer.alloc(px * px * 4);
   const c = px / 2;
@@ -52,6 +52,14 @@ function ringIcon(fraction, tone, { size = 18, scale = 2 } = {}) {
         const a = 255 * dot;
         [R, G, B, A] = [r, g, b, Math.max(A, a)];
       }
+      if (badge) {
+        // The daily reward waits: a green dot over the ring's top right, with a clear edge round it.
+        const bd = Math.hypot(x + 0.5 - px * 0.82, y + 0.5 - px * 0.18);
+        const edge = Math.max(0, Math.min(1, px * 0.2 + 0.5 - bd));
+        const fill = Math.max(0, Math.min(1, px * 0.14 + 0.5 - bd));
+        if (edge > 0) [R, G, B, A] = [R, G, B, A * (1 - edge)];
+        if (fill > 0) [R, G, B, A] = [83, 252, 24, Math.max(A, 255 * fill)];
+      }
       const i = (y * px + x) * 4;
       // BGRA, premultiplied
       const k = A / 255;
@@ -61,6 +69,11 @@ function ringIcon(fraction, tone, { size = 18, scale = 2 } = {}) {
       buf[i + 3] = A;
     }
   }
+  return { buf, px };
+}
+
+function ringIcon(fraction, tone, { size = 18, scale = 2, badge = false } = {}) {
+  const { buf, px } = ringPixels(fraction, tone, { size, scale, badge });
   return nativeImage.createFromBitmap(buf, { width: px, height: px, scaleFactor: scale });
 }
 
@@ -94,13 +107,13 @@ class TrayController {
     this.tray.on('right-click', () => this.toggle());
   }
 
-  /** info: { tone, fraction, title, tooltip } */
+  /** info: { tone, fraction, title, tooltip, badge } */
   update(info, { showPercent = true } = {}) {
     if (!this.tray) return;
-    const key = `${info.tone}:${Math.round(info.fraction * 100)}`;
+    const key = `${info.tone}:${Math.round(info.fraction * 100)}:${info.badge ? 1 : 0}`;
     if (key !== this.iconKey) {
       this.iconKey = key;
-      this.tray.setImage(ringIcon(info.fraction, info.tone));
+      this.tray.setImage(ringIcon(info.fraction, info.tone, { badge: !!info.badge }));
     }
     if (process.platform === 'darwin') this.tray.setTitle(showPercent && info.title ? ` ${info.title}` : '', { fontType: 'monospacedDigit' });
     this.tray.setToolTip(info.tooltip);
@@ -193,4 +206,4 @@ class TrayController {
   }
 }
 
-module.exports = { TrayController, ringIcon, WIDTH };
+module.exports = { TrayController, ringIcon, ringPixels, WIDTH };

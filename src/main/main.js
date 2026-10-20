@@ -16,6 +16,7 @@ const { openDb, OLD_FILES } = require('./db');
 const { Backups, EVERY, KEEP } = require('./backups');
 const { Updates, parseChangelog } = require('./updates');
 const { Connected } = require('./connected');
+const { DailyReward, CLAIM_MODES } = require('./daily-reward');
 const { fileKeyStore } = require('@streamorchard/grapevine');
 
 // Errors are logged, never shown as Electron's own error dialog.
@@ -76,6 +77,7 @@ let history = null;
 let archive = null;
 let updates = null;
 let connected = null; // Settings › Connected apps (connected.js)
+let dailyReward = null; // Kick's daily reward (daily-reward.js)
 let linkDir = null; // where it finds other apps: a folder of its own in demo mode and dev copies
 let quitting = false;
 /** One of the app's own windows (the dashboard, the tray popover), not a Kick page. */
@@ -91,6 +93,7 @@ function appState() {
     settings: store.get(),
     security: { encryption: security.encryption },
     farm: auth.status === 'signed-in' ? farmer.snapshot() : null,
+    dailyReward: auth.status === 'signed-in' ? (dailyReward?.snapshot() ?? null) : null,
     connected: connected?.state() ?? null,
     backups: backups?.status() ?? null,
   };
@@ -113,6 +116,8 @@ function sendState() {
 function updateTray() {
   if (!tray || quitting) return;
   const info = auth.status === 'signed-in' ? farmer.trayInfo() : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
+  // A green dot on the icon while the daily reward waits to be claimed.
+  if (auth.status === 'signed-in' && dailyReward?.daily?.state === 'ready') info.badge = true;
   tray.update(info, { showPercent: store.get().trayPercent });
 }
 
@@ -252,13 +257,49 @@ function createMainWindow() {
   });
 }
 
+// Kick's daily reward: the chest in the title bar and the tray, its card, claiming it.
+function createDailyReward() {
+  dailyReward = new DailyReward({
+    kick: api,
+    slot: db.slot('dailyReward'),
+    settings: () => store.get(),
+    watching: () => auth.status === 'signed-in' && !!farmer.current && !farmer.paused,
+    userId: () => auth.user?.id ?? null,
+    history,
+    kickMedia: !DEMO,
+  });
+  dailyReward.on('change', sendState);
+  const resets = (s) => (s?.endsAt ? new Date(s.endsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'midnight UTC');
+  dailyReward.on('ready', (s) =>
+    notifier.send('dailyReady', { title: 'Daily reward ready', body: s.claimMode === 'now' ? 'An hour watched today. Claiming it now.' : `An hour watched today. Claim it before ${resets(s)}.`, view: 'dashboard' }),
+  );
+  dailyReward.on('reminder', (s) =>
+    notifier.send('dailyReady', { title: 'Daily reward still waiting', body: s.claimMode === 'before-reset' ? `It resets at ${resets(s)}. Pear Drops claims it 15 minutes before, if you haven’t.` : `It resets at ${resets(s)}. Claim it before then.`, view: 'dashboard' }),
+  );
+  dailyReward.on('claimed', ({ reel, by }) => {
+    if (by === 'you') return;
+    const kind = `${reel.winner?.rarity ?? 'common'} ${reel.winner?.type ?? 'emote'}`;
+    notifier.send('dailyClaimed', { title: 'Daily reward claimed', body: reel.duplicate ? `A ${kind} you already had: level progress instead.` : `A ${kind}, new to your collection.`, view: 'dashboard' });
+  });
+  // Kick's realtime "the hour is done", when the docked page hears it.
+  watcher.on('gamification', () => dailyReward.goalReached());
+  let watching = false;
+  farmer.on('update', () => {
+    const now = !!farmer.current && !farmer.paused;
+    if (now && !watching) dailyReward.watchingStarted();
+    watching = now;
+  });
+}
+
 function startFarming() {
   farmer.start();
+  dailyReward?.start();
   if (powerBlocker === null) powerBlocker = powerSaveBlocker.start('prevent-app-suspension');
 }
 
 function stopFarming() {
   farmer.stop();
+  dailyReward?.stop();
   if (powerBlocker !== null) {
     powerSaveBlocker.stop(powerBlocker);
     powerBlocker = null;
@@ -277,7 +318,7 @@ async function checkAuth() {
     const me = await api.me();
     if (me) {
       if (auth.status !== 'signed-in' && auth.status !== 'checking') history?.add('login', { text: `Signed in as ${me.username}` });
-      const user = { username: me.username, avatar: me.profilepic ?? me.profile_pic ?? me.profile_picture ?? null, slug: me.streamer_channel?.slug ?? me.username };
+      const user = { id: me.id ?? null, username: me.username, avatar: me.profilepic ?? me.profile_pic ?? me.profile_picture ?? null, slug: me.streamer_channel?.slug ?? me.username };
       store.set({ lastUser: user });
       setAuth({ status: 'signed-in', user });
       startFarming();
@@ -429,6 +470,21 @@ function setupDemo() {
       global.pdDemo.multiviewPeer = peer;
       return true;
     },
+    /**
+     * The daily reward, set up for a test or a capture: minutes watched today (60 makes it ready),
+     * 'claimed', the card the next claim wins, the streak. Then the app asks the stand-in again.
+     */
+    daily: async ({ minutes, claimed = false, winner, streak, welcome } = {}) => {
+      const d = demo.api.daily;
+      if (minutes !== undefined) Object.assign(d, { minutes, status: minutes >= 60 ? 'claimable' : 'in_progress' });
+      if (claimed) d.status = 'claimed';
+      if (winner !== undefined) demo.api.nextWinner = winner;
+      if (streak !== undefined) demo.api.streakDays = streak;
+      if (welcome !== undefined) demo.api.welcome.status = welcome;
+      await dailyReward.refresh({ full: true });
+      return dailyReward.snapshot();
+    },
+    dailyReward: () => dailyReward,
     /** Another session "takes" the credit: events keep going, credit stops. */
     conflict: (on = true) => {
       demo.api.conflict = on;
@@ -504,6 +560,9 @@ const rectArg = (r) => (r && typeof r === 'object' && ['x', 'y', 'width', 'heigh
 
 function registerIpc() {
   appIpc.handle('app:getState', () => appState());
+  // The daily reward's Claim and Replay, from the dashboard or the tray.
+  appIpc.handle('daily:claim', (_e, id) => (auth.status === 'signed-in' && dailyReward ? dailyReward.claim(idArg(id) == null ? undefined : String(id), { by: 'you' }) : { error: 'Sign in to Kick first.' }));
+  appIpc.handle('daily:last-claim', () => dailyReward?.lastClaim() ?? null);
   mainIpc.handle('auth:login', () => openLogin());
   mainIpc.handle('history:view', (_e, opts = {}) => {
     const campaignId = typeof opts.campaignId === 'string' ? opts.campaignId : null;
@@ -547,7 +606,7 @@ function registerIpc() {
     }
   });
   mainIpc.handle('settings:set', (_e, patch) => {
-    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes', 'notify', 'notifyAway', 'backupEvery', 'backupKeep'];
+    const allowed = ['stallMinutes', 'refreshSeconds', 'autoClaim', 'includeGameDrops', 'unmutePlayer', 'playerOpen', 'categoryOrder', 'disabledCategories', 'forgetOnQuit', 'alertOnStall', 'repeatAlert', 'alertRepeatSeconds', 'minimizeToTray', 'trayPercent', 'prioritizeExpiring', 'queueMode', 'campaignsMinutes', 'streamsMinutes', 'followedMinutes', 'playerMode', 'showChat', 'playerQuality', 'font', 'smartRarity', 'smartHopMinutes', 'notify', 'notifyAway', 'backupEvery', 'backupKeep', 'dailyClaim'];
     const clean = Object.fromEntries(Object.entries(patch ?? {}).filter(([k]) => allowed.includes(k)));
     if (clean.stallMinutes !== undefined) clean.stallMinutes = Math.min(120, Math.max(5, Number(clean.stallMinutes) || 20));
     if (clean.refreshSeconds !== undefined) clean.refreshSeconds = Math.min(300, Math.max(30, Number(clean.refreshSeconds) || 60));
@@ -570,6 +629,7 @@ function registerIpc() {
     if (clean.notify !== undefined) clean.notify = cleanNotify(clean.notify);
     if (clean.notifyAway !== undefined) clean.notifyAway = clean.notifyAway === true;
     if (clean.queueMode !== undefined && !['manual', 'smart'].includes(clean.queueMode)) delete clean.queueMode;
+    if (clean.dailyClaim !== undefined && !CLAIM_MODES.includes(clean.dailyClaim)) delete clean.dailyClaim;
     if (clean.playerQuality === 'auto') clean.playerQuality = null;
     if (clean.playerQuality !== undefined && clean.playerQuality !== null) clean.playerQuality = Number(clean.playerQuality);
     if (clean.playerQuality !== undefined && clean.playerQuality !== null && ![160, 360, 480, 720, 1080].includes(clean.playerQuality)) delete clean.playerQuality;
@@ -578,6 +638,8 @@ function registerIpc() {
     if ('playerMode' in clean || 'showChat' in clean || 'playerQuality' in clean) watcher.applySettings();
     if ('backupKeep' in clean) backups.rotate();
     if ('backupEvery' in clean) backups.check();
+    // A new way of claiming the daily reward may mean claiming it now.
+    if ('dailyClaim' in clean) dailyReward?.afterRefresh();
     if (['includeGameDrops', 'categoryOrder', 'disabledCategories', 'queueMode', 'smartRarity', 'smartHopMinutes'].some((k) => k in clean)) {
       farmer.buildModel();
       farmer.tick();
@@ -777,6 +839,7 @@ app.whenReady().then(async () => {
     }, 1000);
   });
   farmer.on('update', sendState);
+  createDailyReward();
   // Connected apps, through Grapevine. Demo mode and developer copies get a folder of their own, so
   // they never see (or pair with) the apps you really use; GRAPEVINE_DIR still wins, to try one
   // with a developer copy of Stream Multiview.

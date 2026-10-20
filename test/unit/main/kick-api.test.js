@@ -87,3 +87,26 @@ test('signing out: the pages using the login close first, then its data, cache a
   await wipeSession({ ses, closePages: step('close pages', true) });
   assert.deepEqual(steps, ['close pages', 'storage', 'cache', 'auth', 'flush'], 'in order, and one failing step doesn’t stop the rest');
 });
+
+test('the daily reward’s requests: Kick’s five gamification endpoints, and a claim only by POST', async () => {
+  const api = new KickApi();
+  const calls = [];
+  api.request = async (url, opts = {}) => {
+    calls.push([url.replace('https://web.kick.com/api/v1/gamification', ''), opts.method ?? 'GET', opts.query]);
+    return { data: [] };
+  };
+  await api.dailyChallenges();
+  await api.dailyChallenges({ recurrence: 'one_off' });
+  await api.collectibles();
+  await api.level();
+  await api.streak(4242);
+  await api.claimDaily('ch 1');
+  assert.deepEqual(calls, [
+    ['/challenges', 'GET', undefined],
+    ['/challenges', 'GET', { recurrence: 'one_off' }],
+    ['/collectibles', 'GET', undefined],
+    ['/user/level', 'GET', undefined],
+    ['/users/4242/streak', 'GET', undefined],
+    ['/challenges/ch%201/claim', 'POST', undefined],
+  ]);
+});

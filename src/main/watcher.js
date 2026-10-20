@@ -294,6 +294,8 @@ class Watcher extends EventEmitter {
       const text = { 'video-ended': 'The video ended', 'video-error': 'The video failed' }[msg.reason];
       if (text) this.emit('hint', { text });
     } else if (msg.kind === 'realtime') {
+      // The daily reward's hour is done (or a level up): main.js asks Kick at once.
+      if (/Gamification/i.test(String(msg.event))) return this.emit('gamification', { event: String(msg.event).split('\\').pop() });
       const hint = realtimeHint(msg);
       if (hint && this.slug) this.emit('hint', hint);
       return;

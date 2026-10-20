@@ -1,4 +1,4 @@
-/* global activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -12,9 +12,16 @@ const ui = {
   modal: null,
   seenToasts: new Set(),
   firstState: true,
+  rewardOpen: false, // the daily reward's card, under its chest
+  revealing: false, // the reveal is playing: the card isn't redrawn under it
 };
 
 // ------------------------------------------------------------------ derived data
+
+/** Kick's daily reward (src/main/daily-reward.js), or null before the first answer. */
+function dailyReward() {
+  return state?.dailyReward ?? null;
+}
 
 function farm() {
   return state?.farm;
@@ -145,7 +152,7 @@ function renderTitlebar() {
     : '';
   setHTML(
     $('#titlebar-actions'),
-    `${updateChip()}${refresh}
+    `${updateChip()}${rewardChest(dailyReward(), { open: ui.rewardOpen, tight: innerWidth < 1240 })}${refresh}
     ${
       f?.paused
         ? `<button class="tb-btn resume" data-action="resume" data-tip="Start collecting again">${icon('play')}<span>Resume</span></button>`
@@ -923,6 +930,8 @@ const NOTIFY_KINDS = [
   ['signedOut', 'You need to sign in again', 'Your Kick login expired, so farming stopped.'],
   ['done', 'All collected, or nothing live', 'Every drop is claimed, or none left has a stream on.'],
   ['newDrops', 'New drops on Kick', 'A campaign with emotes or badges starts.'],
+  ['dailyReady', 'The daily reward is ready', 'An hour watched today, and again an hour before it resets.'],
+  ['dailyClaimed', 'The daily reward is claimed for you', 'When Pear Drops claims it on its own, with what it was.'],
 ];
 const NOTIFY_TEST = {
   sending: 'Sending…',
@@ -1106,6 +1115,59 @@ function backupRows(row, seg) {
     ${row('Backups', status, `<button class="btn sm" data-action="backup-now" ${b.running || !b.possible ? 'disabled' : ''}>${icon('database')} Back up now</button><button class="btn sm" data-action="backup-show">${icon('folder')} Show</button>`)}`;
 }
 
+/** The daily reward's card, under its chest in the title bar. */
+function renderRewardPop() {
+  const root = $('#reward-pop');
+  const dr = dailyReward();
+  if (!ui.rewardOpen || !dr) return setHTML(root, '');
+  // The reveal owns the card until it's over.
+  if (ui.revealing) return;
+  const chest = $('#titlebar-actions .dr-chest')?.getBoundingClientRect();
+  const w = 392;
+  const at = chest ? chest.left + chest.width / 2 : innerWidth - 60;
+  // Pinned to the chest's right edge, which stays put when the chip shrinks back to a chest.
+  const left = Math.round(Math.max(12, Math.min(innerWidth - w - 12, (chest?.right ?? innerWidth) + 64 - w)));
+  setHTML(root, `<div class="dr-pop" data-stop style="top:${Math.round((chest?.bottom ?? 54) + 10)}px;left:${left}px;--notch:${Math.round(at - left)}px">${rewardCard(dr)}</div>`);
+}
+
+function openReward(open = !ui.rewardOpen) {
+  if (ui.rewardOpen === open) return;
+  ui.rewardOpen = open;
+  // The docked stream is drawn over the page, so it steps aside like it does for a modal.
+  if (!ui.modal) window.pd.suspendPlayer(open);
+  render();
+}
+
+/** Claims the reward (or the event crate `id`) and plays the reveal in `card`. */
+async function claimReward(card, id, tile) {
+  const dr = dailyReward();
+  if (ui.revealing || !dr) return;
+  ui.revealing = true;
+  card.querySelector('.dr-claim')?.setAttribute('disabled', '');
+  const r = await window.pd.dailyReward.claim(id);
+  if (r?.items?.length) {
+    card.classList.add('revealing');
+    await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dr.media?.unbox, tile });
+  } else if (r?.error) toast({ title: 'Couldn’t open the daily reward', body: r.error, kind: 'alert' });
+  // Claimed already (kick.com got there first): the card shows what it was.
+  endReveal(card);
+  ui.revealing = false;
+  render();
+}
+
+/** The last claim's reel again (an automatic claim's, say). */
+async function replayReward(card, tile) {
+  if (ui.revealing) return;
+  const r = await window.pd.dailyReward.lastClaim();
+  if (!r?.items?.length) return;
+  ui.revealing = true;
+  card.classList.add('revealing');
+  await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile });
+  endReveal(card);
+  ui.revealing = false;
+  render();
+}
+
 function renderModal() {
   const root = $('#modal-root');
   if (ui.modal === 'whatsnew') return setHTML(root, whatsNewModal());
@@ -1129,6 +1191,7 @@ function renderModal() {
       ${s.queueMode === 'smart' ? row('Switch streams for', 'How much sooner another drop must run out of live time before Smart leaves a stream that’s earning.', seg('setting-value', String(s.smartHopMinutes ?? 30), [['15', '15 min'], ['30', '30 min'], ['60', '1 h'], ['120', '2 h']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="smartHopMinutes"')) : ''}
       ${row('Put drops about to expire first', 'In Manual order, a drop that would run out of time where it sits jumps to the top, as long as its next reward can still be earned.', toggle('prioritizeExpiring', s.prioritizeExpiring))}
       ${row('Claim drops automatically', 'Claim each emote or badge the moment it unlocks.', toggle('autoClaim', s.autoClaim))}
+      ${row('Claim Kick’s daily reward', 'Before it resets claims it 15 minutes before midnight UTC if you haven’t, so no day is lost. Replay still shows its reel.', seg('setting-value', ['self', 'now'].includes(s.dailyClaim) ? s.dailyClaim : 'before-reset', [['self', 'Myself'], ['before-reset', 'Before it resets'], ['now', 'Right away']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="dailyClaim"'))}
       ${row('Include game drops', 'Also farm rewards that need a linked game account.', toggle('includeGameDrops', s.includeGameDrops))}`,
     recovery: `
       ${row('Recover a stalled stream after', 'With no progress for this long, reload the stream, then switch to another.', range('stallMinutes', 5, 60, 1, 'min'))}
@@ -1321,6 +1384,7 @@ function render({ tick = false } = {}) {
     if (!tick) renderHistory();
     renderPlayer();
     renderModal();
+    renderRewardPop();
     checkToasts();
     return;
   }
@@ -1331,6 +1395,7 @@ function render({ tick = false } = {}) {
   renderSide();
   renderPlayer();
   renderModal();
+  renderRewardPop();
   checkToasts();
 }
 
@@ -1393,6 +1458,13 @@ const actions = {
     ui.sideTab = el.dataset.id;
     render();
   },
+  'reward-open': () => openReward(),
+  'reward-close': () => openReward(false),
+  'reward-claim': (el) => claimReward(el.closest('.dr-card'), el.dataset.id, 120),
+  'reward-replay': (el) => replayReward(el.closest('.dr-card'), 120),
+  'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
+  // Kick's own page of every card, with the ones you own.
+  'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
   'past-filter': (el) => {
     ui.pastFilter = el.dataset.id;
     render();
@@ -1619,6 +1691,8 @@ function moveCategory(id, dir) {
 }
 
 document.addEventListener('click', (event) => {
+  // The daily reward's card closes on a click anywhere else (but not during its reveal).
+  if (ui.rewardOpen && !ui.revealing && !event.target.closest('.dr-pop, .dr-chest')) openReward(false);
   const target = event.target.closest('[data-action]');
   if (!target) return;
   // Clicks inside a modal shouldn't fall through to its backdrop (which closes it).
@@ -1638,6 +1712,7 @@ document.addEventListener('change', (event) => {
   if (key) window.pd.setSettings({ [key]: Number(event.target.value) });
 });
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && ui.rewardOpen && !ui.modal) return ui.revealing || openReward(false);
   if (event.key === 'Escape' && ui.modal === 'settings' && ui.settingsTab === 'apps' && act.app) closeActivity();
   else if (event.key === 'Escape' && ui.modal) closeModal();
 });

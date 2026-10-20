@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('pd', {
     resize: (height) => ipcRenderer.invoke('tray:resize', height),
     action: (name) => ipcRenderer.invoke('tray:action', name),
   },
+  dailyReward: {
+    claim: (id) => ipcRenderer.invoke('daily:claim', id),
+    lastClaim: () => ipcRenderer.invoke('daily:last-claim'),
+  },
   history: (opts) => ipcRenderer.invoke('history:view', opts),
   onHistoryChanged: (callback) => {
     const listener = () => callback();

@@ -30,7 +30,7 @@ function setup({ notify = {}, notifyAway = false, inFront = false, ...fake } = {
 }
 
 test('every kind is off to start with, and a kind that is off shows nothing', () => {
-  assert.deepEqual(KINDS, ['claimed', 'ready', 'ended', 'trouble', 'conflict', 'signedOut', 'done', 'newDrops']);
+  assert.deepEqual(KINDS, ['claimed', 'ready', 'ended', 'trouble', 'conflict', 'signedOut', 'done', 'newDrops', 'dailyReady', 'dailyClaimed']);
   assert.ok(Object.values(DEFAULT_NOTIFY).every((on) => on === false));
   const { notifier, shown } = setup();
   for (const kind of KINDS) assert.equal(notifier.send(kind, { title: 'x' }), 'off');

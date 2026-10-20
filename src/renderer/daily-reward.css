@@ -1,0 +1,895 @@
+/* =========================================================================
+   Kick's Daily Reward: the chest, its card and reveal, the Daily tab and the collection.
+   Shared by the dashboard (index.html) and the tray (tray.html).
+   ========================================================================= */
+
+/* Kick's rarity colours. Mythic is a gradient; --r is its middle colour. */
+.r-common {
+  --r: #a0a0a0;
+  --r-fill: #a0a0a0;
+}
+.r-uncommon {
+  --r: #23bf46;
+  --r-fill: #23bf46;
+}
+.r-rare {
+  --r: #00b5e0;
+  --r-fill: #00b5e0;
+}
+.r-epic {
+  --r: #fd4547;
+  --r-fill: #fd4547;
+}
+.r-legendary {
+  --r: #f7a910;
+  --r-fill: #f7a910;
+}
+.r-mythic {
+  --r: #ffa0ec;
+  --r-fill: linear-gradient(90deg, #80fcff, #fcf2aa, #ffa0ec);
+}
+
+.chip.rarity {
+  color: color-mix(in srgb, var(--r) 82%, #fff);
+  background: color-mix(in srgb, var(--r) 13%, transparent);
+  border-color: color-mix(in srgb, var(--r) 32%, transparent);
+  font-weight: 650;
+}
+.chip.rarity > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--r-fill);
+}
+.chip.rarity.r-mythic {
+  border-color: rgba(255, 160, 236, 0.4);
+}
+
+/* ------------------------------------------------------------- the chest icon */
+.icon.chest {
+  overflow: visible;
+}
+.icon.chest .chest-latch {
+  fill: var(--chest-bg, var(--bg));
+}
+.icon.chest .chest-burst {
+  opacity: 0;
+}
+.icon.chest .chest-burst .g {
+  fill: var(--green);
+}
+.icon.chest .chest-burst .t {
+  fill: var(--teal);
+}
+.icon.chest .chest-box,
+.icon.chest .chest-burst {
+  transform-box: view-box;
+  transform-origin: 12px 19.5px;
+}
+
+/* Kick's hop, timed from its own 1.29 s loop: a crouch, a leap that stretches, a rattle in the
+   air, a stretch at the top, a squashed landing, and a burst of pixels from under it. */
+@keyframes dr-hop {
+  0% {
+    transform: none;
+  }
+  16% {
+    transform: scale(1.04, 0.77);
+  }
+  19.4% {
+    transform: translateY(-0.9px) scale(1.02, 0.86);
+  }
+  22.6% {
+    transform: translateY(-3.6px) scale(0.98, 1.08);
+  }
+  25.8% {
+    transform: translateY(-5px) scale(0.97, 1.15);
+  }
+  29% {
+    transform: translateY(-5.4px) scale(0.97, 1.18);
+  }
+  32.3% {
+    transform: translateY(-5.9px) scale(1, 1.08) rotate(-2.5deg);
+  }
+  38.7% {
+    transform: translateY(-6.1px) scale(1, 1.05) rotate(3deg);
+  }
+  45.2% {
+    transform: translateY(-6.2px) rotate(-1deg);
+  }
+  48.4% {
+    transform: translateY(-6px) rotate(-2.5deg);
+  }
+  51.6% {
+    transform: translateY(-6.4px) rotate(0);
+  }
+  54.8% {
+    transform: translateY(-6.2px) rotate(3deg);
+  }
+  58% {
+    transform: translateY(-6.1px) scale(1, 1.12) rotate(3deg);
+  }
+  61.3% {
+    transform: translateY(-5.9px) scale(0.97, 1.23) rotate(1.5deg);
+  }
+  64.5% {
+    transform: translateY(-4.4px) scale(1, 0.95) rotate(0.5deg);
+  }
+  67.7% {
+    transform: scale(1.06, 0.82);
+  }
+  71% {
+    transform: scale(1.03, 0.92);
+  }
+  77.4% {
+    transform: scale(0.99, 1.04);
+  }
+  87% {
+    transform: scale(1.01, 0.99);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes dr-burst {
+  0%,
+  68% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  71% {
+    opacity: 1;
+    transform: scale(0.75);
+  }
+  82% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  97% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.dr-chest.state-ready .chest-box {
+  animation: dr-hop 1.292s linear infinite;
+}
+.dr-chest.state-ready .chest-burst {
+  animation: dr-burst 1.292s linear infinite;
+}
+.dr-chest.state-ready .chest-body {
+  fill: rgba(83, 252, 24, 0.14);
+}
+
+/* ------------------------------------------------------------- the chest button */
+/* Like the title bar's other controls: no box until hovered. The ring and the chest share one
+   grid cell, so the chest sits exactly in the ring's centre. */
+.dr-chest {
+  -webkit-app-region: no-drag;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dr-chest > * {
+  grid-area: 1 / 1;
+}
+.dr-chest:hover,
+.dr-chest.open {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border);
+  color: var(--text);
+}
+.dr-chest.at-titlebar {
+  margin-right: 2px;
+}
+.dr-chest .dr-ring {
+  width: 28px;
+  height: 28px;
+}
+.dr-chest .dr-ring-value {
+  stroke: var(--green);
+  transition: stroke-dashoffset 0.6s var(--ease);
+}
+.dr-chest .icon.chest {
+  width: 18px;
+  height: 18px;
+  --chest-bg: var(--bg);
+}
+.dr-chest.state-claimed .dr-ring-value {
+  stroke: var(--r);
+}
+.dr-chest.state-claimed .icon.chest {
+  color: color-mix(in srgb, var(--r) 70%, #fff);
+}
+.dr-chest.state-loading,
+.dr-chest.state-unavailable {
+  opacity: 0.55;
+}
+
+/* Ready: no ring; the chest hops. A chip with words where there's room. */
+.dr-chest.state-ready {
+  color: var(--green);
+  border-color: rgba(83, 252, 24, 0.3);
+  background: rgba(83, 252, 24, 0.08);
+  animation: dr-glow 2.4s ease-in-out infinite;
+}
+.dr-chest.state-ready .icon.chest {
+  width: 21px;
+  height: 21px;
+  --chest-bg: #0f1a0b;
+}
+.dr-chest.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  height: 34px;
+  padding: 0 15px 0 11px;
+  margin-right: 8px;
+  border-radius: 999px;
+  font-weight: 650;
+  font-size: 13px;
+}
+.dr-chest.chip:hover {
+  background: rgba(83, 252, 24, 0.14);
+  border-color: rgba(83, 252, 24, 0.45);
+  color: var(--green);
+}
+@keyframes dr-glow {
+  50% {
+    box-shadow: 0 0 0 4px rgba(83, 252, 24, 0.1), 0 0 20px rgba(83, 252, 24, 0.35);
+  }
+}
+
+/* In the tray's header: the same chest, as tall as the status pill beside it. */
+.dr-chest.at-tray {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.dr-chest.at-tray .dr-ring {
+  width: 26px;
+  height: 26px;
+}
+.dr-chest.at-tray .icon.chest {
+  width: 16px;
+  height: 16px;
+  --chest-bg: #1a1d22;
+}
+.dr-chest.at-tray.state-ready .icon.chest {
+  width: 19px;
+  height: 19px;
+}
+
+/* ------------------------------------------------------------- the card */
+.dr-pop {
+  position: fixed;
+  z-index: 60;
+  width: 392px;
+  max-height: calc(100vh - 72px);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, #15181d, #101216);
+  border: 1px solid var(--border-2);
+  box-shadow: 0 1px 0 var(--highlight) inset, 0 24px 60px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  animation: dr-pop-in 0.22s var(--ease) both;
+  transform-origin: var(--pop-origin, 90% 0);
+}
+.dr-pop::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: var(--notch, 90%);
+  width: 11px;
+  height: 11px;
+  transform: translateX(-50%) rotate(45deg);
+  background: #15181d;
+  border-left: 1px solid var(--border-2);
+  border-top: 1px solid var(--border-2);
+}
+@keyframes dr-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+.dr-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+.dr-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+}
+.dr-head > .icon.chest {
+  width: 17px;
+  height: 17px;
+  color: var(--text);
+  --chest-bg: #15181d;
+}
+.dr-head b {
+  font: 680 14.5px/1 var(--font-display);
+  letter-spacing: -0.01em;
+}
+.dr-head-sub {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+}
+.dr-card.state-ready .dr-head-sub {
+  color: var(--green);
+}
+.dr-head .spacer {
+  flex: 1;
+}
+/* Stream Multiview's copy of the card says where it comes from. */
+.dr-via {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* The stage: Kick's crate, or the card you won. */
+.dr-stage {
+  position: relative;
+  height: 176px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 100%, #12161b, #000);
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+}
+.dr-stage:has(> .dr-crate) {
+  background: #000;
+}
+.dr-stage .dr-crate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dr-stage .dr-crate-art {
+  width: 62%;
+  height: auto;
+  margin-top: 4px; /* its shadow sits under it: this centres the crate itself */
+}
+.dr-crate-art .crate-burst {
+  opacity: 0;
+}
+.dr-crate-art.idle {
+  animation: dr-float 3.2s ease-in-out infinite;
+}
+.dr-crate-art.dim {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+.dr-stage.earning .dr-crate,
+.dr-stage.earning .dr-crate-art {
+  filter: saturate(0.6) brightness(0.8);
+}
+.dr-stage.ready {
+  border-color: rgba(83, 252, 24, 0.3);
+  box-shadow: 0 0 40px -10px rgba(83, 252, 24, 0.4) inset;
+}
+.dr-stage.ready .crate-burst {
+  animation: dr-burst 2.4s ease-in-out infinite;
+}
+@keyframes dr-float {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+@keyframes dr-burst {
+  50% {
+    opacity: 0.8;
+  }
+}
+.dr-ready {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+.dr-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -2px;
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dr-progress .label {
+  color: var(--muted);
+}
+.dr-progress b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.dr-stage-msg {
+  position: absolute;
+  inset: auto 14px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.dr-stage-msg .icon {
+  color: var(--amber);
+  flex: none;
+}
+
+/* Shared thin bars. */
+.dr-card .bar,
+.dr-progress .bar {
+  position: relative;
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.dr-card .bar > i,
+.dr-progress .bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green-2), var(--green));
+}
+
+/* The card you won, glowing in its rarity's colour. */
+.dr-stage.won {
+  border-color: color-mix(in srgb, var(--r) 35%, transparent);
+}
+.dr-won-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(50% 60% at 50% 50%, color-mix(in srgb, var(--r) 45%, transparent), transparent 70%);
+}
+.r-mythic .dr-won-glow {
+  background: radial-gradient(50% 60% at 50% 50%, rgba(128, 252, 255, 0.35), rgba(255, 160, 236, 0.2) 45%, transparent 70%);
+}
+.dr-won-card {
+  position: relative;
+  height: 152px;
+  width: auto;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.6));
+}
+.dr-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: -2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.dr-result b {
+  color: var(--text);
+  font-size: 14px;
+}
+.dr-result .dr-dupe {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dr-result .dr-sub {
+  flex-basis: 100%;
+}
+.dr-xp {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.dr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dr-facts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dr-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dr-fact b {
+  color: var(--text);
+}
+.dr-fact > .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--gold);
+}
+.dr-fact.level {
+  flex: 1;
+  min-width: 0;
+}
+.dr-fact.level > .icon {
+  color: var(--violet);
+}
+.dr-fact .bar {
+  min-width: 40px;
+}
+.dr-fact .bar > i {
+  background: linear-gradient(90deg, #8b6cf5, var(--violet));
+}
+.dr-level-badge {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* Rarity by rarity: chance, and how much you own. */
+.dr-rarities {
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) 82px minmax(110px, 1.3fr);
+  row-gap: 1px;
+  font-size: 12px;
+}
+.dr-rarity {
+  display: contents;
+}
+.dr-rarity > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 23px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.dr-rarity.head > span {
+  height: 18px;
+  font: 700 9.5px/1 var(--font);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.dr-rarity .name {
+  color: var(--text);
+  font-weight: 560;
+}
+.dr-rarity .name > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--r-fill);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--r) 45%, transparent);
+}
+.dr-rarity .pct,
+.dr-rarity .num {
+  font-variant-numeric: tabular-nums;
+}
+.dr-rarity .num {
+  justify-content: flex-end;
+}
+.dr-rarity .own {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.dr-rarity .own .count {
+  width: 68px;
+  justify-content: flex-end;
+  display: inline-flex;
+  flex: none;
+}
+.dr-rarity .own b {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.dr-rarity .own .bar {
+  height: 4px;
+  min-width: 28px;
+}
+.dr-rarity .own .bar > i {
+  background: var(--r-fill);
+}
+
+.dr-dupe-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.dr-dupe-line > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dr-dupe-line b {
+  color: var(--text);
+}
+.dr-dupe-line small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.dr-dupe-ring {
+  flex: none;
+}
+
+.dr-extra {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  border: 1px dashed var(--border-2);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.dr-extra > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dr-extra b {
+  color: var(--text);
+}
+.dr-extra small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.dr-extra .icon.chest {
+  width: 15px;
+  height: 15px;
+  color: var(--amber);
+  --chest-bg: #15181d;
+}
+
+.dr-actions {
+  display: flex;
+  gap: 8px;
+}
+.dr-actions > .btn {
+  flex: 1;
+  justify-content: center;
+}
+.dr-claim:disabled {
+  opacity: 1;
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--muted);
+  box-shadow: none;
+}
+
+/* The card as the tray's whole page: the tray has its own padding. */
+.dr-card.at-tray {
+  padding: 0;
+  gap: 11px;
+}
+.dr-card.at-tray .dr-head > .icon.chest {
+  --chest-bg: #14171b;
+}
+.dr-card.at-tray .dr-stage {
+  height: 150px;
+}
+.dr-card.at-tray .dr-won-card {
+  height: 128px;
+}
+
+/* ------------------------------------------------------------- the reveal */
+.dr-reveal {
+  position: absolute;
+  inset: 50px 0 0;
+  z-index: 3;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  background: #000;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.dr-card.at-tray .dr-reveal {
+  inset: 39px 0 0;
+  border-radius: 12px;
+}
+.dr-reveal[hidden] {
+  display: none;
+}
+.dr-reveal > * {
+  grid-area: 1 / 1;
+}
+.dr-unbox {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.6s;
+}
+/* Kick's opening fills the whole layer, so its flash has no edges. */
+.dr-unbox video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dr-unbox .dr-crate-art {
+  width: 70%;
+}
+.dr-reveal[data-phase='openBox'] .dr-crate-art.opening .crate-lid {
+  animation: dr-lid-off 1.6s var(--ease) forwards;
+}
+.dr-reveal[data-phase='openBox'] .dr-crate-art.opening .crate-body {
+  animation: dr-shake 0.9s ease-in-out;
+}
+.dr-reveal[data-phase='openBox'] .dr-crate-art.opening .crate-burst {
+  animation: dr-burst-out 1.6s ease-out forwards;
+}
+@keyframes dr-shake {
+  20%,
+  60% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+  40%,
+  80% {
+    transform: translateX(3px) rotate(1deg);
+  }
+}
+@keyframes dr-lid-off {
+  55% {
+    transform: none;
+  }
+  100% {
+    transform: translate(28px, -70px) rotate(24deg);
+    opacity: 0;
+  }
+}
+@keyframes dr-burst-out {
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.6);
+  }
+}
+.dr-reveal:not([data-phase='openBox']) .dr-unbox {
+  opacity: 0;
+}
+
+.dr-reel {
+  position: relative;
+  width: 100%;
+  height: calc(var(--tile) * 1.34 * 1.3);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 1s;
+  mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+}
+.dr-reveal[data-phase='spin'] .dr-reel,
+.dr-reveal[data-phase='handoff'] .dr-reel {
+  opacity: 1;
+}
+.dr-reel-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  display: flex;
+  gap: 12px;
+  margin-top: calc(var(--tile) * -0.67);
+  will-change: transform;
+}
+.dr-tile {
+  flex: none;
+  width: var(--tile);
+  height: calc(var(--tile) * 1.34);
+  border-radius: 10px;
+  transform: scale(0.8);
+}
+.dr-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.dr-tile.won {
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--r) 70%, transparent));
+}
+.dr-reel-mark {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  bottom: 6px;
+  width: calc(var(--tile) * 1.2 + 8px);
+  transform: translateX(-50%);
+  border-radius: 12px;
+  border: 1px solid rgba(83, 252, 24, 0.5);
+  box-shadow: 0 0 30px -6px rgba(83, 252, 24, 0.45) inset;
+  pointer-events: none;
+}
+.dr-winner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.7s, transform 0.7s var(--ease);
+}
+.dr-winner .dr-won-card {
+  flex: none;
+  height: min(240px, 52%);
+}
+.dr-reveal[data-phase='celebrate'] .dr-winner {
+  opacity: 1;
+  transform: none;
+}
+.dr-winner-caption {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.dr-winner-caption b {
+  font: 700 17px/1 var(--font-display);
+}
+.dr-reveal-bg {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1s;
+  background: radial-gradient(60% 34% at 50% 50%, rgba(83, 252, 24, 0.13), transparent 70%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 26px);
+}
+.dr-reveal:not([data-phase='openBox']) .dr-reveal-bg {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dr-chest.state-ready,
+  .dr-chest.state-ready .chest-box,
+  .dr-chest.state-ready .chest-burst,
+  .dr-crate-art.idle,
+  .dr-stage.ready .crate-burst {
+    animation: none;
+  }
+}
