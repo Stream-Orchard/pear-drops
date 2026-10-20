@@ -594,8 +594,10 @@ test('a frozen picture shows on the dashboard and tray within seconds, and is ch
 
 test('a drop with one or two rewards gives them the room, with when each unlocks', async () => {
   const pick = await a.app.evaluate(() => {
-    const c = global.pdDebug.farmer.model.categories.find((x) => x.name === 'Just Chatting' && x.streams.length);
-    return c && { id: c.id, slug: c.streams[0].slug };
+    // A stream that counts for Chatterbox Week alone (two rewards), not for Cozy Hours as well.
+    const c = global.pdDebug.farmer.model.categories.find((x) => x.name === 'Just Chatting');
+    const s = c?.streams.find((x) => x.covers.length === 1);
+    return s && { id: c.id, slug: s.slug };
   });
   assert.ok(pick, 'a stand-in category with two rewards and a live stream');
   await a.win.evaluate((p) => window.pd.watch(p.slug, p.id), pick);

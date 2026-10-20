@@ -2568,6 +2568,106 @@ span.img-missing {
   border: 1px solid var(--border);
   box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.8);
 }
+/* A queue row for a drop limited to certain channels: its channels' avatars instead of the
+   category's art (format.js rowArt). One channel has the category's art as a badge. */
+.row-art {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 38px;
+  height: 50px;
+}
+.row-art .av {
+  position: absolute;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--solid-2);
+  box-shadow: 0 0 0 2px var(--bg-2), 0 6px 16px -8px rgba(0, 0, 0, 0.8);
+}
+.row-art.one .av {
+  left: 0;
+  top: 6px;
+  width: 38px;
+  height: 38px;
+}
+.row-art.many .av {
+  width: 28px;
+  height: 28px;
+}
+.row-art.many .av:nth-child(1) {
+  left: 0;
+  top: 5px;
+}
+.row-art.many .av:nth-child(2) {
+  right: 0;
+  bottom: 5px;
+}
+.row-art .cat-badge {
+  position: absolute;
+  right: -5px;
+  bottom: 2px;
+  width: 17px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px var(--bg-2);
+}
+.row-art .more {
+  position: absolute;
+  right: -5px;
+  top: 0;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #262b33;
+  border: 1px solid var(--border-2);
+  color: var(--text);
+  font: 700 9.5px/14px var(--font);
+  text-align: center;
+}
+.cat-meta .row-where {
+  color: var(--text-2);
+}
+/* An opened channel row: its channels, each with a live dot. */
+.row-chans {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+.row-chan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 3px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.row-chan img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.row-chan i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.row-chan.live {
+  color: var(--text);
+  border-color: rgba(83, 252, 24, 0.25);
+}
+.row-chan.live i {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
 .cat-info {
   display: flex;
   flex-direction: column;
@@ -5523,6 +5623,7 @@ input[type='range']::-webkit-slider-thumb {
   }
   .cat-row > .cat-grip,
   .cat-row > .cat-art,
+  .cat-row > .row-art,
   .cat-row > .cat-info {
     grid-row: 1 / 3;
   }

@@ -31,6 +31,29 @@ const MAX_STUCK_RELOADS = 2;
 const ELIGIBLE_RECHECK_MS = 5 * MIN;
 const CONFLICT_EVENTS = 3; // uncredited watch events (~2 min apart) before alerting
 const CONFLICT_REPEAT_MS = 10 * MIN;
+// A drop limited to a few channels: those not in its category's first page of streams are asked
+// about one by one (as Stream Multiview checks Kick channels), this far apart. More channels than
+// DIRECT_MAX: the category's streams are searched deeper instead.
+const DIRECT_MAX = 8;
+const DIRECT_GAP_MS = 1200;
+
+/**
+ * Which queue row a drop belongs to: its category's (any channel counts), its event's (Kick's
+ * event pages), or its own channels'. Drops limited to the same channels share a row.
+ */
+/** A queue row's ids for a history event: its category's, and its own when it isn't the category. */
+const rowCtx = (row) => ({ categoryId: row.categoryId ?? row.id, category: row.category?.name ?? row.name, ...(row.kind && row.kind !== 'category' ? { targetId: row.id, target: row.name } : {}) });
+
+function rowKey(campaign, categoryId) {
+  if (!campaign.channelIds.length) return { id: categoryId, kind: 'category' };
+  if (campaign.event) return { id: `ev:${campaign.event}`, kind: 'event' };
+  const ids = [...campaign.channelIds].sort((a, b) => String(a).localeCompare(String(b))).join(',');
+  // Short enough for a page to send back (the queue's switch and order); a long list is hashed.
+  if (ids.length <= 80) return { id: `ch:${ids}`, kind: 'channels' };
+  let h = 0;
+  for (const ch of ids) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return { id: `ch:#${h.toString(36)}`, kind: 'channels' };
+}
 
 /** An https link from Kick (a campaign's About page, a connect link), or null. */
 const httpsLink = (url) => (typeof url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(url) ? url : null);
@@ -103,9 +126,11 @@ class Farmer extends EventEmitter {
     this.progress = [];
     this.followed = new Set();
     this.followedAt = 0;
-    this.streams = new Map(); // categoryId -> { at, list }
+    this.streams = new Map(); // Kick category id -> { at, list }: shared by every row in that category
+    this.direct = new Map(); // channel slug -> { at, ls }: a drop's channel asked about by itself (ls null: offline)
+    this.followedLive = null; // { at, live: Set } from the follow list: who's live among the channels you follow
     this.blacklist = new Map(); // slug -> until
-    this.availability = new Availability(); // how often each category has a stream live
+    this.availability = new Availability(); // how often each queue row has a stream live
     this.claimBackoff = new Map(); // rewardId -> until
     this.claimErrors = new Map(); // rewardId -> { type, text, connectUrl, at }: why Kick last refused it
     this.prevUnits = new Map(); // campaignId -> units
@@ -160,13 +185,14 @@ class Farmer extends EventEmitter {
     const c = this.model.campaigns.find((x) => x.id === campaignId);
     const raw = c ? null : this.rawCampaigns.find((x) => x.id === campaignId);
     const catId = c?.categoryId ?? raw?.category?.id;
-    const cat = this.model.categories.find((x) => x.id === catId) ?? raw?.category;
-    return { campaignId, campaign: c?.name ?? raw?.name, categoryId: catId, category: cat?.name, required: c?.targetUnits || undefined };
+    const cat = this.model.categories.find((x) => x.categoryId === catId)?.category ?? raw?.category;
+    const row = c && this.model.categories.find((x) => x.campaigns.some((k) => k.id === c.id));
+    return { campaignId, campaign: c?.name ?? raw?.name, categoryId: catId, category: cat?.name, ...(row && row.kind !== 'category' ? { targetId: row.id } : {}), required: c?.targetUnits || undefined };
   }
 
   /** The current stream, for a history event. */
   streamCtx(cur = this.current) {
-    return cur ? { session: cur.session, slug: cur.slug, channel: cur.username, avatar: cur.avatar, categoryId: cur.categoryId, category: cur.categoryName, campaignIds: cur.campaignIds } : {};
+    return cur ? { session: cur.session, slug: cur.slug, channel: cur.username, avatar: cur.avatar, categoryId: cur.categoryId, category: cur.categoryName, ...(cur.targetId !== cur.categoryId ? { targetId: cur.targetId } : {}), campaignIds: cur.campaignIds } : {};
   }
 
   record(type, data) {
@@ -272,6 +298,8 @@ class Farmer extends EventEmitter {
       try {
         this.followed = await this.api.followedSlugs();
         this.followedAt = now;
+        // Who's live among them, when the list said (live channels come first on Kick's list).
+        this.followedLive = this.followed.live ? { at: now, live: this.followed.live } : null;
       } catch (err) {
         this.addLog('warn', `Could not load followed channels: ${err.message}`);
         this.followedAt = now - followedTtl + 2 * MIN;
@@ -331,7 +359,7 @@ class Farmer extends EventEmitter {
     const soon = this.model.upcoming ?? [];
     if (this.seenDrops) {
       const fresh = this.model.campaigns.filter((c) => !this.seenDrops.has(c.id) && c.needsWatching);
-      if (fresh.length) this.emit('new-drops', fresh.map((c) => ({ id: c.id, name: c.name, category: this.model.categories.find((x) => x.id === c.categoryId)?.name })));
+      if (fresh.length) this.emit('new-drops', fresh.map((c) => ({ id: c.id, name: c.name, category: this.model.categories.find((x) => x.categoryId === c.categoryId)?.category.name })));
       // Announced ones too ("starts …"); each is told again when it starts.
       const announced = soon.filter((c) => !this.seenUpcoming.has(c.id));
       if (announced.length) this.emit('new-drops', announced.map((c) => ({ id: c.id, name: c.name, category: c.category, startsAt: c.startsAt })));
@@ -431,7 +459,8 @@ class Farmer extends EventEmitter {
     if (!this.history) return;
     // The live rate covers a week: a day more catches sessions that started before it.
     for (const s of this.history.sessions(this.history.range(now - (WEEK_HOURS + 24) * HOUR), now)) {
-      if (s.categoryId !== undefined && s.categoryId !== null) this.availability.noteLive(s.categoryId, s.start, s.end ?? now);
+      const id = s.targetId ?? s.categoryId;
+      if (id !== undefined && id !== null) this.availability.noteLive(id, s.start, s.end ?? now);
     }
   }
 
@@ -582,7 +611,7 @@ class Farmer extends EventEmitter {
   dropInfo(id) {
     const c = this.model.campaigns.find((x) => x.id === id);
     if (c) {
-      const cat = this.model.categories.find((k) => k.id === c.categoryId);
+      const cat = this.model.categories.find((k) => k.categoryId === c.categoryId)?.category;
       const tracked = c.rewards.filter((r) => r.tracked);
       return { id, name: c.name, status: c.complete ? 'completed' : 'live', category: cat?.name ?? null, categoryId: c.categoryId, image: cat?.image ?? null, org: c.org, endsAt: c.endsAt, units: c.units, targetUnits: c.targetUnits || Math.max(0, ...tracked.map((r) => r.required)), rewards: c.rewards, claimed: tracked.filter((r) => r.claimed).length, total: tracked.length, onKick: true, removed: false };
     }
@@ -679,23 +708,31 @@ class Farmer extends EventEmitter {
       if (raw.category?.id && !byCategory.has(raw.category.id)) byCategory.set(raw.category.id, raw.category);
     }
 
+    // The queue's rows: a category's open drops together; a drop limited to certain channels (or an
+    // event's) in a row of its own, named after the drop and pictured by its channels.
     const groups = new Map();
     for (const c of campaigns) {
-      if (!groups.has(c.categoryId)) {
+      const key = rowKey(c, c.categoryId);
+      if (!groups.has(key.id)) {
         const cat = byCategory.get(c.categoryId);
-        groups.set(c.categoryId, {
-          id: c.categoryId,
-          name: cat.name,
-          slug: cat.slug,
-          image: this.img(cat.image_url || cat.banner_image_url || null),
-          campaigns: [],
-        });
+        const category = { id: c.categoryId, name: cat.name, slug: cat.slug, image: this.img(cat.image_url || cat.banner_image_url || null) };
+        groups.set(key.id, { id: key.id, kind: key.kind, categoryId: c.categoryId, category, name: cat.name, slug: cat.slug, image: category.image, channels: [], campaigns: [] });
       }
-      groups.get(c.categoryId).campaigns.push(c);
+      const g = groups.get(key.id);
+      g.campaigns.push(c);
+      for (const ch of c.channels) if (!g.channels.some((x) => x.id === ch.id)) g.channels.push(ch);
+    }
+    // A channel or event row goes by its drop's name: the one still to watch that ends first.
+    for (const g of groups.values()) {
+      if (g.kind === 'category') continue;
+      const named = [...g.campaigns].sort((a, b) => Number(b.needsWatching) - Number(a.needsWatching) || new Date(a.endsAt) - new Date(b.endsAt))[0];
+      g.name = named.name;
+      g.otherDrops = g.campaigns.filter((c) => c.needsWatching && c !== named).length;
     }
 
-    const order = settings.categoryOrder;
-    const disabled = new Set(settings.disabledCategories);
+    const order = this.queueOrder([...groups.values()], settings);
+    // (as queueOrder may just have switched a new row off)
+    const disabled = new Set(this.store.get().disabledCategories);
     const categories = [...groups.values()].map((cat) => {
       const active = cat.campaigns.filter((c) => c.needsWatching);
       const streams = this.candidatesFor(cat, active);
@@ -703,7 +740,7 @@ class Farmer extends EventEmitter {
       // Can the next reward of any open campaign still be earned before it ends?
       const feasible = active.some((c) => c.next && c.next.remaining * MIN < new Date(c.endsAt).getTime() - now);
       // Expected live time left: until the drop ends, counting only the share of the time this
-      // category has a stream on. A rarely live drop "ends" sooner, so Smart catches it while it's on.
+      // row has a stream on. A rarely live drop "ends" sooner, so Smart catches it while it's on.
       const liveRate = this.availability.rate(cat.id, now);
       const ends = (active.length ? active : cat.campaigns).map((c) => new Date(c.endsAt).getTime());
       const weight = RARITY_WEIGHT[settings.smartRarity] ?? 1;
@@ -725,7 +762,9 @@ class Farmer extends EventEmitter {
         rarityCounts: liveRate !== null && liveRate < RARELY_LIVE && weight > 0,
         streams,
         streamCount: streams.length,
-        streamsLoaded: this.streams.has(cat.id),
+        // Which of its own channels are live (a channel or event row), for its row and its tooltip.
+        liveChannels: cat.kind === 'category' ? [] : cat.channels.filter((ch) => streams.some((s) => s.channelId === ch.id)).map((ch) => ch.id),
+        streamsLoaded: this.streams.has(cat.categoryId),
       };
     });
 
@@ -757,6 +796,34 @@ class Farmer extends EventEmitter {
     this.model = { categories, campaigns, past: this.pastDrops(campaigns, settings, now), upcoming: this.upcomingDrops(settings, now) };
     this.recordMilestones();
     this.recordUrgency();
+  }
+
+  /**
+   * The saved order (settings.categoryOrder) and switches (settings.disabledCategories) hold queue
+   * row ids: a category's id, as before rows existed, or a channel or event row's ("ch:…",
+   * "ev:…"). A row seen for the first time goes just after its category in the order, and is off
+   * if its category is off: so a drop that used to be under a category keeps its place and its
+   * switch. Its id is then remembered (settings.knownRows), so either can be changed on its own.
+   */
+  queueOrder(rows, settings) {
+    const order = [...(settings.categoryOrder ?? [])];
+    const known = new Set(settings.knownRows ?? []);
+    const fresh = rows.filter((r) => r.kind !== 'category' && !known.has(r.id) && !order.includes(r.id));
+    if (!fresh.length) return order;
+    const disabled = new Set(settings.disabledCategories ?? []);
+    for (const r of fresh) {
+      const at = order.indexOf(r.categoryId);
+      if (at !== -1) {
+        // After its category and any rows already placed after it.
+        let i = at + 1;
+        while (i < order.length && rows.some((x) => x.id === order[i] && x.categoryId === r.categoryId)) i += 1;
+        order.splice(i, 0, r.id);
+      }
+      if (disabled.has(r.categoryId)) disabled.add(r.id);
+      known.add(r.id);
+    }
+    this.store.set({ categoryOrder: order, disabledCategories: [...disabled], knownRows: [...known] });
+    return order;
   }
 
   /** Records each category the first time it's moved up for its deadline. */
@@ -795,7 +862,8 @@ class Farmer extends EventEmitter {
   recordMilestones() {
     const { campaigns, categories } = this.model;
     const ready = campaigns.flatMap((c) => c.rewards.filter((r) => r.tracked && (r.ready || r.claimed)).map((r) => [c, r]));
-    const done = [...campaigns.filter((c) => c.complete).map((c) => `c:${c.id}`), ...categories.filter((c) => c.complete).map((c) => `k:${c.id}`)];
+    // A channel or event row's drops each say they're done already: only categories get a line of their own.
+    const done = [...campaigns.filter((c) => c.complete).map((c) => `c:${c.id}`), ...categories.filter((c) => c.complete && c.kind === 'category').map((c) => `k:${c.id}`)];
     if (!this.progress.length && !this.rawCampaigns.length) return;
     if (this.seenReady === null) {
       // First load: what's already done isn't news.
@@ -847,16 +915,30 @@ class Farmer extends EventEmitter {
     return best;
   }
 
+  /**
+   * The live streams that count for a row's drops: from its category's stream list, and for a
+   * channel row also its channels asked about by themselves. `covers` is every drop in the category
+   * the stream counts for (a channel can count for a channel drop and the category's open drop at
+   * once), so streams that count for more are tried first.
+   */
   candidatesFor(cat, activeCampaigns) {
-    const entry = this.streams.get(cat.id);
-    if (!entry || !activeCampaigns.length) return [];
+    const entry = this.streams.get(cat.categoryId ?? cat.id);
+    if (!activeCampaigns.length) return [];
     const now = Date.now();
+    const list = [...(entry?.list ?? [])];
+    for (const ch of cat.kind === 'channels' ? cat.channels : []) {
+      const d = this.direct.get(String(ch.slug).toLowerCase());
+      if (d?.ls && !list.some((ls) => ls.channel.id === ch.id)) list.push(d.ls);
+    }
+    if (!list.length) return [];
+    const mine = new Set(activeCampaigns.map((c) => c.id));
+    const others = (this.model.campaigns ?? []).filter((c) => c.categoryId === (cat.categoryId ?? cat.id) && c.needsWatching && !mine.has(c.id));
     const out = [];
-    for (const ls of entry.list) {
-      const covers = activeCampaigns
-        .filter((c) => !c.channelIds.length || c.channelIds.includes(ls.channel.id))
-        .map((c) => c.id);
-      if (!covers.length) continue;
+    for (const ls of list) {
+      const counts = (c) => !c.channelIds.length || c.channelIds.includes(ls.channel.id);
+      const own = activeCampaigns.filter(counts).map((c) => c.id);
+      if (!own.length) continue;
+      const covers = [...own, ...others.filter(counts).map((c) => c.id)];
       const slug = ls.channel.slug;
       out.push({
         slug,
@@ -869,7 +951,7 @@ class Farmer extends EventEmitter {
         startedAt: ls.start_time,
         language: ls.language,
         mature: ls.is_mature,
-        categoryId: cat.id,
+        categoryId: cat.categoryId ?? cat.id,
         followed: this.followed.has(slug.toLowerCase()),
         covers,
         blocked: (this.blacklist.get(slug) ?? 0) > now,
@@ -884,33 +966,94 @@ class Farmer extends EventEmitter {
     );
   }
 
+  /**
+   * Each category's live streams, once for all its rows. A category whose drops are all limited to
+   * certain channels: its first page, then each channel still unaccounted for asked about by itself
+   * (a followed channel the follow list says is offline is skipped). Many channels, or an event's:
+   * the category searched deeper, as before.
+   */
   async refreshStreams({ force }) {
     const now = Date.now();
-    const disabled = new Set(this.store.get().disabledCategories);
-    for (const cat of this.model.categories) {
-      if (!cat.needsWatching || disabled.has(cat.id)) continue;
-      const cached = this.streams.get(cat.id);
+    const ttlOf = (empty) => (empty ? 0 : (this.store.get().streamsMinutes ?? 3) * MIN);
+    const rows = this.model.categories.filter((r) => r.enabled && r.needsWatching);
+    const byCategory = new Map();
+    for (const r of rows) byCategory.set(r.categoryId, [...(byCategory.get(r.categoryId) ?? []), r]);
+    for (const [catId, catRows] of byCategory) {
+      const active = catRows.flatMap((r) => r.campaigns.filter((c) => c.needsWatching));
+      const cached = this.streams.get(catId);
       // Categories with nothing live are re-checked every refresh, so a comeback is noticed quickly.
-      const ttl = cached && cached.list.length === 0 ? 0 : (this.store.get().streamsMinutes ?? 3) * MIN;
-      if (!force && cached && now - cached.at < ttl) continue;
-      const active = cat.campaigns.filter((c) => c.needsWatching);
-      const openWorld = active.some((c) => !c.channelIds.length);
-      const wanted = new Set(active.flatMap((c) => c.channelIds));
+      const listed = !force && cached && now - cached.at < ttlOf(catRows.every((r) => this.candidatesFor(r, r.campaigns.filter((c) => c.needsWatching)).length === 0));
+      const openWorld = catRows.some((r) => r.kind === 'category');
+      const channelRows = catRows.filter((r) => r.kind === 'channels');
+      const wanted = new Set(active.filter((c) => c.channelIds.length).flatMap((c) => c.channelIds));
+      // A few channels (and no event's): those the first page lacks are asked about one by one.
+      const few = channelRows.length > 0 && !catRows.some((r) => r.kind === 'event') && wanted.size <= DIRECT_MAX;
+      const name = catRows[0].category.name;
+      if (!listed) {
+        try {
+          // Drops limited to an event's channels: the event lists its live channels however small,
+          // which the category's top streams can miss. The category's first page still comes too.
+          const fromEvents = openWorld ? [] : await this.eventStreams(active, wanted);
+          const list = await this.api.livestreams(catId, {
+            maxPages: openWorld || fromEvents || few ? 1 : 5,
+            stopWhen: (found) => [...wanted].every((id) => found.some((ls) => ls.channel.id === id)),
+          });
+          const have = new Set(list.map((ls) => ls.channel.id));
+          this.streams.set(catId, { at: now, list: [...list, ...(fromEvents ?? []).filter((ls) => !have.has(ls.channel.id))] });
+        } catch (err) {
+          this.addLog('warn', `Could not list ${name} streams: ${err.message}`);
+        }
+      }
+      if (few) await this.refreshDirect(channelRows, catId, force, now);
+      // How often each row is live. The stream being watched counts even if the listing missed it.
+      for (const r of catRows) {
+        const live = this.candidatesFor(r, r.campaigns.filter((c) => c.needsWatching)).length > 0 || this.current?.targetId === r.id;
+        this.availability.note(r.id, now, live);
+      }
+    }
+  }
+
+  /** A drop's channels the category's first page didn't have, each asked about by itself, a moment apart. */
+  async refreshDirect(rows, catId, force, now) {
+    const ttl = (this.store.get().streamsMinutes ?? 3) * MIN;
+    const listed = new Set((this.streams.get(catId)?.list ?? []).map((ls) => ls.channel.id));
+    const fresh = this.followedLive && now - this.followedLive.at < ttl;
+    let asked = 0;
+    for (const ch of rows.flatMap((r) => r.channels)) {
+      const slug = String(ch.slug).toLowerCase();
+      if (listed.has(ch.id)) {
+        this.direct.delete(slug);
+        continue;
+      }
+      const known = this.direct.get(slug);
+      if (!force && known && now - known.at < ttl) continue;
+      // The follow list, read recently, says this channel is offline: no need to ask.
+      if (fresh && this.followed.has(slug) && !this.followedLive.live.has(slug)) {
+        this.direct.set(slug, { at: now, ls: null });
+        continue;
+      }
+      if (asked++) await new Promise((r) => setTimeout(r, this.directGapMs ?? DIRECT_GAP_MS));
       try {
-        // Drops limited to an event's channels: the event lists its live channels however small,
-        // which the category's top streams can miss. The category's first page still comes too.
-        const fromEvents = openWorld ? [] : await this.eventStreams(active, wanted);
-        const listed = await this.api.livestreams(cat.id, {
-          maxPages: openWorld || fromEvents ? 1 : 5,
-          stopWhen: (found) => [...wanted].every((id) => found.some((ls) => ls.channel.id === id)),
+        const info = await this.api.channelInfo(slug);
+        const ls = info?.livestream;
+        const here = ls?.is_live && (!ls.categories?.length || ls.categories.some((c) => c.id === catId));
+        this.direct.set(slug, {
+          at: now,
+          ls: here
+            ? {
+                channel: { id: ch.id, slug: ch.slug, username: ch.username ?? ch.slug, profile_pic: ch.avatar },
+                title: ls.session_title ?? '',
+                viewer_count: ls.viewer_count ?? 0,
+                thumbnail: ls.thumbnail?.src ? { src: ls.thumbnail.src } : ls.thumbnail?.url ? { src: ls.thumbnail.url } : undefined,
+                start_time: ls.start_time ?? ls.created_at,
+                language: ls.language,
+                is_mature: ls.is_mature,
+              }
+            : null,
         });
-        const have = new Set(listed.map((ls) => ls.channel.id));
-        const list = [...listed, ...(fromEvents ?? []).filter((ls) => !have.has(ls.channel.id))];
-        this.streams.set(cat.id, { at: now, list });
-        // The stream being watched counts even if the listing missed it.
-        this.availability.note(cat.id, now, this.candidatesFor(cat, active).length > 0 || this.current?.categoryId === cat.id);
       } catch (err) {
-        this.addLog('warn', `Could not list ${cat.name} streams: ${err.message}`);
+        if (err.status === 404) this.direct.set(slug, { at: now, ls: null });
+        else this.addLog('warn', `Could not check ${ch.username ?? slug}: ${err.message}`);
       }
     }
   }
@@ -1063,7 +1206,7 @@ class Farmer extends EventEmitter {
         // Only leave a working stream once a stream in the other category is confirmed eligible.
         const target = await this.firstEligible(reason.to);
         if (!target) {
-          this.record('decision', { ...this.streamCtx(cur), categoryId: reason.to.id, category: reason.to.name, text: `Stayed on ${cur.username}: ${reason.to.name} came back, but none of its live streams count for the drop yet` });
+          this.record('decision', { ...this.streamCtx(cur), ...rowCtx(reason.to), text: `Stayed on ${cur.username}: ${reason.to.name} came back, but none of its live streams count for the drop yet` });
           return;
         }
         this.record('decision', { ...this.streamCtx(cur), ...(reason.to.urgent ? this.ctx(reason.to.urgent.campaignId) : {}), text: `Switching to ${reason.to.name}: ${reason.text}` });
@@ -1135,7 +1278,7 @@ class Farmer extends EventEmitter {
     // be dropped from a campaign mid-stream).
     if (now - (cur.eligibleCheckedAt ?? cur.startedWatchingAt) > ELIGIBLE_RECHECK_MS) {
       cur.eligibleCheckedAt = now;
-      const still = await this.verifyEligible({ channelId: cur.channelId, covers: cur.campaignIds }, { id: cur.categoryId });
+      const still = await this.verifyEligible({ channelId: cur.channelId, covers: cur.campaignIds }, { categoryId: cur.categoryId });
       if (!still.length) return { kind: 'ineligible', text: 'Stream no longer counts for the drop', block: 20 * MIN };
     }
 
@@ -1143,17 +1286,17 @@ class Farmer extends EventEmitter {
     cur.campaignIds = campaigns.filter((c) => c.needsWatching).map((c) => c.id);
     if (!cur.campaignIds.length) return { text: 'Drops for this stream are done' };
 
-    const cat = this.model.categories.find((c) => c.id === cur.categoryId);
+    const cat = this.model.categories.find((c) => c.id === cur.targetId);
     if (cat && !cat.enabled) return { text: `${cat.name} was disabled` };
 
     if (!cur.manual) {
       const first = this.firstWatchableCategory();
       const order = this.model.categories.map((c) => c.id);
-      const curCat = this.model.categories.find((c) => c.id === cur.categoryId);
+      const curCat = this.model.categories.find((c) => c.id === cur.targetId);
       // Smart order doesn't hop for a small difference: the other drop must have at least
       // Settings › Farming › Switch streams for (30 min by default) less expected live time left.
       const smartHop = settings.queueMode !== 'smart' || first?.urgent || !curCat || first.liveEnd < curCat.liveEnd - (settings.smartHopMinutes ?? 30) * MIN;
-      if (first && first.id !== cur.categoryId && order.indexOf(first.id) < order.indexOf(cur.categoryId) && smartHop) {
+      if (first && first.id !== cur.targetId && order.indexOf(first.id) < order.indexOf(cur.targetId) && smartHop) {
         const smart = settings.queueMode === 'smart';
         let why;
         if (first.urgent) why = `${first.urgent.campaign} ends in ${fmtSpan(first.urgent.msLeft)} with ${first.urgent.remaining} min to go (${fmtSpan(Math.max(0, first.urgent.slack))} to spare)`;
@@ -1216,7 +1359,7 @@ class Farmer extends EventEmitter {
         skipped.push(stream.username);
         this.blacklist.set(stream.slug, Date.now() + 20 * MIN);
         this.addLog('warn', `${stream.username} is not eligible for drops right now, skipping`);
-        this.record('not-eligible', { slug: stream.slug, channel: stream.username, avatar: stream.avatar, categoryId: cat.id, category: cat.name, text: `${stream.username} isn't eligible for ${cat.name} drops right now` });
+        this.record('not-eligible', { slug: stream.slug, channel: stream.username, avatar: stream.avatar, ...rowCtx(cat), text: `${stream.username} isn't eligible for ${cat.name} right now` });
       }
     }
     this.lastCreditAt = null;
@@ -1251,12 +1394,12 @@ class Farmer extends EventEmitter {
     const alternatives = cat.streams.filter((s) => !s.blocked && s.slug !== stream.slug).length;
     const text = `Picked ${stream.username} for ${cat.name}: ${reasons.join(', ')}${skipped.length ? `; skipped ${skipped.join(', ')} (not eligible)` : ''}${alternatives ? ` · ${alternatives} other live option${alternatives > 1 ? 's' : ''}` : ''}`;
     this.addLog('info', text);
-    this.record('decision', { slug: stream.slug, channel: stream.username, avatar: stream.avatar, categoryId: cat.id, category: cat.name, campaignIds, ...(campaignIds[0] ? { campaignId: campaignIds[0], campaign: this.ctx(campaignIds[0]).campaign } : {}), text });
+    this.record('decision', { slug: stream.slug, channel: stream.username, avatar: stream.avatar, ...rowCtx(cat), campaignIds, ...(campaignIds[0] ? { campaignId: campaignIds[0], campaign: this.ctx(campaignIds[0]).campaign } : {}), text });
   }
 
   async verifyEligible(stream, cat) {
     try {
-      const live = await this.api.campaignsForLivestream(stream.channelId, cat.id);
+      const live = await this.api.campaignsForLivestream(stream.channelId, cat.categoryId ?? cat.id);
       const ids = new Set(live.map((c) => c.id));
       return stream.covers.filter((id) => ids.has(id));
     } catch {
@@ -1272,8 +1415,10 @@ class Farmer extends EventEmitter {
     const since = (id) => (resumed?.campaignIds.includes(id) ? resumed.start : now);
     this.current = {
       ...stream,
-      categoryId: cat.id,
-      categoryName: cat.name,
+      categoryId: cat.categoryId ?? cat.id,
+      categoryName: cat.category?.name ?? cat.name,
+      targetId: cat.id,
+      targetName: cat.name,
       campaignIds,
       campaignSince: Object.fromEntries(campaignIds.map((id) => [id, since(id)])),
       startedWatchingAt: resumed?.start ?? now,
@@ -1585,6 +1730,8 @@ class Farmer extends EventEmitter {
         followed: cur.followed,
         categoryId: cur.categoryId,
         categoryName: cur.categoryName,
+        targetId: cur.targetId,
+        targetName: cur.targetName,
         campaignIds: cur.campaignIds,
         startedWatchingAt: cur.startedWatchingAt,
         lastProgressAt: cur.lastProgressAt,

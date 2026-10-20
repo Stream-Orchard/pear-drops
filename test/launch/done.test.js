@@ -77,10 +77,12 @@ test('a drop Kick stops listing moves to Done, and comes back to the queue if Ki
   await until(a.win, () => [...document.querySelectorAll('.past.missed')].some((p) => /Cozy/.test(p.textContent)), 'the ended drop in Done');
   assert.match(await a.win.locator('.past', { hasText: 'Cozy' }).textContent(), /1\/2 claimed/);
   await a.win.click('[data-action="side-tab"][data-id="queue"]');
-  assert.equal(await a.win.locator('.cat[data-cat-id]', { hasText: 'Just Chatting' }).count(), 0);
+  // Cozy Hours (limited to its event's channels) had a row of its own; Just Chatting keeps its open drop.
+  assert.equal(await a.win.locator('.cat[data-cat-id]', { hasText: 'Cozy Hours' }).count(), 0);
+  assert.equal(await a.win.locator('.cat[data-cat-id]', { hasText: 'Just Chatting' }).count(), 1);
 
   await a.demo((d) => d.relistDrop('c-cozy', 2));
-  await until(a.win, () => [...document.querySelectorAll('.cat[data-cat-id]')].some((r) => /Just Chatting/.test(r.textContent)), 'the drop back in the queue');
+  await until(a.win, () => [...document.querySelectorAll('.cat[data-cat-id]')].some((r) => /Cozy Hours/.test(r.textContent)), 'the drop back in the queue');
   await a.win.click('[data-action="side-tab"][data-id="done"]');
   assert.equal(await a.win.locator('.past', { hasText: 'Cozy' }).count(), 0);
 

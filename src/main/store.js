@@ -35,8 +35,11 @@ const DEFAULTS = {
   notify: { claimed: false, ready: false, ended: false, trouble: false, conflict: false, signedOut: false, done: false, newDrops: false, dailyReady: false, dailyClaimed: false },
   notifyAway: false, // only while Pear Drops isn't in front
   window: null, // { bounds, maximized }: remembered between launches
+  // The queue's order and its switched-off rows, by row id: a category's id, or a channel or event
+  // row's ("ch:…", "ev:…", see farmer.js rowKey). knownRows: the channel and event rows seen so far.
   categoryOrder: [],
   disabledCategories: [],
+  knownRows: [],
 };
 
 class Store {

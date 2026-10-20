@@ -1,4 +1,4 @@
-/* global rewardChest, rewardCard, playReveal, endReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
+/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 let page = 'main'; // or 'reward': the daily reward's card, claimed right here
@@ -70,7 +70,7 @@ function render() {
   const [tone, text] = statusLine(f);
   const tracked = f.categories.flatMap((c) => c.campaigns.flatMap((x) => x.rewards.filter((r) => r.tracked)));
   const collected = { done: tracked.filter((r) => r.claimed).length, all: tracked.length };
-  const next = f.categories.filter((c) => c.enabled && c.needsWatching && c.id !== cur?.categoryId).slice(0, 3);
+  const next = f.categories.filter((c) => c.enabled && c.needsWatching && c.id !== cur?.targetId).slice(0, 3);
 
   const now = cur
     ? `<div class="tray-now">
@@ -114,9 +114,9 @@ function render() {
             .map((c) => {
               const tracked = c.campaigns.flatMap((x) => x.rewards.filter((r) => r.tracked));
               const done = tracked.filter((r) => r.claimed).length;
-              return `<div class="tray-cat">${img(c.image, 'tray-cat-art')}<div class="tray-cat-info"><b>${esc(c.name)}</b>
+              return `<div class="tray-cat">${rowArt(c, 'tray-cat-art')}<div class="tray-cat-info"><b>${esc(c.name)}</b>
                 <div class="mini-bar"><i style="width:${tracked.length ? (done / tracked.length) * 100 : 0}%"></i></div></div>
-                <span>${c.streamCount ? `${c.streamCount} live` : 'offline'}</span></div>`;
+                <span>${c.kind !== 'category' && c.liveChannels.length ? (c.channels.length === 1 ? 'live' : `${c.liveChannels.length} of ${c.channels.length} live`) : c.streamCount ? `${c.streamCount} live` : 'offline'}</span></div>`;
             })
             .join('')}</div>`
         : ''

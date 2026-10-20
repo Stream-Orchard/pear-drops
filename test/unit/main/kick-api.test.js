@@ -40,6 +40,9 @@ test('followedSlugs pages followed-page and stops at the first page with nobody 
   const slugs = await api.followedSlugs();
   assert.equal(calls.length, 3, 'two live pages, then one with nobody live');
   assert.equal(slugs.size, 60);
+  // Who's live among them comes too (the queue skips asking about a followed channel that's offline).
+  assert.equal(slugs.live.size, 40);
+  assert.ok(slugs.live.has('ch0_0') && !slugs.live.has('ch2_0'));
 });
 
 test('followedSlugs falls back to the next list when one fails, and stops on a repeated cursor', async () => {
@@ -47,6 +50,7 @@ test('followedSlugs falls back to the next list when one fails, and stops on a r
   const { api, calls } = fakeApi((url, q) => (url === FOLLOW_APIS[0] ? gone : { channels: [{ channel_slug: 'only', followers_count: 1 }], nextCursor: q.cursor }));
   const slugs = await api.followedSlugs();
   assert.deepEqual([...slugs], ['only']);
+  assert.equal(slugs.live, undefined, 'a list that doesn\'t say who\'s live leaves it unknown');
   assert.equal(calls.filter(([u]) => u === FOLLOW_APIS[1]).length, 1);
 });
 

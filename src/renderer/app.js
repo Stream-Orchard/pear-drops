@@ -1,4 +1,4 @@
-/* global rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -245,7 +245,7 @@ function renderHero() {
     return setHTML(hero, `<div class="hero-empty"><div class="orb"><div class="spinner"></div></div><div><h2>Loading your drops…</h2><p>Fetching campaigns, your progress and live streams from Kick.</p></div></div>`);
   }
   const cur = f.current;
-  const cat = f.categories.find((c) => c.id === cur?.categoryId);
+  const cat = f.categories.find((c) => c.id === cur?.targetId);
 
   if (!cur) {
     const next = f.categories.find((c) => c.enabled && c.needsWatching);
@@ -255,7 +255,11 @@ function renderHero() {
       waiting: [
         icon('clock'),
         'Waiting for a live stream',
-        next ? `None of the channels for ${esc(next.name)} or the other remaining drops are live right now.` : f.status.message,
+        next && next.kind !== 'category'
+          ? `${esc(channelNames(next.channels, { or: true }))} ${next.channels.length === 1 ? 'isn’t' : 'aren’t'} live for ${esc(next.name)}, and nothing is on for the other remaining drops.`
+          : next
+            ? `None of the channels for ${esc(next.name)} or the other remaining drops are live right now.`
+            : f.status.message,
         `<button class="btn" data-action="refresh">${icon('refresh')} Check now</button>`,
       ],
       error: [icon('alert'), 'Kick is not responding', f.status.message, `<button class="btn" data-action="refresh">${icon('refresh')} Try again</button>`],
@@ -423,10 +427,12 @@ function idleChart(f) {
     const collected = f.categories.flatMap(trackedRewards).filter((r) => r.claimed);
     return { mode: 'done', items: collected.map((r) => ({ name: r.name, image: r.image })), sub: 'Nothing left to farm' };
   }
-  const items = left.map((c) => ({ name: c.name, image: c.image }));
+  // A blip per queue row: a category's art, or a channel row's first channel, with its drop's name.
+  const items = left.map((c) => ({ name: c.name, image: c.kind === 'category' ? c.image : (c.channels[0]?.avatar ?? c.image) }));
   if (f.paused) return { mode: 'paused', items, sub: 'None of the remaining drops’ channels are live' };
   if (f.status.code === 'error') return { mode: 'scan', tone: 'warn', items, sub: 'Waiting for Kick to answer' };
-  return { mode: 'scan', items, sub: `Looking for a live channel in ${left.length} ${left.length === 1 ? 'category' : 'categories'}` };
+  const drops = left.reduce((n, c) => n + c.campaigns.filter((x) => x.needsWatching).length, 0);
+  return { mode: 'scan', items, sub: `Looking for a live stream for ${drops} ${drops === 1 ? 'drop' : 'drops'}` };
 }
 
 function renderChart() {
@@ -493,9 +499,12 @@ function catStatus(cat, f) {
     const h = Math.max(1, Math.round(cat.urgent.msLeft / 3600_000));
     return `<span class="chip red" data-tip="Ends in ~${h}h and needs ~${fmtMin(cat.urgent.remaining)} more: moved to the top">${icon('bolt')} Ends soon</span>`;
   }
-  if (f.current?.categoryId === cat.id) return '<span class="chip green"><span class="live-dot green"></span>Farming</span>';
+  if (f.current?.targetId === cat.id) return '<span class="chip green"><span class="live-dot green"></span>Farming</span>';
   if (!cat.needsWatching) return `<span class="chip amber">${icon('gift')} Claimable</span>`;
-  if (cat.streamsLoaded && !cat.streamCount) return '<span class="chip amber" data-tip="No eligible channel is live">Offline</span>';
+  if (cat.streamsLoaded && !cat.streamCount) {
+    const why = cat.kind === 'category' ? 'No eligible channel is live' : cat.channels.length === 1 ? `${cat.channels[0].username} isn’t live` : `None of its ${cat.channels.length} channels is live`;
+    return `<span class="chip amber" data-tip="${esc(why)}">Offline</span>`;
+  }
   return '<span class="chip blue">Next</span>';
 }
 
@@ -509,7 +518,8 @@ function rareChip(cat) {
     since > Date.now() - 6 * 24 * 3600_000
       ? `Live ${live} of ${hours} hours seen since ${new Date(since).toLocaleDateString([], { weekday: 'short' })} ${fmtClock(since)}.`
       : `Live ${Math.round(cat.liveRate * 100)}% of the hours seen this week.`;
-  return `<span class="chip violet" data-tip="${seen}\n${smart ? 'Smart order watches it while it’s on.' : 'Smart order would watch it while it’s on.'}">Rare</span>`;
+  const who = cat.kind === 'category' ? '' : `${channelNames(cat.channels)}: `;
+  return `<span class="chip violet" data-tip="${esc(who)}${seen}\n${smart ? 'Smart order watches it while it’s on.' : 'Smart order would watch it while it’s on.'}">Rare</span>`;
 }
 
 /** A thin bar of minutes watched, with each reward's icon at the minute it unlocks. */
@@ -558,11 +568,15 @@ function queuePanel(f) {
       const rewards = trackedRewards(cat);
       const claimed = rewards.filter((r) => r.claimed).length;
       const open = ui.expanded.has(cat.id);
-      const isCurrent = f.current?.categoryId === cat.id;
+      const isCurrent = f.current?.targetId === cat.id;
       const ends = Math.min(...cat.campaigns.map((c) => new Date(c.endsAt).getTime()));
       const eta = categoryEta(cat);
+      const chans = cat.kind !== 'category';
       const meta = [
-        cat.needsWatching && cat.enabled && cat.streamCount ? `${icon('users')} ${cat.streamCount}${cat.streamCount >= 100 ? '+' : ''} live` : '',
+        // A channel row says whose channels and where; a category row how many streams are on.
+        chans ? `<span class="row-where">${esc(channelNames(cat.channels))} · ${esc(cat.category.name)}</span>` : '',
+        chans && cat.needsWatching && cat.enabled && cat.liveChannels.length ? `${icon('users')} ${cat.channels.length === 1 ? 'live now' : `${cat.liveChannels.length} of ${cat.channels.length} live`}` : '',
+        !chans && cat.needsWatching && cat.enabled && cat.streamCount ? `${icon('users')} ${cat.streamCount}${cat.streamCount >= 100 ? '+' : ''} live` : '',
         `${icon('clock')} ${fmtEnds(new Date(ends).toISOString())}`,
         // (claimed rewards show as filled icons on the bar)
         claimed && claimed < rewards.length ? `${claimed}/${rewards.length} claimed` : '',
@@ -579,10 +593,11 @@ function queuePanel(f) {
                   <span class="campaign-name">${esc(c.name)}</span>
                   <button class="btn sm hist-btn" data-action="hist-campaign" data-id="${esc(c.id)}" data-tip="This drop's history">${icon('list')} History</button>${detailsButton(c.url)}
                   ${c.watching ? '<span class="chip green">Watching</span>' : ''}
-                  <span class="chip flat">${c.channels.length ? `${c.channels.length} channel${c.channels.length > 1 ? 's' : ''}` : 'any channel'} · ${esc(c.org ?? '')}</span>
+                  <span class="chip flat">${c.channels.length ? '' : 'any channel · '}${esc(c.org ?? '')}</span>
                   <div class="spacer"></div>
                   <span class="card-sub num">${c.units}/${c.targetUnits || '—'}m${fc && c.needsWatching ? ` · ${fmtMin(fc.doneMinutes)} left` : ''}</span>
                 </div>
+                ${c.channels.length ? `<div class="row-chans">${c.channels.map((ch) => { const on = cat.liveChannels?.includes(ch.id); return `<span class="row-chan ${on ? 'live' : ''}" data-tip="${on ? 'Live now' : 'Offline'}">${img(ch.avatar)}<i></i>${esc(ch.username)}</span>`; }).join('')}</div>` : ''}
                 ${campaignTrack(c)}
                 <div class="campaign-rewards">${c.rewards
                   .map(
@@ -600,7 +615,7 @@ function queuePanel(f) {
       return `<div class="cat ${isCurrent ? 'current' : ''} ${cat.enabled ? '' : 'disabled'} ${locked ? 'complete locked' : ''} ${smart && !locked ? 'smart' : ''}" ${fixed ? '' : 'data-reorder'} data-cat-id="${cat.id}">
         <div class="cat-row" data-action="expand" data-id="${cat.id}">
           ${locked ? `<span class="cat-grip done" data-tip="Complete">${icon('check')}</span>` : smart ? `<span class="cat-grip" data-tip="Smart order sorts this automatically. Switch to Manual to rearrange.">${icon('lock')}<span class="cat-rank">${i + 1}</span></span>` : `<span class="cat-grip" data-tip="Drag to reorder">${icon('grip')}<span class="cat-rank">${i + 1}</span></span>`}
-          ${img(cat.image, 'cat-art', cat.name)}
+          ${rowArt(cat)}
           <div class="cat-info">
             <div class="cat-name"><span>${esc(cat.name)}</span>${catStatus(cat, f)}${rareChip(cat)}</div>
             <div class="cat-meta">${meta.map((m) => `<span>${m}</span>`).join('<i>·</i>')}</div>
@@ -633,7 +648,7 @@ function queuePanel(f) {
     </div>`;
   const note = smart ? '<b>Running out first.</b> Rare drops while they’re live.' : '<b>Your order.</b> Drag to rearrange.';
   const toGo = cats.flatMap(trackedRewards).filter((r) => !r.claimed).length;
-  return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>${toGo ? `${toGo} reward${toGo > 1 ? 's' : ''} to go · ` : ''}click a category for its drops.</span></p></div>
+  return `<div class="panel-head">${toggle}<p class="panel-note">${note}<br /><span>${toGo ? `${toGo} reward${toGo > 1 ? 's' : ''} to go · ` : ''}click a row for its drops.</span></p></div>
     <div class="queue-list">${rows || `<div class="empty">${icon('gift')}${f.categories.length ? 'Every drop is collected. Finished ones are in Done.' : 'No active emote or badge drops right now.'}</div>`}</div>
     ${comingCard(f)}`;
 }
@@ -767,7 +782,7 @@ function donePanel(f) {
 
 function streamsPanel(f) {
   const cats = f.categories.filter((c) => c.needsWatching && c.enabled);
-  if (!cats.some((c) => c.id === ui.selectedCategory)) ui.selectedCategory = f.current?.categoryId ?? cats[0]?.id ?? null;
+  if (!cats.some((c) => c.id === ui.selectedCategory)) ui.selectedCategory = f.current?.targetId ?? cats[0]?.id ?? null;
   const cat = cats.find((c) => c.id === ui.selectedCategory);
   const tabs = cats.map((c) => `<button class="tab ${c.id === ui.selectedCategory ? 'active' : ''}" data-action="select-cat" data-id="${c.id}"${c.name.length > 24 ? ` data-tip="${esc(c.name)}"` : ''}><span class="tab-name">${esc(c.name)}</span><em>${c.streamCount}</em></button>`).join('');
   if (!cat) return `<div class="empty">${icon('users')}No categories need watching.</div>`;
@@ -841,7 +856,7 @@ function renderSide() {
   if (!f) return setHTML(el, '<div class="card-body"><div class="skeleton" style="height:100%"></div></div>');
   // What the Queue tab lists: the categories with drops still to collect.
   const queued = f.categories.filter((c) => !c.complete).length;
-  const streams = f.categories.find((c) => c.id === (f.current?.categoryId ?? ui.selectedCategory))?.streamCount ?? 0;
+  const streams = f.categories.find((c) => c.id === (f.current?.targetId ?? ui.selectedCategory))?.streamCount ?? 0;
   const pastCount = (f.past ?? []).length;
   const tabs = [
     ['queue', 'list', 'Queue', queued ? String(queued) : ''],
@@ -1414,6 +1429,22 @@ function categoryOrder() {
   return (farm()?.categories ?? []).filter((c) => !c.complete).map((c) => c.id);
 }
 
+/**
+ * Saves the queue's new order. Rows not in the queue right now (a category whose drops are all
+ * limited to certain channels, a finished one) keep their places in the saved order, so a row that
+ * comes back returns where it was: only the places of the rows showing are filled with their new order.
+ */
+function saveOrder(visible) {
+  const saved = state.settings.categoryOrder ?? [];
+  const showing = new Set(visible);
+  const rest = [...visible];
+  const order = saved.map((id) => (showing.has(id) ? rest.shift() : id)).filter((id) => id !== undefined);
+  window.pd.setSettings({ categoryOrder: [...order, ...rest] });
+}
+
+/** A queue row's id from the page: a category's is a number, a channel or event row's a string ("ch:…", "ev:…"). */
+const rowId = (v) => (/^\d+$/.test(String(v)) ? Number(v) : String(v));
+
 const actions = {
   ...historyActions,
   ...activityActions,
@@ -1478,25 +1509,25 @@ const actions = {
     render();
   },
   'select-cat': (el) => {
-    ui.selectedCategory = Number(el.dataset.id);
+    ui.selectedCategory = rowId(el.dataset.id);
     render();
   },
   expand: (el) => {
-    const id = Number(el.dataset.id);
+    const id = rowId(el.dataset.id);
     ui.expanded.has(id) ? ui.expanded.delete(id) : ui.expanded.add(id);
     render();
   },
-  'cat-up': (el) => moveCategory(Number(el.dataset.id), -1),
-  'cat-down': (el) => moveCategory(Number(el.dataset.id), 1),
+  'cat-up': (el) => moveCategory(rowId(el.dataset.id), -1),
+  'cat-down': (el) => moveCategory(rowId(el.dataset.id), 1),
   'cat-toggle': (el) => {
-    const id = Number(el.dataset.id);
+    const id = rowId(el.dataset.id);
     const disabled = new Set(state.settings.disabledCategories);
     disabled.has(id) ? disabled.delete(id) : disabled.add(id);
     window.pd.setSettings({ disabledCategories: [...disabled] });
   },
   watch: async (el) => {
     try {
-      await window.pd.watch(el.dataset.slug, Number(el.dataset.cat));
+      await window.pd.watch(el.dataset.slug, rowId(el.dataset.cat));
     } catch (err) {
       toast({ title: 'Could not switch', body: String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), kind: 'alert' });
     }
@@ -1568,7 +1599,7 @@ function dropTarget(x, y) {
   const row = document.elementFromPoint(x, y)?.closest?.('.cat[data-reorder]');
   if (!row || !ui.drag) return null;
   const r = row.getBoundingClientRect();
-  return { row, id: Number(row.dataset.catId), after: y > r.top + r.height / 2 };
+  return { row, id: rowId(row.dataset.catId), after: y > r.top + r.height / 2 };
 }
 
 function moveGhost(y) {
@@ -1580,7 +1611,7 @@ function clearDropMarks() {
 }
 
 function startDrag(row, y, pointerId) {
-  ui.drag = { id: Number(row.dataset.catId) };
+  ui.drag = { id: rowId(row.dataset.catId) };
   const r = row.getBoundingClientRect();
   const el = row.cloneNode(true);
   el.classList.add('drag-ghost');
@@ -1612,7 +1643,7 @@ function dropOn(t) {
   if (at < 0) return;
   if (t.after) at += 1;
   order.splice(at, 0, ui.drag.id);
-  window.pd.setSettings({ categoryOrder: order });
+  saveOrder(order);
 }
 
 document.addEventListener('pointerdown', (event) => {
@@ -1695,7 +1726,7 @@ function moveCategory(id, dir) {
   const j = i + dir;
   if (i < 0 || j < 0 || j >= order.length) return;
   [order[i], order[j]] = [order[j], order[i]];
-  window.pd.setSettings({ categoryOrder: order });
+  saveOrder(order);
 }
 
 document.addEventListener('click', (event) => {
