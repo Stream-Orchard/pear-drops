@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.14 (current)
+## 0.1.15 (current)
+- The tray icon is the logo while no stream is live, and a hopping chest while the daily reward waits
+
+## 0.1.14
 - Daily reward: no dead-end Welcome Reward row, and no ring on the chest once claimed
 - Drops limited to certain channels get queue rows of their own, named after the drop and pictured by its channels
 
