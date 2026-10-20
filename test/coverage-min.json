@@ -13,7 +13,7 @@
   "src/main/kick-api.js": 64,
   "src/main/notifier.js": 100,
   "src/main/security.js": 30,
-  "src/main/tray.js": 66,
+  "src/main/tray.js": 88,
   "src/main/updater.js": 95,
   "src/main/updates.js": 87,
   "src/main/watcher.js": 43

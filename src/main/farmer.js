@@ -1701,7 +1701,9 @@ class Farmer extends EventEmitter {
       tooltip = `Pear Drops · ${cur.username}: ${health.text}`;
     }
     if (conflict) tooltip = 'Pear Drops · Another Kick stream is taking your drop credit';
-    return { tone, fraction, title: conflict ? '!' : title, tooltip };
+    // No stream is live for the drops left: the logo, not an empty ring.
+    const mark = !cur && !this.paused && this.status.code === 'waiting' ? 'logo' : undefined;
+    return { tone, fraction, title: conflict ? '!' : title, tooltip, mark };
   }
 
   snapshot() {

@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { TrayController, ringPixels, WIDTH } = require('../../../src/main/tray');
+const fs = require('node:fs');
+const path = require('node:path');
+const { TrayController, ringPixels, logoPixels, chestPixels, pathOutlines, HOP_FRAMES, HOP_MS, WIDTH } = require('../../../src/main/tray');
 
 /** A popover window that, like Windows with display scaling, reports itself a little bigger than it was set. */
 function fakeWindow({ inflate = 3 } = {}) {
@@ -70,19 +72,130 @@ test('a hidden popover is resized in place and placed when it opens', () => {
   assert.deepEqual(win.bounds, { x: 1920 - WIDTH - 8, y: 1040 - 300 - 4, width: WIDTH, height: 300 });
 });
 
-test('the icon gets a green dot at its top right while the daily reward waits, and only then', () => {
-  const at = ({ buf, px }, x, y) => {
-    const i = (Math.round(y * px) * px + Math.round(x * px)) * 4;
-    return { r: buf[i + 2], g: buf[i + 1], b: buf[i], a: buf[i + 3] };
-  };
-  const plain = ringPixels(0.5, 'farming');
-  const badged = ringPixels(0.5, 'farming', { badge: true });
-  const dot = at(badged, 0.82, 0.18);
-  assert.equal(dot.a, 255);
-  assert.ok(dot.g > 240 && dot.r < 100, 'the dot is green');
-  assert.notDeepEqual(at(plain, 0.82, 0.18), dot);
-  // A clear edge parts the dot from the ring under it: a point on the ring, just outside the dot.
-  assert.ok(at(plain, 0.65, 0.18).a > 200);
-  assert.ok(at(badged, 0.65, 0.18).a < 60);
-  assert.deepEqual(at(badged, 0.5, 0.5), at(plain, 0.5, 0.5), 'the centre is the same');
+/** The colour and cover at a point (0-1 across the icon). */
+const at = ({ buf, px }, x, y) => {
+  const i = (Math.floor(y * px) * px + Math.floor(x * px)) * 4;
+  return { r: buf[i + 2], g: buf[i + 1], b: buf[i], a: buf[i + 3] };
+};
+/** How many of the icon's pixels have any cover. */
+const covered = ({ buf }) => buf.filter((_, i) => i % 4 === 3 && buf[i] > 0).length;
+/** The highest row with any cover (0-1 down the icon). */
+const top = ({ buf, px }) => Math.floor(buf.findIndex((v, i) => i % 4 === 3 && v > 0) / 4 / px) / px;
+
+test('paths are read the way SVG reads them: moves, lines, curves and arcs, absolute or relative', () => {
+  const [square] = pathOutlines('M1 1h2v2H1z');
+  assert.deepEqual(square, { points: [[1, 1], [3, 1], [3, 3], [1, 3]], closed: true });
+  const [moved] = pathOutlines('m2 2 3 0 0 3');
+  assert.deepEqual(moved.points, [[2, 2], [5, 2], [5, 5]], 'pairs after a move are lines');
+  const [curve] = pathOutlines('M0 0C0 10 10 10 10 0');
+  assert.deepEqual(curve.points.at(-1), [10, 0]);
+  assert.ok(Math.abs(curve.points[8][1] - 7.5) < 1e-9, 'halfway along, the curve is at 3/4 of its handles');
+  const [arc] = pathOutlines('M0 0a5 5 0 0 1 10 0');
+  for (const [x, y] of arc.points) assert.ok(Math.abs(Math.hypot(x - 5, y) - 5) < 1e-9, 'every point is on the circle');
+  assert.ok(arc.points.some(([, y]) => y < -4.9), 'swept through the top');
+  const [tiny] = pathOutlines('M0 0A1 1 0 0 0 10 0');
+  for (const [x, y] of tiny.points) assert.ok(Math.abs(Math.hypot(x - 5, y) - 5) < 1e-9, 'too small a radius grows to reach');
+  assert.throws(() => pathOutlines('M0 0Q1 1 2 2'), /Unsupported/);
+});
+
+test('the logo is the drop and its pear on nothing: green round the pear, dark in it, clear at the corners', () => {
+  const logo = logoPixels();
+  assert.equal(logo.px, 36);
+  assert.equal(at(logo, 0.02, 0.02).a, 0, 'no tile behind it');
+  assert.equal(at(logo, 0.97, 0.97).a, 0);
+  const drop = at(logo, 0.5, 0.3);
+  assert.deepEqual([drop.r, drop.g, drop.b, drop.a], [83, 252, 24, 255]);
+  const pear = at(logo, 0.5, 0.75);
+  assert.ok(pear.a === 255 && pear.g < 40, 'the pear is dark');
+  assert.ok(covered(logo) < 36 * 36 * 0.6, 'a drop, not a square');
+});
+
+test('the logo and chest are the pages’ own shapes', () => {
+  const page = (f) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'renderer', f), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'main', 'tray.js'), 'utf8');
+  const paths = (file, fn) => [...page(file).match(new RegExp(`function ${fn}[\\s\\S]*?\\n}`))[0].matchAll(/ d="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(paths('icons.js', 'brandMark').length, 5);
+  assert.equal(paths('daily-reward.js', 'chestMark').length, 3);
+  for (const d of [...paths('icons.js', 'brandMark'), ...paths('daily-reward.js', 'chestMark')]) assert.ok(src.includes(d), d);
+});
+
+test('the chest hops: it crouches, leaps, lands, and throws its pixels only as it lands', () => {
+  const frame = (t) => chestPixels(t);
+  const rest = frame(0);
+  const crouch = frame(0.16);
+  const leap = frame(0.516);
+  const landed = frame(0.82);
+  assert.ok(covered(rest) > 300, 'a chest');
+  assert.ok(top(crouch) > top(rest), 'squashed lower');
+  assert.ok(top(leap) < top(rest) - 0.05, 'in the air');
+  assert.ok(top(leap) > 0, 'still inside the icon');
+  const pixel = (p) => p.buf.some((v, i) => i % 4 === 0 && v > 150 && p.buf[i + 2] < 100); // teal: much blue, little red
+  assert.ok(!pixel(rest) && !pixel(leap));
+  assert.ok(pixel(landed), 'the burst');
+  const edge = at(rest, 0.5, 0.26); // the lid's top edge
+  assert.deepEqual([edge.r, edge.g, edge.b], [83, 252, 24], 'drawn in green');
+  assert.deepEqual(chestPixels(1).buf, rest.buf, 'the loop ends where it starts');
+});
+
+/** A controller with a fake tray that keeps the images it's given. */
+function iconSetup({ motion = true } = {}) {
+  const shown = [];
+  const tray = new TrayController({
+    onShowMain() {},
+    onQuit() {},
+    onAction() {},
+    ipc: { handle() {} },
+    image: (pixels) => pixels,
+    motion: () => motion,
+  });
+  tray.tray = { setImage: (img) => shown.push(img), setTitle() {}, setToolTip() {}, destroy() {} };
+  return { tray, shown };
+}
+const info = (more) => ({ tone: 'farming', fraction: 0.5, title: '50%', tooltip: 'Pear Drops', ...more });
+
+test('the icon is the ring, the logo with no stream live, and draws each only when it changes', () => {
+  const { tray, shown } = iconSetup();
+  tray.update(info());
+  tray.update(info({ title: '50%' }));
+  assert.equal(shown.length, 1);
+  assert.deepEqual(shown[0].buf, ringPixels(0.5, 'farming').buf);
+  tray.update(info({ tone: 'waiting', fraction: 0, mark: 'logo' }));
+  tray.update(info({ tone: 'waiting', fraction: 0, mark: 'logo' }));
+  assert.equal(shown.length, 2);
+  assert.deepEqual(shown[1].buf, logoPixels().buf);
+  tray.update(info({ fraction: 0.6 }));
+  tray.update(info({ mark: 'logo' }));
+  assert.equal(shown[3], shown[1], 'the logo is drawn once');
+});
+
+test('the chest hops on the icon while the daily reward waits, and stops once it’s claimed', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const { tray, shown } = iconSetup();
+  tray.update(info({ mark: 'chest' }));
+  assert.deepEqual(shown[0].buf, chestPixels(0).buf);
+  t.mock.timers.tick(HOP_MS);
+  assert.equal(shown.length, HOP_FRAMES + 1, 'a whole hop each loop');
+  assert.equal(shown.at(-1), shown[0], 'back to the start');
+  tray.update(info({ mark: 'chest', title: '51%' }));
+  t.mock.timers.tick(HOP_MS / HOP_FRAMES);
+  assert.equal(shown.length, HOP_FRAMES + 2, 'one hop at a time');
+  tray.update(info());
+  const after = shown.length;
+  t.mock.timers.tick(HOP_MS * 2);
+  assert.equal(shown.length, after, 'claimed: no more frames');
+  assert.deepEqual(shown.at(-1).buf, ringPixels(0.5, 'farming').buf);
+  tray.update(info({ mark: 'chest' }));
+  assert.equal(shown.at(-1), shown[0], 'its frames are kept');
+  tray.destroy();
+  t.mock.timers.tick(HOP_MS);
+  assert.equal(tray.hop, null);
+});
+
+test('with reduced motion the chest sits still', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const { tray, shown } = iconSetup({ motion: false });
+  tray.update(info({ mark: 'chest' }));
+  t.mock.timers.tick(HOP_MS * 3);
+  assert.equal(shown.length, 1);
+  assert.deepEqual(shown[0].buf, chestPixels(0).buf);
 });
