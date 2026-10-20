@@ -39,27 +39,45 @@ function chestMark(cls = '') {
   </svg>`;
 }
 
-/** Our own crate, for demo mode and whenever Kick's video doesn't play. */
+// The pixels the opening crate throws out: [x, y, size, colour, how far it flies x, y].
+const CRATE_SPARKS = [
+  [96, 64, 5, 'g', -46, -88], [110, 62, 4, 't', -18, -112], [124, 62, 6, 'g', 6, -124], [138, 63, 4, 't', 30, -100],
+  [150, 64, 5, 'g', 58, -82], [84, 66, 4, 't', -70, -58], [158, 66, 4, 't', 76, -56], [118, 64, 3, 'g', -6, -70],
+];
+let crateId = 0;
+
+/**
+ * Our own crate, for demo mode and whenever Kick's video doesn't play. 'opening' adds what the
+ * reveal animates (daily-reward.css): the light inside, and the pixels it throws out. Each copy has
+ * ids of its own: a gradient whose id repeats paints from the first copy, which may be hidden.
+ */
 function crateArt(cls = '') {
+  const id = `dr${(crateId += 1)}`;
+  const opening = cls.includes('opening');
   return `<svg class="dr-crate-art ${cls}" viewBox="0 0 240 170" aria-hidden="true">
     <defs>
-      <linearGradient id="dr-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2f37"/><stop offset="1" stop-color="#101318"/></linearGradient>
-      <linearGradient id="dr-lid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#343a44"/><stop offset="1" stop-color="#1b1f26"/></linearGradient>
-      <radialGradient id="dr-shine" cx=".5" cy="0" r=".9"><stop offset="0" stop-color="#53fc18" stop-opacity=".55"/><stop offset="1" stop-color="#53fc18" stop-opacity="0"/></radialGradient>
+      <linearGradient id="${id}-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2f37"/><stop offset="1" stop-color="#101318"/></linearGradient>
+      <linearGradient id="${id}-lid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#343a44"/><stop offset="1" stop-color="#1b1f26"/></linearGradient>
+      <radialGradient id="${id}-shine" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#53fc18" stop-opacity=".6"/><stop offset=".55" stop-color="#2ee6c5" stop-opacity=".18"/><stop offset="1" stop-color="#53fc18" stop-opacity="0"/></radialGradient>
+      ${opening ? `<linearGradient id="${id}-beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#b8ff9a" stop-opacity=".95"/><stop offset=".35" stop-color="#53fc18" stop-opacity=".45"/><stop offset="1" stop-color="#2ee6c5" stop-opacity="0"/></linearGradient>` : ''}
     </defs>
-    <ellipse cx="120" cy="158" rx="84" ry="8" fill="#000" opacity=".55"/>
-    <ellipse class="crate-burst" cx="120" cy="66" rx="92" ry="40" fill="url(#dr-shine)"/>
-    <g class="crate-body">
-      <rect x="40" y="66" width="160" height="86" rx="14" fill="url(#dr-body)" stroke="rgba(255,255,255,.12)"/>
-      <rect x="40" y="66" width="160" height="10" fill="#0b0d10" opacity=".6"/>
-      <path d="M76 92v44M100 92v44M140 92v44M164 92v44" stroke="rgba(255,255,255,.07)" stroke-width="10" stroke-linecap="round"/>
-      <rect x="106" y="82" width="28" height="34" rx="7" fill="#0d1014" stroke="#53fc18" stroke-opacity=".7" stroke-width="2"/>
-      <circle cx="120" cy="99" r="5" fill="#53fc18"/>
-    </g>
-    <g class="crate-lid">
-      <path d="M36 66V52a18 18 0 0 1 18-18h132a18 18 0 0 1 18 18v14z" fill="url(#dr-lid)" stroke="rgba(255,255,255,.14)"/>
-      <rect x="62" y="44" width="116" height="8" rx="4" fill="#0b0d10"/>
-      <g fill="#53fc18"><rect x="70" y="46" width="22" height="4" rx="2"/><circle cx="104" cy="48" r="2"/><circle cx="114" cy="48" r="2"/><circle cx="124" cy="48" r="2"/><circle cx="134" cy="48" r="2"/><circle cx="144" cy="48" r="2" opacity=".4"/><circle cx="154" cy="48" r="2" opacity=".4"/><circle cx="164" cy="48" r="2" opacity=".4"/></g>
+    <ellipse class="crate-shadow" cx="120" cy="158" rx="84" ry="8" fill="#000" opacity=".55"/>
+    <ellipse class="crate-burst" cx="120" cy="66" rx="110" ry="58" fill="url(#${id}-shine)"/>
+    <g class="crate-all">
+      ${opening ? `<path class="crate-beam" d="M48 66 8 -70h224l-40 136z" fill="url(#${id}-beam)"/>` : ''}
+      <g class="crate-body">
+        <rect x="40" y="66" width="160" height="86" rx="14" fill="url(#${id}-body)" stroke="rgba(255,255,255,.12)"/>
+        <rect class="crate-mouth" x="40" y="66" width="160" height="10" fill="#0b0d10" opacity=".6"/>
+        <path d="M76 92v44M100 92v44M140 92v44M164 92v44" stroke="rgba(255,255,255,.07)" stroke-width="10" stroke-linecap="round"/>
+        <rect x="106" y="82" width="28" height="34" rx="7" fill="#0d1014" stroke="#53fc18" stroke-opacity=".7" stroke-width="2"/>
+        <circle class="crate-latch" cx="120" cy="99" r="5" fill="#53fc18"/>
+      </g>
+      ${opening ? `<g class="crate-sparks">${CRATE_SPARKS.map(([x, y, s, c, dx, dy]) => `<rect class="${c}" x="${x - s / 2}" y="${y - s / 2}" width="${s}" height="${s}" style="--dx:${dx}px;--dy:${dy}px"/>`).join('')}</g>` : ''}
+      <g class="crate-lid">
+        <path d="M36 66V52a18 18 0 0 1 18-18h132a18 18 0 0 1 18 18v14z" fill="url(#${id}-lid)" stroke="rgba(255,255,255,.14)"/>
+        <rect x="62" y="44" width="116" height="8" rx="4" fill="#0b0d10"/>
+        <g fill="#53fc18"><rect x="70" y="46" width="22" height="4" rx="2"/><circle cx="104" cy="48" r="2"/><circle cx="114" cy="48" r="2"/><circle cx="124" cy="48" r="2"/><circle cx="134" cy="48" r="2"/><circle cx="144" cy="48" r="2" opacity=".4"/><circle cx="154" cy="48" r="2" opacity=".4"/><circle cx="164" cy="48" r="2" opacity=".4"/></g>
+      </g>
     </g>
   </svg>`;
 }
@@ -273,7 +291,7 @@ async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
         video.addEventListener('error', resolve, { once: true });
         video.play().catch(resolve);
       })
-    : wait(1600);
+    : wait(1900); // our crate's opening (daily-reward.css)
   await Promise.race([opened, wait(6000)]);
 
   // spin: the reel runs at 3.5 tiles a second, easing onto the winner in the second copy.

@@ -85,6 +85,19 @@ test('ready: the chest becomes a "Claim reward" chip and hops, and claiming play
   await a.win.click(chest);
   await until(a.win, () => document.querySelector('.dr-pop .dr-card.state-ready'), 'the ready card');
   await a.win.click('.dr-pop .dr-claim');
+  // Demo mode's own crate opens: the lid swings on its hinge and the light and pixels stay over the
+  // crate, inside the card (they once turned about the drawing's corner and flew off its edge).
+  await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'openBox', 'the crate opening');
+  await a.win.waitForTimeout(1300);
+  const open = await a.win.evaluate(() => {
+    const layer = document.querySelector('.dr-reveal').getBoundingClientRect();
+    const body = document.querySelector('.dr-unbox .crate-body').getBoundingClientRect();
+    const lid = document.querySelector('.dr-unbox .crate-lid').getBoundingClientRect();
+    const glow = document.querySelector('.dr-unbox .crate-burst').getBoundingClientRect();
+    const mid = (r) => r.x + r.width / 2;
+    return { lidUp: lid.bottom < body.top, lidOver: Math.abs(mid(lid) - mid(body)) < body.width / 2, glowCentred: Math.abs(mid(glow) - mid(body)) < 2, inside: glow.left >= layer.left - 1 && glow.right <= layer.right + 1 };
+  });
+  assert.deepEqual(open, { lidUp: true, lidOver: true, glowCentred: true, inside: true });
   await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'spin', 'the reel', 15000);
   // The reel stops on the winner, under the mark.
   await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'handoff', 'the reel stopping', 20000);
