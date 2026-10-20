@@ -394,14 +394,14 @@
   box-shadow: 0 0 40px -10px rgba(83, 252, 24, 0.4) inset;
 }
 .dr-stage.ready .crate-burst {
-  animation: dr-burst 2.4s ease-in-out infinite;
+  animation: dr-crate-glow 2.4s ease-in-out infinite;
 }
 @keyframes dr-float {
   50% {
     transform: translateY(-4px);
   }
 }
-@keyframes dr-burst {
+@keyframes dr-crate-glow {
   50% {
     opacity: 0.8;
   }
