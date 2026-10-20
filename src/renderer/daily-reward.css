@@ -758,6 +758,7 @@
 }
 .dr-crate-art.opening .crate-all,
 .dr-crate-art.opening .crate-lid,
+.dr-crate-art.opening .crate-lid-open,
 .dr-crate-art.opening .crate-beam,
 .dr-crate-art.opening .crate-burst,
 .dr-crate-art.opening .crate-sparks rect,
@@ -767,13 +768,23 @@
 .dr-crate-art.opening .crate-all {
   transform-origin: 50% 100%;
 }
-.dr-crate-art.opening .crate-lid {
-  transform-origin: 6% 100%; /* the hinge, at the lid's back-left */
+/* The lid is hinged along the back of the box's top. Seen from the front, its face folds down onto
+   the hinge, then its underside rises behind the box, leaning back, lit by what's inside. */
+.dr-crate-art.opening .crate-lid,
+.dr-crate-art.opening .crate-lid-open {
+  transform-origin: 50% 100%;
+}
+.dr-crate-art.opening .crate-lid-open {
+  transform: scaleY(0);
+}
+.dr-crate-art.opening .crate-glow-in {
+  opacity: 0;
 }
 .dr-crate-art.opening .crate-beam {
   transform-origin: 50% 100%;
   transform: scaleY(0);
   opacity: 0;
+  filter: blur(6px); /* light, not a shape */
 }
 .dr-crate-art.opening .crate-burst {
   transform-origin: 50% 50%;
@@ -798,7 +809,13 @@
   animation: dr-crate-latch 0.75s ease-out forwards;
 }
 .dr-reveal[data-phase] .dr-crate-art.opening .crate-lid {
-  animation: dr-crate-lid 1.9s cubic-bezier(0.3, 1.5, 0.5, 1) forwards;
+  animation: dr-crate-lid 1.9s linear forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-lid-open {
+  animation: dr-crate-lid-open 1.9s linear forwards;
+}
+.dr-reveal[data-phase] .dr-crate-art.opening .crate-glow-in {
+  animation: dr-crate-glow-in 1.9s ease-out forwards;
 }
 .dr-reveal[data-phase] .dr-crate-art.opening .crate-beam {
   animation: dr-crate-beam 1.9s ease-out forwards;
@@ -835,19 +852,46 @@
 }
 @keyframes dr-crate-lid {
   0%,
-  33% {
+  32% {
     transform: none;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
   }
-  55% {
-    transform: translate(-4px, -30px) rotate(-22deg);
-  }
+  42%,
   100% {
-    transform: translate(-2px, -26px) rotate(-18deg);
+    transform: scaleY(0);
+  }
+}
+@keyframes dr-crate-lid-open {
+  0%,
+  42% {
+    transform: scaleY(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  52% {
+    transform: scaleY(1.12);
+    animation-timing-function: ease-in-out;
+  }
+  60% {
+    transform: scaleY(0.95);
+  }
+  68%,
+  100% {
+    transform: scaleY(1);
+  }
+}
+@keyframes dr-crate-glow-in {
+  0%,
+  38% {
+    opacity: 0;
+  }
+  48%,
+  100% {
+    opacity: 1;
   }
 }
 @keyframes dr-crate-beam {
   0%,
-  33% {
+  42% {
     transform: scaleY(0);
     opacity: 0;
   }

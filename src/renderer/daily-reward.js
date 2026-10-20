@@ -48,7 +48,8 @@ let crateId = 0;
 
 /**
  * Our own crate, for demo mode and whenever Kick's video doesn't play. 'opening' adds what the
- * reveal animates (daily-reward.css): the light inside, and the pixels it throws out. Each copy has
+ * reveal animates (daily-reward.css): the lid's underside (it swings back on a hinge at the back of
+ * the box, and stays on), the light inside, and the pixels it throws out. Each copy has
  * ids of its own: a gradient whose id repeats paints from the first copy, which may be hidden.
  */
 function crateArt(cls = '') {
@@ -59,15 +60,27 @@ function crateArt(cls = '') {
       <linearGradient id="${id}-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2f37"/><stop offset="1" stop-color="#101318"/></linearGradient>
       <linearGradient id="${id}-lid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#343a44"/><stop offset="1" stop-color="#1b1f26"/></linearGradient>
       <radialGradient id="${id}-shine" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#53fc18" stop-opacity=".6"/><stop offset=".55" stop-color="#2ee6c5" stop-opacity=".18"/><stop offset="1" stop-color="#53fc18" stop-opacity="0"/></radialGradient>
+      ${opening ? `<linearGradient id="${id}-lining" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4f8f32"/><stop offset=".3" stop-color="#22341c"/><stop offset="1" stop-color="#14171c"/></linearGradient>
+      <linearGradient id="${id}-mouth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9ffc9"/><stop offset="1" stop-color="#53fc18" stop-opacity=".6"/></linearGradient>` : ''}
       ${opening ? `<linearGradient id="${id}-beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#b8ff9a" stop-opacity=".95"/><stop offset=".35" stop-color="#53fc18" stop-opacity=".45"/><stop offset="1" stop-color="#2ee6c5" stop-opacity="0"/></linearGradient>` : ''}
     </defs>
     <ellipse class="crate-shadow" cx="120" cy="158" rx="84" ry="8" fill="#000" opacity=".55"/>
     <ellipse class="crate-burst" cx="120" cy="66" rx="110" ry="58" fill="url(#${id}-shine)"/>
     <g class="crate-all">
-      ${opening ? `<path class="crate-beam" d="M48 66 8 -70h224l-40 136z" fill="url(#${id}-beam)"/>` : ''}
+      ${
+        opening
+          ? `<path class="crate-beam" d="M50 64 6 -80h228l-44 144z" fill="url(#${id}-beam)"/>
+      <g class="crate-lid-open">
+        <path d="M37 66 53 4h134l16 62z" fill="url(#${id}-lining)" stroke="#53fc18" stroke-opacity=".28"/>
+        <path d="M59 13h122l12 47H47z" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M45 62h150" stroke="#b8ff9a" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/>
+      </g>`
+          : ''
+      }
       <g class="crate-body">
         <rect x="40" y="66" width="160" height="86" rx="14" fill="url(#${id}-body)" stroke="rgba(255,255,255,.12)"/>
         <rect class="crate-mouth" x="40" y="66" width="160" height="10" fill="#0b0d10" opacity=".6"/>
+        ${opening ? `<rect class="crate-glow-in" x="44" y="62" width="152" height="9" rx="4" fill="url(#${id}-mouth)"/>` : ''}
         <path d="M76 92v44M100 92v44M140 92v44M164 92v44" stroke="rgba(255,255,255,.07)" stroke-width="10" stroke-linecap="round"/>
         <rect x="106" y="82" width="28" height="34" rx="7" fill="#0d1014" stroke="#53fc18" stroke-opacity=".7" stroke-width="2"/>
         <circle class="crate-latch" cx="120" cy="99" r="5" fill="#53fc18"/>
