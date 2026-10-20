@@ -110,6 +110,20 @@ test('the logo is the drop and its pear on nothing: green round the pear, dark i
   assert.ok(covered(logo) < 36 * 36 * 0.6, 'a drop, not a square');
 });
 
+test('as templates, the logo is a black drop with the pear cut out, and the ring is black on a faint track', () => {
+  const logo = logoPixels({ template: true });
+  const drop = at(logo, 0.5, 0.3);
+  assert.deepEqual([drop.r, drop.g, drop.b, drop.a], [0, 0, 0, 255]);
+  assert.equal(at(logo, 0.5, 0.75).a, 0, 'the pear is a hole');
+  assert.equal(at(logo, 0.02, 0.02).a, 0);
+  const ring = ringPixels(0.5, 'waiting', { template: true });
+  const done = at(ring, 0.5, 0.14);
+  const left = at(ring, 0.14, 0.5);
+  assert.deepEqual([done.r, done.g, done.b, done.a], [0, 0, 0, 255]);
+  assert.deepEqual([left.r, left.g, left.b], [0, 0, 0]);
+  assert.ok(left.a > 0 && left.a < 160, 'the rest of the ring is faint');
+});
+
 test('the logo and chest are the pages’ own shapes', () => {
   const page = (f) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'renderer', f), 'utf8');
   const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'main', 'tray.js'), 'utf8');
@@ -138,15 +152,16 @@ test('the chest hops: it crouches, leaps, lands, and throws its pixels only as i
 });
 
 /** A controller with a fake tray that keeps the images it's given. */
-function iconSetup({ motion = true } = {}) {
+function iconSetup({ motion = true, mac = false } = {}) {
   const shown = [];
   const tray = new TrayController({
     onShowMain() {},
     onQuit() {},
     onAction() {},
     ipc: { handle() {} },
-    image: (pixels) => pixels,
+    image: (pixels, template = false) => ({ ...pixels, template }),
     motion: () => motion,
+    mac,
   });
   tray.tray = { setImage: (img) => shown.push(img), setTitle() {}, setToolTip() {}, destroy() {} };
   return { tray, shown };
@@ -189,6 +204,36 @@ test('the chest hops on the icon while the daily reward waits, and stops once it
   tray.destroy();
   t.mock.timers.tick(HOP_MS);
   assert.equal(tray.hop, null);
+});
+
+test('on macOS the icon is a template unless it’s farming, in trouble, or the reward waits; elsewhere always in colour', () => {
+  const { tray, shown } = iconSetup({ mac: true });
+  const last = () => shown.at(-1);
+  tray.update(info());
+  assert.equal(last().template, false);
+  assert.deepEqual(last().buf, ringPixels(0.5, 'farming').buf, 'farming stays green');
+  for (const tone of ['conflict', 'error']) {
+    tray.update(info({ tone }));
+    assert.equal(last().template, false, tone);
+  }
+  for (const tone of ['waiting', 'paused', 'done', 'idle']) {
+    tray.update(info({ tone }));
+    assert.equal(last().template, true, tone);
+    assert.deepEqual(last().buf, ringPixels(0.5, tone, { template: true }).buf);
+  }
+  tray.update(info({ mark: 'logo' }));
+  assert.equal(last().template, true);
+  assert.deepEqual(last().buf, logoPixels({ template: true }).buf);
+  tray.update(info({ mark: 'chest' }));
+  assert.equal(last().template, false, 'the chest stays green');
+  tray.destroy();
+
+  const other = iconSetup();
+  for (const more of [{ tone: 'waiting' }, { tone: 'idle' }, { mark: 'logo' }]) {
+    other.tray.update(info(more));
+    assert.equal(other.shown.at(-1).template, false, JSON.stringify(more));
+  }
+  assert.deepEqual(other.shown.at(-1).buf, logoPixels().buf);
 });
 
 test('with reduced motion the chest sits still', (t) => {

@@ -1,6 +1,8 @@
 // Menu bar / system tray: an icon that draws the current drop's progress as a ring (the logo
 // while no stream is live for the drops left, the hopping chest while the daily reward waits),
-// and a popover with the live state and quick controls.
+// and a popover with the live state and quick controls. On macOS the icon is a template (one
+// colour, tinted by the system to suit the menu bar) unless it has something to say: farming,
+// a conflict or error, or the waiting reward.
 const { Tray, BrowserWindow, nativeImage, screen, ipcMain, systemPreferences } = require('electron');
 const path = require('path');
 
@@ -13,6 +15,8 @@ const COLORS = {
   done: [255, 211, 106],
   idle: [150, 156, 166],
 };
+// The ring keeps its colour in these; in the others it's a template on macOS.
+const COLOURED = new Set(['farming', 'conflict', 'error']);
 
 // The popover's size is kept here, not read back from the window: Windows with display scaling
 // reports a frameless, fixed-size window a little bigger than it was set, so resizing from what it
@@ -20,14 +24,15 @@ const COLORS = {
 const WIDTH = 360;
 const HEIGHT = 520;
 
-/** A progress ring as BGRA pixels (no canvas in the main process). */
-function ringPixels(fraction, tone, { size = 18, scale = 2 } = {}) {
+/** A progress ring as BGRA pixels (no canvas in the main process); a template is black, its track faint. */
+function ringPixels(fraction, tone, { size = 18, scale = 2, template = false } = {}) {
   const px = size * scale;
   const buf = Buffer.alloc(px * px * 4);
   const c = px / 2;
   const radius = px * 0.36;
   const thick = px * 0.13;
-  const [r, g, b] = COLORS[tone] ?? COLORS.idle;
+  const [r, g, b] = template ? [0, 0, 0] : (COLORS[tone] ?? COLORS.idle);
+  const track = template ? [0, 0, 0] : [140, 146, 156];
   const f = Math.max(0, Math.min(1, fraction));
   for (let y = 0; y < px; y++) {
     for (let x = 0; x < px; x++) {
@@ -47,7 +52,7 @@ function ringPixels(fraction, tone, { size = 18, scale = 2 } = {}) {
         A = 0;
       if (ring > 0) {
         if (done) [R, G, B, A] = [r, g, b, 255 * ring];
-        else [R, G, B, A] = [140, 146, 156, 120 * ring];
+        else [R, G, B, A] = [...track, 120 * ring];
       }
       if (dot > 0) {
         const a = 255 * dot;
@@ -164,11 +169,16 @@ class Pixels {
     this.rgba = new Float32Array(px * px * 4);
   }
 
-  /** Paints [r, g, b] (0-255) over pixel i with coverage a (0-1). */
-  paint(i, [r, g, b], a) {
+  /** Paints [r, g, b] (0-255) over pixel i with coverage a (0-1); null cuts it away instead. */
+  paint(i, color, a) {
     const p = this.rgba;
     const o = i * 4;
     const keep = 1 - a;
+    if (!color) {
+      for (let c = 0; c < 4; c++) p[o + c] *= keep;
+      return;
+    }
+    const [r, g, b] = color;
     p[o] = (r / 255) * a + p[o] * keep;
     p[o + 1] = (g / 255) * a + p[o + 1] * keep;
     p[o + 2] = (b / 255) * a + p[o + 2] * keep;
@@ -260,19 +270,21 @@ const LOGO = {
   leaf: 'M553.6 200C579.6 140.2 652.4 122 709.6 140.2C691.4 200 623.8 231.2 553.6 200Z',
 };
 
-/** The logo as BGRA pixels: shown while no stream is live for the drops left. */
-function logoPixels({ size = 18, scale = 2 } = {}) {
+/** The logo as BGRA pixels: shown while no stream is live for the drops left. A template is
+ *  the drop in black with the pear cut out of it. */
+function logoPixels({ size = 18, scale = 2, template = false } = {}) {
   const px = size * scale;
   const k = px / 32;
   const canvas = new Pixels(px);
   const map = ([x, y]) => [x * k, y * k];
   const pear = 0.02043;
   const mapPear = ([x, y]) => map([16 + (x - 512) * pear, 20.45 + (y - 520) * pear]);
-  canvas.fill(pathOutlines(LOGO.drop), map, [83, 252, 24]);
-  canvas.stroke(pathOutlines(LOGO.shine), map, 1.23 * k, [255, 255, 255], 0.5);
-  canvas.fill(pathOutlines(LOGO.pear), mapPear, [10, 20, 6]);
-  canvas.stroke(pathOutlines(LOGO.stem), mapPear, 46 * pear * k, [10, 20, 6]);
-  canvas.fill(pathOutlines(LOGO.leaf), mapPear, [10, 20, 6]);
+  const [drop, shine, ink] = template ? [[0, 0, 0], null, null] : [[83, 252, 24], [255, 255, 255], [10, 20, 6]];
+  canvas.fill(pathOutlines(LOGO.drop), map, drop);
+  canvas.stroke(pathOutlines(LOGO.shine), map, 1.23 * k, shine, 0.5);
+  canvas.fill(pathOutlines(LOGO.pear), mapPear, ink);
+  canvas.stroke(pathOutlines(LOGO.stem), mapPear, 46 * pear * k, ink);
+  canvas.fill(pathOutlines(LOGO.leaf), mapPear, ink);
   return { buf: canvas.toBGRA(), px };
 }
 
@@ -343,8 +355,10 @@ function chestPixels(t = 0, { size = 18, scale = 2 } = {}) {
   return { buf: canvas.toBGRA(), px };
 }
 
-function toImage({ buf, px }, scale = 2) {
-  return nativeImage.createFromBitmap(buf, { width: px, height: px, scaleFactor: scale });
+function toImage({ buf, px }, template = false) {
+  const image = nativeImage.createFromBitmap(buf, { width: px, height: px, scaleFactor: 2 });
+  if (template) image.setTemplateImage(true);
+  return image;
 }
 
 /** Whether the system asks for less motion (the chest then sits still). */
@@ -354,12 +368,14 @@ function reducedMotion() {
 
 class TrayController {
   /** ipc: where its page's messages are handled (main.js passes one that only answers the popover). */
-  /** image and motion: how pixels become an icon, and whether the chest may hop (tests pass their own). */
-  constructor({ preload, onShowMain, onQuit, onAction, ipc = ipcMain, screen: display = screen, image = toImage, motion = () => !reducedMotion() }) {
+  /** image, motion and mac: how pixels become an icon, whether the chest may hop, and whether
+   *  quiet icons are templates (tests pass their own). */
+  constructor({ preload, onShowMain, onQuit, onAction, ipc = ipcMain, screen: display = screen, image = toImage, motion = () => !reducedMotion(), mac = process.platform === 'darwin' }) {
     this.preload = preload;
     this.screen = display;
     this.image = image;
     this.motion = motion;
+    this.mac = mac;
     this.icons = {};
     this.hop = null;
     this.onShowMain = onShowMain;
@@ -381,7 +397,7 @@ class TrayController {
 
   create() {
     if (this.tray) return;
-    this.tray = new Tray(this.image(ringPixels(0, 'idle')));
+    this.tray = new Tray(this.image(ringPixels(0, 'idle', { template: this.mac }), this.mac));
     this.tray.setToolTip('Pear Drops');
     this.tray.on('click', () => this.toggle());
     this.tray.on('right-click', () => this.toggle());
@@ -395,8 +411,11 @@ class TrayController {
       this.iconKey = key;
       this.stopHop();
       if (info.mark === 'chest') this.startHop();
-      else if (info.mark === 'logo') this.tray.setImage((this.icons.logo ??= this.image(logoPixels())));
-      else this.tray.setImage(this.image(ringPixels(info.fraction, info.tone)));
+      else if (info.mark === 'logo') this.tray.setImage((this.icons.logo ??= this.image(logoPixels({ template: this.mac }), this.mac)));
+      else {
+        const template = this.mac && !COLOURED.has(info.tone);
+        this.tray.setImage(this.image(ringPixels(info.fraction, info.tone, { template }), template));
+      }
     }
     if (process.platform === 'darwin') this.tray.setTitle(showPercent && info.title ? ` ${info.title}` : '', { fontType: 'monospacedDigit' });
     this.tray.setToolTip(info.tooltip);
