@@ -144,13 +144,22 @@ test('a challenge reads as earning, ready or claimed, with its minutes and Kickâ
   assert.equal(dr.mediaUrl('https://static.kick.com/a.mp4', 'x'), 'https://static.kick.com/a.mp4');
 });
 
-test('the daily challenge is told apart from event crates and the Welcome Reward', () => {
+test('the daily challenge is told apart from the others, and only those Pear Drops can act on are listed', () => {
   const welcome = challenge({ id: 'w', recurrence: 'one_off', type: 'onboarding_completed', progress: 0 });
-  const read = dr.readChallenges({ data: [challenge()] }, { data: [welcome] });
+  const event = challenge({ id: 'e', recurrence: 'one_off', progress: 12 });
+  const done = challenge({ id: 'd', recurrence: 'one_off', status: 'claimed' });
+  const read = dr.readChallenges({ data: [challenge(), event] }, { data: [welcome, done] });
   assert.equal(read.daily.id, 'ch-1');
   assert.deepEqual(
-    read.extras.map((e) => [e.id, e.condition]),
-    [['w', 'onboarding_completed']],
+    read.extras.map((e) => [e.id, e.state]),
+    [['e', 'earning']],
+    'an event crate filling as you watch; not the Welcome Reward waiting on Kickâ€™s sign-up steps (no link reaches them), nor one claimed',
+  );
+  const ready = dr.readChallenges({ data: [challenge()] }, { data: [{ ...welcome, status: 'claimable' }] });
+  assert.deepEqual(
+    ready.extras.map((e) => [e.id, e.state]),
+    [['w', 'ready']],
+    'the Welcome Reward once it can be claimed',
   );
   assert.equal(dr.readChallenges({ data: [] }).daily, null);
   assert.equal(dr.unwrap([1]).length, 1, 'a bare list is a list');
@@ -249,8 +258,8 @@ test('starting reads everything once; later checks only ask for the challenge', 
   assert.equal(timers.list.length, 0);
 });
 
-test('the Welcome Reward is kept between the checks that leave it out', async () => {
-  const kick = fakeKick({ oneOff: [challenge({ id: 'w', recurrence: 'one_off', type: 'onboarding_completed', progress: 0 })] });
+test('a claimable Welcome Reward is kept between the checks that leave it out', async () => {
+  const kick = fakeKick({ oneOff: [challenge({ id: 'w', recurrence: 'one_off', type: 'onboarding_completed', status: 'claimable', progress: 1 })] });
   const { reward } = setup({ kick });
   reward.start();
   await settle();

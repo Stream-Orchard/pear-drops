@@ -76,12 +76,16 @@ function readChallenge(c) {
   };
 }
 
-/** The daily one and the rest (event crates, the Welcome Reward). */
+/**
+ * The daily one and the rest (event crates, the Welcome Reward). Only the others Pear Drops can do
+ * something about: one that's ready to claim, or one that fills by watching. The Welcome Reward
+ * waits on Kick's own sign-up steps, a pop-up kick.com shows when it chooses, with no link to it.
+ */
 function readChallenges(body, oneOff = null) {
   const all = [...listOf(body), ...listOf(oneOff)].map(readChallenge).filter(Boolean);
   const unique = [...new Map(all.map((c) => [c.id, c])).values()];
   const daily = unique.find((c) => c.recurrence === 'daily' && c.condition === 'watch_time_minutes') ?? null;
-  return { daily, extras: unique.filter((c) => c !== daily && c.state !== 'claimed') };
+  return { daily, extras: unique.filter((c) => c !== daily && (c.state === 'ready' || (c.state === 'earning' && c.condition === 'watch_time_minutes'))) };
 }
 
 // Kick's card pictures are https; the demo's are drawn as data images.

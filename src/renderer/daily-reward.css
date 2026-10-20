@@ -206,9 +206,6 @@
   height: 18px;
   --chest-bg: var(--bg);
 }
-.dr-chest.state-claimed .dr-ring-value {
-  stroke: var(--r);
-}
 .dr-chest.state-claimed .icon.chest {
   color: color-mix(in srgb, var(--r) 70%, #fff);
 }
