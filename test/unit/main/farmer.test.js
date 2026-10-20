@@ -632,6 +632,18 @@ test('trayInfo shows the current drop as a fraction and percentage', async () =>
   assert.equal(info.fraction, 0.5);
 });
 
+test('trayInfo asks for the logo while no stream is live for the drops left, and only then', async () => {
+  const { farmer, api } = setup({ campaigns: [campaign('a')], streams: { 1: [] } });
+  await farmer.tick();
+  assert.equal(farmer.trayInfo().mark, 'logo');
+  farmer.paused = true;
+  assert.equal(farmer.trayInfo().mark, undefined, 'paused shows as paused');
+  farmer.paused = false;
+  api.streams[1] = [live('s', 1)];
+  await farmer.tick();
+  assert.equal(farmer.trayInfo().mark, undefined, 'watching shows the ring');
+});
+
 test('finished categories always sort last, whatever the saved order', async () => {
   const done = campaign('d', { category: { id: 9, name: 'Done' } });
   const open = campaign('o', { category: { id: 1, name: 'Open' } });

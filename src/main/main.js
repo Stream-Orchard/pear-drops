@@ -116,8 +116,11 @@ function sendState() {
 function updateTray() {
   if (!tray || quitting) return;
   const info = auth.status === 'signed-in' ? farmer.trayInfo() : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
-  // A green dot on the icon while the daily reward waits to be claimed.
-  if (auth.status === 'signed-in' && dailyReward?.daily?.state === 'ready') info.badge = true;
+  // The chest hops on the icon while the daily reward waits to be claimed.
+  if (auth.status === 'signed-in' && dailyReward?.daily?.state === 'ready') {
+    info.mark = 'chest';
+    info.tooltip += ' · Daily reward ready to claim';
+  }
   tray.update(info, { showPercent: store.get().trayPercent });
 }
 
