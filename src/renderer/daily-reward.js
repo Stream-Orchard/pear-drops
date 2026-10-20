@@ -251,7 +251,7 @@ async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
     <div class="dr-unbox">${unbox ? `<video src="${esc(unbox)}" muted playsinline></video>` : crateArt('opening')}</div>
     <div class="dr-reel"><div class="dr-reel-track">${tiles.map((t, i) => `<div class="dr-tile r-${esc(t.rarity)}" data-i="${i}">${img(t.image)}</div>`).join('')}</div><div class="dr-reel-mark"></div></div>
     <div class="dr-winner r-${esc(w.rarity ?? 'common')}"><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card', cardKind(w))}
-      <div class="dr-winner-caption">${winnerLine({ winner: w, duplicate: !!claim.consolation }, { short: true })}</div></div>`;
+      <div class="dr-winner-caption">${winnerLine({ winner: w, duplicate: !!claim.duplicate }, { short: true })}</div></div>`;
   const reel = root.querySelector('.dr-reel');
   const track = root.querySelector('.dr-reel-track');
   if (fast || claim.revealType === 'instant' || claim.items.length < 2) {

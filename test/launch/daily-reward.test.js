@@ -129,6 +129,8 @@ test('the tray: the chest at the top right opens the card, and a claim plays rig
   await pop.click('.tray-head .dr-chest');
   await until(pop, () => document.querySelector('.dr-card.at-tray.state-ready'), 'the card in the tray');
   await pop.click('.dr-claim');
+  await until(pop, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the winner', 40000);
+  assert.match(await pop.textContent('.dr-winner-caption'), /Common emote\s*Duplicate/, 'the reveal says it’s a duplicate');
   await claimDone(pop);
   assert.match(await pop.textContent('.dr-result'), /You already have this\s*Common emote/);
   assert.match(await pop.textContent('.dr-result'), /\+12m watch time to Level 43/);
