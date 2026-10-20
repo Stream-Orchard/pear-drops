@@ -301,3 +301,26 @@ function previewAttrs(r, units, ended = false) {
   // focus whenever it loads a channel, while the pointer is still here.)
   document.documentElement.addEventListener('mouseleave', hide);
 })();
+
+// ------------------------------------------------------------------ queue rows
+
+/** Channel names as a row says them: "SolarFlair", "Driftwood & SolarFlair", "NightOwl, LofiLane +1". */
+function channelNames(chs, { or = false } = {}) {
+  const n = chs.map((c) => c.username || c.slug);
+  if (n.length <= 1) return n[0] ?? '';
+  if (or) return `${n.slice(0, -1).join(', ')} or ${n.at(-1)}`;
+  if (n.length === 2) return `${n[0]} & ${n[1]}`;
+  return `${n[0]}, ${n[1]} +${n.length - 2}`;
+}
+
+/**
+ * A queue row's picture: a category's art; for a drop limited to certain channels, its channel's
+ * avatar with the category's art as a badge, or two avatars overlapping and "+N" for the rest.
+ */
+function rowArt(cat, cls = 'cat-art') {
+  if (cat.kind === 'category' || !cat.channels?.length) return img(cat.image, cls, cat.name);
+  const chs = cat.channels;
+  const av = (ch) => img(ch.avatar, 'av', ch.username);
+  if (chs.length === 1) return `<span class="row-art one ${cls}-row" data-tip="${esc(chs[0].username)} · ${esc(cat.category?.name ?? '')}">${av(chs[0])}${img(cat.category?.image, 'cat-badge')}</span>`;
+  return `<span class="row-art many ${cls}-row" data-tip="${esc(chs.map((c) => c.username).join(', '))} · ${esc(cat.category?.name ?? '')}">${chs.slice(0, 2).map(av).join('')}${chs.length > 2 ? `<span class="more">+${chs.length - 2}</span>` : ''}</span>`;
+}

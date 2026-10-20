@@ -107,6 +107,32 @@ function makeCampaigns() {
       channels: ['nightowl', 'lofilane', 'tidepool'].map((s) => ({ id: ch(s).id, slug: s, user: { username: ch(s).username, profile_picture: ch(s).avatar } })),
       rewards: [reward('r-cozy-1', 'Cozy Mug Emote', 30, '☕', 30), reward('r-cozy-2', 'Night Owl Badge', 120, '🦉', 260, 'badge')],
     },
+    // Open to any channel, in the same category as Cozy Hours: Just Chatting holds both kinds.
+    {
+      id: 'c-chatter',
+      name: 'Chatterbox Week',
+      status: 'active',
+      starts_at: days(-4),
+      ends_at: days(3),
+      category: CATEGORIES.chat,
+      organization: KICK_ORG,
+      connect_url: '',
+      channels: [],
+      rewards: [reward('r-chatter-1', 'Chatter Bubble Emote', 30, '💬', 160), reward('r-chatter-2', 'Gab Badge', 120, '🗣️', 120, 'badge')],
+    },
+    // One channel only: its queue row is that channel's.
+    {
+      id: 'c-solo',
+      name: 'Skyforge Dev Diary',
+      status: 'active',
+      starts_at: days(-1),
+      ends_at: days(5),
+      category: CATEGORIES.sky,
+      organization: { id: 'org-sky', name: 'Skyforge Studios', logo_url: emote('⚒️', 20) },
+      connect_url: '',
+      channels: ['tidepool'].map((s) => ({ id: ch(s).id, slug: s, user: { username: ch(s).username, profile_picture: ch(s).avatar } })),
+      rewards: [reward('r-solo-1', 'Blueprint Emote', 60, '📐', 210)],
+    },
     {
       id: 'c-sky',
       name: 'Skyforge Season 3',
@@ -133,7 +159,7 @@ function makeCampaigns() {
     },
     {
       id: 'c-market',
-      name: 'Market Hours',
+      name: 'Closing Bell Cup',
       status: 'active',
       starts_at: days(-2),
       ends_at: days(6),
@@ -256,7 +282,7 @@ class DemoApi {
   constructor() {
     this.loggedIn = !!process.env.PD_DEMO_SIGNED_IN;
     this.rawCampaigns = makeCampaigns();
-    this.units = { 'c-neon': 148, 'c-cozy': 34, 'c-sky': 12, 'c-kart': 92, 'c-market': 0, 'c-kart-night': 0, 'c-sky-s4': 0 };
+    this.units = { 'c-neon': 148, 'c-cozy': 34, 'c-chatter': 20, 'c-solo': 0, 'c-sky': 12, 'c-kart': 92, 'c-market': 0, 'c-kart-night': 0, 'c-sky-s4': 0 };
     this.claimed = new Set(['r-neon-1', 'r-cozy-1', 'r-kart-1']);
     this.pending = 0; // credit units waiting for the next progress read
     this.watching = null;
@@ -408,7 +434,8 @@ class DemoApi {
     if (!entry || this.offline.has(slug)) return { slug, is_banned: false, livestream: null };
     const [catId, list] = entry;
     const [, title, viewers] = list.find(([s]) => s === slug);
-    return { slug, is_banned: false, livestream: { is_live: true, session_title: title, viewer_count: viewers, categories: [{ id: Number(catId) }] } };
+    const c = ch(slug);
+    return { slug, is_banned: false, livestream: { is_live: true, session_title: title, viewer_count: viewers, categories: [{ id: Number(catId) }], thumbnail: { src: thumbnail(c.glyph, c.hue) } } };
   }
 
   /** As the real one: the pages using the login close first (closePages). */

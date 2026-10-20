@@ -47,9 +47,14 @@ test('with nothing live, a radar over the drops still to go; each check pulses t
   await until(a.win, () => document.querySelector('#chart .idle-scene.is-scan'), 'the radar', 15000);
   assert.equal(await a.win.locator('#chart .progress-chart').count(), 0, 'no campaign is picked while nothing plays');
   assert.equal(await a.win.locator('#chart .tabs').count(), 0, 'nor its tabs');
-  const left = await a.app.evaluate(() => global.pdDebug.farmer.model.categories.filter((c) => c.enabled && c.needsWatching && !c.complete).length);
-  assert.equal(await a.win.locator('#chart .is-blip').count(), Math.min(8, left), 'a blip for each category still to go');
-  assert.match(await a.win.textContent('#chart .card-sub'), new RegExp(`Looking for a live channel in ${left} categor`));
+  const [left, drops] = await a.app.evaluate(() => {
+    const rows = global.pdDebug.farmer.model.categories.filter((c) => c.enabled && c.needsWatching && !c.complete);
+    return [rows.length, rows.reduce((n, c) => n + c.campaigns.filter((x) => x.needsWatching).length, 0)];
+  });
+  assert.equal(await a.win.locator('#chart .is-blip').count(), Math.min(8, left), 'a blip for each queue row still to go');
+  assert.match(await a.win.textContent('#chart .card-sub'), new RegExp(`Looking for a live stream for ${drops} drops`));
+  // A channel row's blip is its channel's avatar, named after its drop.
+  assert.ok(await a.win.locator('#chart .is-blip .is-name', { hasText: 'Cozy Hours' }).count(), 'Cozy Hours on the radar');
   assert.ok(await a.win.locator('#hero .hero-next-check .check-ring').count(), 'the countdown to the next check');
   assert.ok((await fits()) <= 2, 'the dashboard still fits without scrolling');
 

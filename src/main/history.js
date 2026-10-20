@@ -182,6 +182,8 @@ class History {
           title: e.title ?? null,
           category: e.category,
           categoryId: e.categoryId,
+          // The queue row it was for, when that wasn't the category (a drop limited to certain channels).
+          ...(e.targetId !== undefined ? { targetId: e.targetId } : {}),
           campaignIds: e.campaignIds ?? [],
           campaigns: e.campaigns ?? [],
           manual: !!e.manual,

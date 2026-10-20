@@ -116,6 +116,11 @@ class KickApi {
         ok = true;
         const found = followsFrom(res);
         found.forEach((f) => slugs.add(f.slug));
+        // Who's live, when the list says: the queue then needn't ask about an offline followed channel.
+        if (found.some((f) => f.live !== null)) {
+          slugs.live ??= new Set();
+          found.filter((f) => f.live).forEach((f) => slugs.live.add(f.slug));
+        }
         const next = res?.nextCursor ?? res?.next_cursor ?? res?.meta?.next_cursor ?? res?.meta?.nextCursor ?? (res?.next_page_url ? 'next' : null);
         const anyLive = found.some((f) => f.live);
         const knowsLive = found.some((f) => f.live !== null);

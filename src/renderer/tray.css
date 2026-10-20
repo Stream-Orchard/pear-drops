@@ -237,6 +237,23 @@ body.tray-body {
   object-fit: cover;
   background: var(--solid-2);
 }
+.row-art.tray-cat-art-row {
+  width: 28px;
+  height: 36px;
+}
+.row-art.tray-cat-art-row.one .av {
+  top: 4px;
+  width: 28px;
+  height: 28px;
+}
+.row-art.tray-cat-art-row.many .av {
+  width: 21px;
+  height: 21px;
+}
+.row-art.tray-cat-art-row .cat-badge {
+  width: 13px;
+  height: 17px;
+}
 .tray-cat-info {
   display: flex;
   flex-direction: column;
