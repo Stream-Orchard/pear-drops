@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.11 (current)
+## 0.1.12 (current)
+- Kick's daily reward: a chest in the title bar and tray, claimed with Kick's reveal
+- Connected apps: Stream Multiview can show Kick's daily reward chest, and the card lists what the apps share a line each
+
+## 0.1.11
 - The tray popover no longer grows wider and wider on Windows
 
 ## 0.1.10
