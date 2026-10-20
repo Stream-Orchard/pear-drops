@@ -9,7 +9,7 @@ function pageHook() {
   window.__pdHooked = true;
   const post = (msg) => window.postMessage({ __pd: true, ...msg }, location.origin);
   const heard = new WeakSet();
-  const STREAM_EVENT = /Stop|End|Offline|Raid|Host|MoveTo|LivestreamUpdated|Categor/i;
+  const STREAM_EVENT = /Stop|End|Offline|Raid|Host|MoveTo|LivestreamUpdated|Categor|GamificationWatchTimeGoalReached|GamificationLevelUp/i;
   const listen = (socket) => {
     if (heard.has(socket) || !/platform\.kick\.com|pusher/.test(String(socket.url))) return;
     heard.add(socket);

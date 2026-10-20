@@ -23,6 +23,7 @@ const EVENT_KIND = {
   'credit-elsewhere': ['Credit lost', 'alert', 'red'],
   unlock: ['Unlocked', 'sparkle', 'gold'],
   claim: ['Claimed', 'gift', 'gold'],
+  'daily-reward': ['Daily reward', 'chest', 'gold'],
   'claim-failed': ['Claim failed', 'alert', 'red'],
   'campaign-complete': ['Drop complete', 'trophy', 'gold'],
   'category-complete': ['Category done', 'trophy', 'gold'],

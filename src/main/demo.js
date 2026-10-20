@@ -193,6 +193,63 @@ const LIVE = {
   [CATEGORIES.market.id]: [],
 };
 
+// ------------------------------------------------------------------ the daily reward's cards
+
+const RARITY_COLOUR = { common: '#a0a0a0', uncommon: '#23bf46', rare: '#00b5e0', epic: '#fd4547', legendary: '#f7a910', mythic: '#ffa0ec' };
+
+/** A made-up collectible card, framed like Kick's: its type on a tab, the emote, its name. */
+function collectibleCard(name, glyph, hue, rarity, type) {
+  const c = RARITY_COLOUR[rarity];
+  const frame = rarity === 'mythic' ? 'url(#m)' : c;
+  return svgUri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},90%,62%)"/><stop offset="1" stop-color="hsl(${hue + 35},80%,36%)"/></linearGradient>
+      <linearGradient id="m" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#80fcff"/><stop offset=".5" stop-color="#fcf2aa"/><stop offset="1" stop-color="#ffa0ec"/></linearGradient>
+      <radialGradient id="b" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="#0d1015" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect x="3" y="3" width="114" height="154" rx="11" fill="#0f1217" stroke="${frame}" stroke-width="3"/>
+    <rect x="3" y="3" width="114" height="154" rx="11" fill="url(#b)"/>
+    <path d="M14 30h92v74l-46 22-46-22z" fill="#161b22" stroke="${frame}" stroke-opacity=".75" stroke-width="1.5"/>
+    <path d="M40 3h40l-5 11H45z" fill="${frame}"/>
+    <text x="60" y="11.5" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-weight="900" font-size="6.5" letter-spacing="1" fill="#0b0d10">${type.toUpperCase()}</text>
+    ${type === 'badge' ? '<path d="M60 40l22 8v18c0 13-9.5 22-22 28-12.5-6-22-15-22-28V48z" fill="url(#g)" stroke="#fff" stroke-opacity=".5" stroke-width="1.5"/>' : '<rect x="36" y="42" width="48" height="48" rx="15" fill="url(#g)"/>'}
+    <ellipse cx="52" cy="50" rx="13" ry="6" fill="#fff" opacity=".2"/>
+    <text x="60" y="${type === 'badge' ? 77 : 76}" text-anchor="middle" font-size="${type === 'badge' ? 22 : 27}">${glyph}</text>
+    <text x="60" y="143" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-weight="900" font-size="10.5" letter-spacing=".6" fill="#fff">${name.toUpperCase()}</text>
+  </svg>`);
+}
+
+// 72 made-up cards: [rarity, names, glyphs].
+const CARD_SETS = [
+  ['common', 'Snack Bonk Wave Nod Yawn Clap Shrug Blink Sip Peek Zzz Lol Hmm Yay Oops Ok Pog Hi Gg Cozy Chill Wow Nice Cry Laugh Wink Sus Bruh Hype Love Rage Cool Bean Pear Leaf Drop', '🍪 🔨 👋 🙂 🥱 👏 🤷 😳 🧃 👀 😴 😂 🤔 🥳 😬 👌 😮 🙋 🤝 ☕ 🧊 🤩 👍 😢 🤣 😉 🕵️ 😐 🔥 💚 😡 😎 🫘 🍐 🍃 💧'],
+  ['uncommon', 'Turbo Glow Zen Chef Bolt Rocket Pixel Neon Comet Jelly Mochi Disco Tidal Ember Frost Volt Orbit Prism', '🏎️ ✨ 🧘 👨‍🍳 ⚡ 🚀 👾 💡 ☄️ 🪼 🍡 🪩 🌊 🔥 ❄️ 🔋 🪐 🔺'],
+  ['rare', 'Big_Brain Pear_King Galaxy Dragon Wizard Phantom Kraken Cyber Aurora Nova', '🧠 👑 🌌 🐉 🧙 👻 🐙 🤖 🌈 🌟'],
+  ['epic', 'Inferno Titan Eclipse Hydra Storm', '🌋 🗿 🌘 🐍 ⛈️'],
+  ['legendary', 'Golden_Pear Crown', '🍐 👑'],
+  ['mythic', 'Starfall', '💫'],
+];
+const HUES = { common: 210, uncommon: 120, rare: 190, epic: 0, legendary: 40, mythic: 300 };
+function makeCards() {
+  return CARD_SETS.flatMap(([rarity, names, glyphs]) => {
+    const g = glyphs.split(' ');
+    return names.split(' ').map((n, i) => {
+      const type = (rarity === 'legendary' && i === 1) || i % 13 === 7 ? 'badge' : 'emote';
+      const id = `card-${rarity}-${i}`;
+      return { id, rarity, type, card_url: collectibleCard(n.replace('_', ' '), g[i], (HUES[rarity] + i * 23) % 360, rarity, type) };
+    });
+  });
+}
+// Which made-up cards the demo account owns at the start.
+const OWNED = { common: (i) => i % 3 !== 2, uncommon: (i) => i % 2 === 0, rare: (i) => i % 4 === 1, epic: (i) => i % 5 === 3, legendary: () => false, mythic: () => false };
+const DROP_TABLE = [
+  ['common', 550000],
+  ['uncommon', 280000],
+  ['rare', 120000],
+  ['epic', 47000],
+  ['legendary', 2995],
+  ['mythic', 5],
+];
+
 // ------------------------------------------------------------------ fake API
 
 class DemoApi {
@@ -207,13 +264,21 @@ class DemoApi {
     this.offline = new Set(); // stand-in channels taken offline by a test or the trailer
     this.brokenThumbs = new Set(); // channels whose thumbnail won't load (a stream that just started)
     this.follows = new Set(['arcadia', 'nightowl', 'emberfox']);
+    // The daily reward: 37 of the hour watched, a 12-day streak, about half the cards.
+    this.cards = makeCards();
+    this.owned = new Set(this.cards.filter((c) => OWNED[c.rarity](Number(c.id.split('-').pop()))).map((c) => c.id));
+    this.daily = { id: 'daily-demo', minutes: 37, status: 'in_progress' };
+    this.welcome = { id: 'welcome-demo', status: 'in_progress' };
+    this.levelData = { level: 42, progress_xp: 340, xp_to_next_level: 260 };
+    this.streakDays = 12;
+    this.nextWinner = null; // a test or the trailer can pick the card the next claim wins
   }
 
   async hasLogin() {
     return this.loggedIn;
   }
   async me() {
-    return this.loggedIn ? { username: 'pearfarmer', profilepic: avatar('pearfarmer', 95) } : null;
+    return this.loggedIn ? { id: 4242, username: 'pearfarmer', profilepic: avatar('pearfarmer', 95) } : null;
   }
   async myEmotes() {
     // The stand-in "unlocked" emotes: claimed drop rewards, served as data images.
@@ -266,6 +331,61 @@ class DemoApi {
     return { message: 'Success' };
   }
 
+  // ---- The daily reward, shaped like Kick's replies ({ data, message }) ----
+  async dailyChallenges(query) {
+    if (!this.loggedIn) throw Object.assign(new Error('Unauthorized'), { status: 401 });
+    const day = new Date();
+    day.setUTCHours(0, 0, 0, 0);
+    const window = { starts_at: day.toISOString(), ends_at: new Date(day.getTime() + 86_400_000).toISOString() };
+    const table = DROP_TABLE.map(([rarity, weighting]) => ({ rarity, weighting }));
+    // Demo mode never goes to the network: no Kick videos, so the app draws its own crate.
+    if (query?.recurrence === 'one_off')
+      return { data: [{ id: this.welcome.id, name: 'Welcome Reward', recurrence: 'one_off', status: this.welcome.status, featured: false, condition: { type: 'onboarding_completed', progress: 0, threshold: 1 }, drop_table: table, animations: null }], message: 'success' };
+    const d = this.daily;
+    return {
+      data: [{ id: d.id, name: 'Daily Reward', recurrence: 'daily', status: d.status, featured: false, window, condition: { type: 'watch_time_minutes', progress: d.minutes, threshold: 60 }, drop_table: table, animations: null }],
+      message: 'success',
+    };
+  }
+
+  async collectibles() {
+    return { data: this.cards.map((c) => ({ ...c, owned: this.owned.has(c.id) })), message: 'success' };
+  }
+
+  async level() {
+    return { data: { ...this.levelData, total_xp: 98_000, badge: null }, message: 'success' };
+  }
+
+  async streak() {
+    return { data: { length_days: this.streakDays }, message: 'success' };
+  }
+
+  /** The stand-in claim: Kick's reel (its 24 tiles), a winner picked by the odds, a duplicate's level progress. */
+  async claimDaily(id) {
+    const target = id === this.welcome.id ? this.welcome : this.daily;
+    if (target.status !== 'claimable') throw Object.assign(new Error('HTTP 400'), { status: 400, body: { message: 'Challenge not claimable' } });
+    let roll = Math.random() * 1_000_000;
+    const rarity = DROP_TABLE.find(([, w]) => (roll -= w) < 0)?.[0] ?? 'common';
+    const pool = this.cards.filter((c) => c.rarity === rarity);
+    const winner = this.cards.find((c) => c.id === this.nextWinner) ?? pool[Math.floor(Math.random() * pool.length)];
+    this.nextWinner = null;
+    const duplicate = this.owned.has(winner.id);
+    this.owned.add(winner.id);
+    target.status = 'claimed';
+    if (target === this.daily) this.streakDays += 1;
+    if (duplicate) this.levelData = { ...this.levelData, progress_xp: this.levelData.progress_xp + 12 };
+    const reel = [...this.cards].sort((a, b) => a.id.localeCompare(b.id)).filter((_, i) => i % 3 === 0).slice(0, 24);
+    return {
+      data: {
+        reveal_type: 'roulette',
+        roulette: reel.map((c) => ({ id: c.id, item_url: c.card_url })),
+        winner: { id: winner.id, rarity: winner.rarity, type: winner.type, card_url: winner.card_url },
+        consolation: duplicate ? { watch_time_minutes: 12, next_level_badge: { metadata: { level: this.levelData.level + 1 } } } : null,
+      },
+      message: 'success',
+    };
+  }
+
   async livestreams(categoryId) {
     return (LIVE[categoryId] ?? []).filter(([slug]) => !this.offline.has(slug)).map(([slug, title, viewers], i) => {
       const c = ch(slug);
@@ -316,6 +436,11 @@ class DemoApi {
   /** The stand-in server: credit the campaigns the watched channel counts for. */
   creditWatch(slug, amount = 2) {
     if (this.conflict) return;
+    // Watch time counts toward the daily reward, on any channel.
+    if (this.daily.status === 'in_progress') {
+      this.daily.minutes = Math.min(60, this.daily.minutes + amount);
+      if (this.daily.minutes >= 60) this.daily.status = 'claimable';
+    }
     const c = ch(slug);
     const live = Object.entries(LIVE).find(([, list]) => list.some(([s]) => s === slug));
     if (!c || !live) return;

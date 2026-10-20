@@ -16,7 +16,7 @@ const VIEW_IDLE_MS = 2 * 60_000;
 // Event types, grouped for filtering in the UI.
 const GROUPS = {
   progress: ['credit', 'credit-elsewhere'],
-  rewards: ['unlock', 'claim', 'claim-failed', 'campaign-complete', 'category-complete', 'campaign-ended', 'campaign-back'],
+  rewards: ['unlock', 'claim', 'daily-reward', 'claim-failed', 'campaign-complete', 'category-complete', 'campaign-ended', 'campaign-back'],
   watching: ['watch-start', 'watch-end', 'priority', 'decision'],
   problems: ['stall', 'reload', 'crash', 'offline', 'conflict', 'error', 'not-eligible', 'data-restored', 'data-reset', 'backup-failed'],
   app: ['start', 'pause', 'resume', 'login', 'logout', 'wake', 'follow', 'unfollow', 'link-connected', 'link-disconnected', 'link-unpaired', 'link-allowed'],

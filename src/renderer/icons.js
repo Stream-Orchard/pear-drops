@@ -14,7 +14,7 @@ const ICON_PATHS = {
   heart: '<path d="M12 20.5s-7.5-4.6-9.2-9.4C1.6 7.6 3.9 4.5 7.2 4.5c2 0 3.6 1.1 4.8 2.8 1.2-1.7 2.8-2.8 4.8-2.8 3.3 0 5.6 3.1 4.4 6.6-1.7 4.8-9.2 9.4-9.2 9.4z" fill="currentColor" stroke="none"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
-  chest: '<path d="M3 11h18v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 11V8.5A3.5 3.5 0 0 1 6.5 5h11A3.5 3.5 0 0 1 21 8.5V11"/><path d="M7.5 5.5v14M16.5 5.5v14"/><rect x="10.5" y="9.5" width="3" height="4" rx="1" fill="var(--chest-bg, var(--bg))"/>',
+  chest: '<path d="M3.5 9 5.5 5h13l2 4v10a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 10h17M8.5 5v15"/><path d="M12.6 10v2.8l2.65 2.1 2.65-2.1V10"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   bolt: '<path d="M13 2L4.5 13.5H12L11 22l8.5-11.5H12z" fill="currentColor" stroke="none"/>',

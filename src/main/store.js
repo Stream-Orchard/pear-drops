@@ -9,6 +9,7 @@ const DEFAULTS = {
   streamsMinutes: 3,
   followedMinutes: 15,
   autoClaim: true,
+  dailyClaim: 'before-reset', // Kick's daily reward: 'self' · 'before-reset' (15 min before midnight UTC) · 'now'
   includeGameDrops: false,
   unmutePlayer: true,
   playerMode: 'light', // 'light': embed player + popout chat · 'full': the whole channel page
@@ -31,7 +32,7 @@ const DEFAULTS = {
   // Settings › Notifications: a desktop notification switch per kind (src/main/notifier.js), all off to start with.
   // Settings › Connected apps: each app's Connect switch, off to start with (connected.js).
   connectedApps: { 'com.glowingpear.streammultiview': { enabled: false } },
-  notify: { claimed: false, ready: false, ended: false, trouble: false, conflict: false, signedOut: false, done: false, newDrops: false },
+  notify: { claimed: false, ready: false, ended: false, trouble: false, conflict: false, signedOut: false, done: false, newDrops: false, dailyReady: false, dailyClaimed: false },
   notifyAway: false, // only while Pear Drops isn't in front
   window: null, // { bounds, maximized }: remembered between launches
   categoryOrder: [],

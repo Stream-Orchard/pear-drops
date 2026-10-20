@@ -1,4 +1,4 @@
-/* global rewardChest, rewardCard, playReveal, dailyPanel, collectionView, chestMark, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rewardChest, rewardCard, playReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -14,8 +14,6 @@ const ui = {
   firstState: true,
   rewardOpen: false, // the daily reward's card, under its chest
   revealing: false, // the reveal is playing: the card isn't redrawn under it
-  collection: null, // Kick's whole card list, fetched when the collection opens
-  colFilter: { rarity: 'all', show: 'all' },
 };
 
 // ------------------------------------------------------------------ derived data
@@ -851,19 +849,11 @@ function renderSide() {
     ['streams', 'eye', 'Streams', streams ? `${streams} live` : ''],
     ['activity', 'pulse', 'Activity', ''],
   ];
-  // The daily reward's tab, while Kick has one for this account.
-  const dr = dailyReward();
-  if (dr && !['signed-out', 'hidden'].includes(dr.state)) tabs.push(['daily', 'chest', 'Daily', dr.state === 'ready' ? 'Ready' : dr.state === 'earning' ? `${Math.max(0, dr.threshold - dr.minutes)}m` : '']);
-  else if (ui.sideTab === 'daily') ui.sideTab = 'queue';
-  const body =
-    ui.sideTab === 'streams' ? streamsPanel(f) : ui.sideTab === 'activity' ? activityPanel(f) : ui.sideTab === 'done' ? donePanel(f) : ui.sideTab === 'daily' ? dailyPanel(dr) : queuePanel(f);
+  const body = ui.sideTab === 'streams' ? streamsPanel(f) : ui.sideTab === 'activity' ? activityPanel(f) : ui.sideTab === 'done' ? donePanel(f) : queuePanel(f);
   setHTML(
     el,
     `<div class="side-tabs">${tabs
-      .map(
-        ([id, ic, label, badge]) =>
-          `<button class="side-tab ${ui.sideTab === id ? 'active' : ''}" data-action="side-tab" data-id="${id}">${ic === 'chest' ? chestMark() : icon(ic)}${label}${badge ? `<em class="${badge === 'Ready' ? 'ready' : ''}">${badge}</em>` : ''}</button>`,
-      )
+      .map(([id, ic, label, badge]) => `<button class="side-tab ${ui.sideTab === id ? 'active' : ''}" data-action="side-tab" data-id="${id}">${icon(ic)}${label}${badge ? `<em>${badge}</em>` : ''}</button>`)
       .join('')}</div>
     <div class="side-body" data-tab="${ui.sideTab}">${body}</div>`,
   );
@@ -940,6 +930,8 @@ const NOTIFY_KINDS = [
   ['signedOut', 'You need to sign in again', 'Your Kick login expired, so farming stopped.'],
   ['done', 'All collected, or nothing live', 'Every drop is claimed, or none left has a stream on.'],
   ['newDrops', 'New drops on Kick', 'A campaign with emotes or badges starts.'],
+  ['dailyReady', 'The daily reward is ready', 'An hour watched today, and again an hour before it resets.'],
+  ['dailyClaimed', 'The daily reward is claimed for you', 'When Pear Drops claims it on its own, with what it was.'],
 ];
 const NOTIFY_TEST = {
   sending: 'Sending…',
@@ -1175,22 +1167,9 @@ async function replayReward(card, tile) {
   render();
 }
 
-/** Every card Kick has, with yours in colour. */
-function collectionModal() {
-  const total = ui.collection?.cards?.length ?? 0;
-  const owned = ui.collection?.cards?.filter((c) => c.owned).length ?? 0;
-  return `<div class="modal-backdrop" data-action="close-modal">
-    <div class="modal dr-col-modal" data-stop>
-      <div class="modal-head"><h3>${chestMark()}Collection<span class="muted">${owned} of ${total}</span></h3><button class="btn sm icon-only ghost" data-action="close-modal" data-tip="Close (Esc)">${icon('x')}</button></div>
-      <div class="modal-section">${ui.collection ? collectionView(ui.collection, ui.colFilter, dailyReward()) : '<div class="skeleton" style="height:100%"></div>'}</div>
-    </div>
-  </div>`;
-}
-
 function renderModal() {
   const root = $('#modal-root');
   if (ui.modal === 'whatsnew') return setHTML(root, whatsNewModal());
-  if (ui.modal === 'collection') return setHTML(root, collectionModal());
   if (ui.modal !== 'settings') return setHTML(root, '');
   const s = state.settings;
   const user = state.auth.user;
@@ -1211,6 +1190,7 @@ function renderModal() {
       ${s.queueMode === 'smart' ? row('Switch streams for', 'How much sooner another drop must run out of live time before Smart leaves a stream that’s earning.', seg('setting-value', String(s.smartHopMinutes ?? 30), [['15', '15 min'], ['30', '30 min'], ['60', '1 h'], ['120', '2 h']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="smartHopMinutes"')) : ''}
       ${row('Put drops about to expire first', 'In Manual order, a drop that would run out of time where it sits jumps to the top, as long as its next reward can still be earned.', toggle('prioritizeExpiring', s.prioritizeExpiring))}
       ${row('Claim drops automatically', 'Claim each emote or badge the moment it unlocks.', toggle('autoClaim', s.autoClaim))}
+      ${row('Claim Kick’s daily reward', 'Before it resets claims it 15 minutes before midnight UTC if you haven’t, so no day is lost. Replay still shows its reel.', seg('setting-value', ['self', 'now'].includes(s.dailyClaim) ? s.dailyClaim : 'before-reset', [['self', 'Myself'], ['before-reset', 'Before it resets'], ['now', 'Right away']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="dailyClaim"'))}
       ${row('Include game drops', 'Also farm rewards that need a linked game account.', toggle('includeGameDrops', s.includeGameDrops))}`,
     recovery: `
       ${row('Recover a stalled stream after', 'With no progress for this long, reload the stream, then switch to another.', range('stallMinutes', 5, 60, 1, 'min'))}
@@ -1481,27 +1461,9 @@ const actions = {
   'reward-close': () => openReward(false),
   'reward-claim': (el) => claimReward(el.closest('.dr-card'), el.dataset.id, 120),
   'reward-replay': (el) => replayReward(el.closest('.dr-card'), 120),
-  'reward-insights': () => {
-    openReward(false);
-    ui.view = 'dashboard';
-    ui.sideTab = 'daily';
-    render();
-  },
   'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
-  'reward-collection': async () => {
-    openReward(false);
-    openModal('collection');
-    ui.collection = (await window.pd.dailyReward.collection()) ?? { cards: [], wins: {} };
-    render();
-  },
-  'col-rarity': (el) => {
-    ui.colFilter.rarity = el.dataset.id;
-    render();
-  },
-  'col-show': (el) => {
-    ui.colFilter.show = el.dataset.id;
-    render();
-  },
+  // Kick's own page of every card, with the ones you own.
+  'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
   'past-filter': (el) => {
     ui.pastFilter = el.dataset.id;
     render();

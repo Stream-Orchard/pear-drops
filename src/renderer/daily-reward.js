@@ -1,6 +1,6 @@
 /* global icon, esc, img, fmtDur, fmtClock, MIN */
-// Kick's Daily Reward, drawn the same way on the dashboard (the title-bar chest, its card, the
-// Daily tab, the collection) and in the tray: watch an hour, open a crate, a reel picks a card.
+// Kick's Daily Reward, drawn the same way on the dashboard (the title-bar chest and its card) and in
+// the tray: watch an hour, open a crate, a reel picks a card.
 // The state comes from the main process (src/main/daily-reward.js); nothing here calls Kick.
 
 const RARITIES = [
@@ -22,15 +22,18 @@ function fmtChance(fraction) {
   return `${Number(p.toFixed(p < 10 ? 1 : 0))}%`;
 }
 
-// The chest: a stroke icon like the rest of the set. Its lid is its own group, so the ready
-// chest can lift it and let the glow out.
+// The chest: Kick's chest (a strap on the left, a notched latch) drawn as a line icon like the
+// rest of the set. When the reward is ready it hops the way kick.com's does, and lands in a burst
+// of pixels (daily-reward.css); no video, so it works offline, in demo mode and stops for reduced motion.
+const BURST = [
+  [2.2, 20.6, 'g'], [4.4, 22.3, 't'], [7.6, 23.2, 'g'], [11, 23.6, 't'], [14.4, 23.4, 'g'], [17.8, 22.9, 't'],
+  [20.6, 21.6, 'g'], [21.4, 19.6, 't'], [1.6, 18.8, 't'], [19.2, 18.4, 'g'],
+];
 function chestMark(cls = '') {
   return `<svg class="icon chest ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <ellipse class="chest-glow" cx="12" cy="11" rx="7.5" ry="2.4" stroke="none"/>
-    <path d="M3 11h18v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M7.5 11v8.5M16.5 11v8.5"/>
-    <g class="chest-lid"><path d="M3 11V8.5A3.5 3.5 0 0 1 6.5 5h11A3.5 3.5 0 0 1 21 8.5V11"/><path d="M7.5 5.5V11M16.5 5.5V11"/></g>
-    <rect class="chest-latch" x="10.5" y="9.5" width="3" height="4" rx="1"/>
-    <g class="chest-sparks" stroke="none"><path d="M5 .6l.55 1.3 1.3.55-1.3.55L5 4.3l-.55-1.3-1.3-.55 1.3-.55z"/><path d="M19.5 0l.45 1.05 1.05.45-1.05.45-.45 1.05-.45-1.05-1.05-.45 1.05-.45z"/></g>
+    <g class="chest-burst" stroke="none">${BURST.map(([x, y, c]) => `<rect class="${c}" x="${x - 0.7}" y="${y - 0.7}" width="1.4" height="1.4"/>`).join('')}</g>
+    <g class="chest-box"><path class="chest-body" d="M3.5 9 5.5 5h13l2 4v10a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 10h17M8.5 5v15"/>
+      <path class="chest-latch" d="M12.6 10v2.8l2.65 2.1 2.65-2.1V10"/></g>
   </svg>`;
 }
 
@@ -67,25 +70,26 @@ function crateStage(dr) {
 
 const rarityChip = (r, extra = '') => `<span class="chip rarity r-${esc(r)}${extra}"><i></i>${rarityName(r)}</span>`;
 
-/** A card's name, or what it is when Kick gives no name. */
-const cardName = (c) => c?.name || (c?.type === 'badge' ? 'A badge' : 'An emote');
+/** What a card is, in words: "Rare emote". Kick gives no names; the name is on the card's picture. */
+const cardKind = (c) => `${rarityName(c?.rarity)} ${c?.type === 'badge' ? 'badge' : 'emote'}`;
 
 /** What a claimed card was: new, or a duplicate turned into level progress. */
 function winnerLine(t, { short = false } = {}) {
   if (!t?.winner) return '';
-  const name = `<b>${esc(cardName(t.winner))}</b>`;
-  if (!t.duplicate) return `${name} ${rarityChip(t.winner.rarity)}<span class="chip green new">New</span>`;
-  const xp = t.xpMinutes ? `<span class="dr-xp">+${fmtDur(t.xpMinutes * MIN)}</span> watch time${t.levelTo ? ` to Level ${t.levelTo}` : ''}` : 'Level progress';
-  return short ? `${name} ${rarityChip(t.winner.rarity)}<span class="chip">Duplicate</span>` : `<span class="dr-dupe">You already have ${name} ${rarityChip(t.winner.rarity)}</span><span class="dr-sub">${xp}</span>`;
+  const kind = `<b>${cardKind(t.winner)}</b>`;
+  if (!t.duplicate) return `${kind}<span class="chip green new">New</span>`;
+  if (short) return `${kind}<span class="chip">Duplicate</span>`;
+  const xp = t.xpMinutes ? `<span class="dr-xp">+${fmtDur(t.xpMinutes * MIN)}</span> watch time${t.levelTo ? ` to Level ${t.levelTo}` : ''}` : 'Turned into level progress';
+  return `<span class="dr-dupe">You already have this ${kind}</span><span class="dr-sub">${xp}</span>`;
 }
 
 // ------------------------------------------------------------------ the chest button
 
 /** What the chest's tooltip says. */
 function chestTip(dr) {
-  if (dr.state === 'ready') return `Daily reward is ready. Claim before ${fmtClock(dr.endsAt)}`;
+  if (dr.state === 'ready') return `Daily reward is ready. Claim before ${fmtClock(dr.endsAt)}${dr.claimMode === 'before-reset' ? '\nPear Drops claims it 15 minutes before, if you haven’t' : ''}`;
   if (dr.state === 'earning') return `Daily reward · ${dr.minutes} of ${dr.threshold} min\n${dr.threshold - dr.minutes} min to go${dr.watching ? '' : ' (not watching)'}`;
-  if (dr.state === 'claimed' && dr.today?.winner) return `Today: ${cardName(dr.today.winner)}, ${rarityName(dr.today.winner.rarity).toLowerCase()}${dr.today.duplicate ? ' (a duplicate)' : ''}\nNext one in ${fmtDur(dr.endsAt - Date.now())}`;
+  if (dr.state === 'claimed' && dr.today?.winner) return `Today: a ${cardKind(dr.today.winner).toLowerCase()}${dr.today.duplicate ? ' (a duplicate)' : ''}\nNext one in ${fmtDur(dr.endsAt - Date.now())}`;
   if (dr.state === 'unavailable') return 'Kick’s daily reward isn’t answering right now';
   return 'Daily reward';
 }
@@ -112,19 +116,15 @@ function rewardChest(dr, { where = 'titlebar', tight = false, open = false } = {
 // ------------------------------------------------------------------ the card
 
 /** Rarity by rarity: the chance of each, and how much of it is yours. */
-function rarityTable(dr, { won = false, filter = null } = {}) {
+function rarityTable(dr) {
   const by = dr.collection?.byRarity ?? {};
   const odds = Object.fromEntries((dr.odds ?? []).map((o) => [o.rarity, o.chance]));
-  const wins = dr.stats?.byRarity ?? {};
-  return `<div class="dr-rarities ${won ? 'with-wins' : ''}">
-    <div class="dr-rarity head"><span>Rarity</span><span>Chance</span><span class="own">Yours</span>${won ? '<span>Won</span><span>Dupes</span>' : ''}</div>
+  return `<div class="dr-rarities">
+    <div class="dr-rarity head"><span>Rarity</span><span>Chance</span><span class="own">Yours</span></div>
     ${RARITIES.map(([id, name]) => {
       const c = by[id] ?? { owned: 0, total: 0 };
-      const w = wins[id] ?? { won: 0, dupes: 0 };
-      const pick = filter ? ` data-action="col-rarity" data-id="${filter === id ? 'all' : id}" data-tip="${filter === id ? 'Show every rarity' : `Show only ${name.toLowerCase()} cards`}"` : '';
-      return `<div class="dr-rarity r-${id} ${filter === id ? 'picked' : ''} ${filter ? 'pickable' : ''}"${pick}><span class="name"><i></i>${name}</span><span class="pct">${odds[id] == null ? '—' : fmtChance(odds[id])}</span>
-        <span class="own"><span class="bar"><i style="width:${c.total ? (c.owned / c.total) * 100 : 0}%"></i></span><span class="count"><b>${c.owned}</b>/${c.total}</span></span>
-        ${won ? `<span class="num">${w.won || '—'}</span><span class="num">${w.dupes || '—'}</span>` : ''}</div>`;
+      return `<div class="dr-rarity r-${id}"><span class="name"><i></i>${name}</span><span class="pct">${odds[id] == null ? '—' : fmtChance(odds[id])}</span>
+        <span class="own"><span class="bar"><i style="width:${c.total ? (c.owned / c.total) * 100 : 0}%"></i></span><span class="count"><b>${c.owned}</b>/${c.total}</span></span></div>`;
     }).join('')}
   </div>`;
 }
@@ -179,11 +179,14 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
   let actions;
   if (dr.state === 'claimed') {
     const t = dr.today ?? {};
-    stage = `<div class="dr-stage won r-${esc(t.winner?.rarity ?? 'common')}"><div class="dr-won-glow"></div>${t.winner ? img(t.winner.image, 'dr-won-card', cardName(t.winner)) : ''}</div>
-      <div class="dr-result">${winnerLine(t)}</div>`;
+    // Claimed on kick.com (or before Pear Drops was running): Kick may not say what it was.
+    stage = t.winner
+      ? `<div class="dr-stage won r-${esc(t.winner.rarity)}"><div class="dr-won-glow"></div>${img(t.winner.image, 'dr-won-card', cardKind(t.winner))}</div>
+      <div class="dr-result">${winnerLine(t)}</div>`
+      : `<div class="dr-stage">${crateArt('dim')}<div class="dr-stage-msg">${icon('check')}Claimed today, outside Pear Drops.</div></div>`;
     middle = `${factsRow(dr)}${rarityTable(dr)}
       <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>Tomorrow, with ${dr.collection?.owned ?? 0} of Kick’s ${dr.collection?.total ?? 0} cards yours</small></span></div>`;
-    actions = `<div class="dr-actions">${t.roulette ? `<button class="btn" data-action="reward-replay">${icon('play')} Replay</button>` : ''}<button class="btn" data-action="reward-insights">${icon('pulse')} Insights</button></div>`;
+    actions = `<div class="dr-actions">${t.replay ? `<button class="btn" data-action="reward-replay">${icon('play')} Replay</button>` : ''}<button class="btn" data-action="reward-collection" data-tip="Every card, and which are yours, on kick.com">${icon('external')} Collection</button></div>`;
   } else {
     const ready = dr.state === 'ready';
     // While it's ready, the opening video loads in the background, so the reveal starts at once.
@@ -192,13 +195,20 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
       ${ready ? '' : `<div class="dr-progress"><span class="label">Watched today</span><span class="bar"><i style="width:${(dr.minutes / Math.max(1, dr.threshold)) * 100}%"></i></span><span><b>${dr.minutes}</b> of ${dr.threshold} min</span></div>`}`;
     middle = `${factsRow(dr)}${rarityTable(dr)}
       <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>You have ${dr.collection?.owned ?? 0} of Kick’s ${dr.collection?.total ?? 0} cards</small></span></div>`;
-    const label = ready ? 'Claim' : dr.watching ? `Claim in ${left} min` : `Watch ${left} more min`;
-    actions = `<div class="dr-actions"><button class="btn primary lg dr-claim" data-action="reward-claim" ${ready ? '' : 'disabled'}>${label}</button></div>`;
+    const label = dr.claiming ? 'Claiming…' : ready ? 'Claim' : dr.watching ? `Claim in ${left} min` : `Watch ${left} more min`;
+    actions = `<div class="dr-actions"><button class="btn primary lg dr-claim" data-action="reward-claim" ${ready && !dr.claiming ? '' : 'disabled'}>${label}</button></div>`;
   }
-  const extras = (dr.extras ?? []).map(
-    (e) => `<div class="dr-extra">${chestMark()}<span><b>${esc(e.name)}</b> ${e.state === 'ready' ? 'is ready' : `${e.minutes} of ${e.threshold} min`}</span>
-      ${e.state === 'ready' ? `<button class="btn sm primary" data-action="reward-claim" data-id="${esc(e.id)}">Claim</button>` : ''}</div>`,
-  );
+  // Other crates: an event's, or Kick's one-time Welcome Reward (unlocked by its sign-up questions).
+  const extras = (dr.extras ?? []).map((e) => {
+    const what = e.state === 'ready' ? 'Ready to open' : e.condition === 'onboarding_completed' ? 'Answer Kick’s sign-up questions to unlock it' : `${e.minutes} of ${e.threshold} min watched`;
+    const act =
+      e.state === 'ready'
+        ? `<button class="btn sm primary" data-action="reward-claim" data-id="${esc(e.id)}">Claim</button>`
+        : e.condition === 'onboarding_completed'
+          ? `<button class="btn sm icon-only" data-action="reward-kick" data-tip="Open Kick">${icon('external')}</button>`
+          : '';
+    return `<div class="dr-extra">${chestMark()}<span><b>${esc(e.name || 'Reward')}</b><small>${what}</small></span>${act}</div>`;
+  });
   return `<div class="dr-card ${where} state-${dr.state} ${revealing ? 'revealing' : ''}">${top}${stage}
     <div class="dr-body">${middle}${extras.join('')}</div>${actions}
     <div class="dr-reveal" hidden></div></div>`;
@@ -227,7 +237,7 @@ async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
   root.innerHTML = `<div class="dr-reveal-bg"></div>
     <div class="dr-unbox">${unbox ? `<video src="${esc(unbox)}" muted playsinline></video>` : crateArt('opening')}</div>
     <div class="dr-reel"><div class="dr-reel-track">${tiles.map((t, i) => `<div class="dr-tile r-${esc(t.rarity)}" data-i="${i}">${img(t.image)}</div>`).join('')}</div><div class="dr-reel-mark"></div></div>
-    <div class="dr-winner r-${esc(w.rarity ?? 'common')}"><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card')}
+    <div class="dr-winner r-${esc(w.rarity ?? 'common')}"><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card', cardKind(w))}
       <div class="dr-winner-caption">${winnerLine({ winner: w, duplicate: !!claim.consolation }, { short: true })}</div></div>`;
   const reel = root.querySelector('.dr-reel');
   const track = root.querySelector('.dr-reel-track');
@@ -284,110 +294,4 @@ async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
   // celebrate: the winner's card.
   root.dataset.phase = 'celebrate';
   await wait(2200);
-}
-
-// ------------------------------------------------------------------ insights (the Daily tab)
-
-const DAY_TIPS = {
-  claimed: (d) => `${cardName(d.winner)}, ${rarityName(d.winner?.rarity).toLowerCase()}${d.duplicate ? ' (duplicate)' : ''}`,
-  missed: () => 'Ready, but not claimed before the reset',
-  short: (d) => `${d.minutes} of 60 min watched`,
-  none: () => 'Pear Drops wasn’t running',
-  today: (d) => `Today · ${d.minutes ?? 0} of 60 min`,
-};
-
-/** The last 30 days, a square each: the card's colour, a red ring for a missed one. */
-function daysStrip(days = []) {
-  return `<div class="dr-days">${days
-    .map((d) => {
-      const tip = `${new Date(`${d.day}T12:00:00Z`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}\n${(DAY_TIPS[d.today ? 'today' : d.state] ?? DAY_TIPS.none)(d)}`;
-      const fill = d.state === 'short' || d.today ? `<i style="height:${Math.min(100, ((d.minutes ?? 0) / 60) * 100)}%"></i>` : '';
-      return `<span class="dr-day ${d.state} ${d.today ? 'today' : ''} ${d.winner ? `r-${esc(d.winner.rarity)}` : ''}" data-tip="${esc(tip)}">${fill}</span>`;
-    })
-    .join('')}</div>`;
-}
-
-const BY = { you: '', auto: 'Automatically', multiview: 'In Stream Multiview', elsewhere: 'On kick.com' };
-
-/** A claim in the list: the card, new or a duplicate (and how many times), and when. */
-function claimRow(c) {
-  const when = new Date(c.at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-  const what = c.duplicate ? `Duplicate${c.times > 1 ? ` · ${c.times}${['th', 'st', 'nd', 'rd'][c.times % 10 > 3 || Math.floor(c.times / 10) === 1 ? 0 : c.times % 10]} time` : ''}${c.xpMinutes ? ` · +${fmtDur(c.xpMinutes * MIN)} to levels` : ''}` : 'New to your collection';
-  return `<div class="dr-claim-row">${img(c.winner?.image, `dr-thumb r-${esc(c.winner?.rarity ?? 'common')}`)}
-    <div class="who"><b>${esc(cardName(c.winner))}</b>${rarityChip(c.winner?.rarity ?? 'common', ' tiny')}<span>${what}</span></div>
-    <div class="when">${when}${BY[c.by] ? `<span>${BY[c.by]}</span>` : ''}</div></div>`;
-}
-
-/** How your duplicates compare with the odds. */
-function luckLine(s) {
-  if (!s?.claims) return '<span>Your first claim starts the record.</span>';
-  const rate = s.duplicates / s.claims;
-  const diff = rate - (s.expectedDupes ?? rate);
-  const word = s.claims < 5 ? '' : diff < -0.05 ? '<span class="chip green tiny">Luckier than the odds</span>' : diff > 0.05 ? '<span class="chip amber tiny">Unluckier than the odds</span>' : '<span class="chip tiny">As expected</span>';
-  return `<span><b>${s.duplicates}</b> of ${s.claims} claims were duplicates: <b>${fmtChance(rate)}</b>, ${fmtChance(s.expectedDupes)} expected</span>${word}`;
-}
-
-/** The Daily tab on the dashboard: today, streak, level and collection, the last 30 days, every claim. */
-function dailyPanel(dr) {
-  if (!dr || dr.state === 'signed-out') return '<div class="empty">Sign in to Kick to see your daily reward.</div>';
-  const s = dr.stats ?? {};
-  const lv = dr.level;
-  const today =
-    dr.state === 'claimed'
-      ? `<b>${rarityName(dr.today?.winner?.rarity)}</b><span>next in ${fmtDur(dr.endsAt - Date.now())}</span>`
-      : dr.state === 'ready'
-        ? `<b class="green">Ready</b><span>until ${fmtClock(dr.endsAt)}</span>`
-        : `<b>${dr.minutes}<small>/${dr.threshold}m</small></b><span>${dr.threshold - dr.minutes}m to go</span>`;
-  const tile = (ic, cls, label, body, { extra = '', action = '', tip = '' } = {}) =>
-    `<${action ? 'button' : 'div'} class="dr-tile-stat ${extra}" ${action ? `data-action="${action}"` : ''} ${tip ? `data-tip="${esc(tip)}"` : ''}><div class="stat-head"><span class="stat-icon ${cls}">${ic}</span>${label}</div>${body}</${action ? 'button' : 'div'}>`;
-  const rate = s.claims ? `<b>${s.duplicates}</b> duplicate${s.duplicates === 1 ? '' : 's'} · <b>${fmtChance(s.duplicates / s.claims)}</b>${s.expectedDupes != null ? ` <span class="muted">(${fmtChance(s.expectedDupes)} expected)</span>` : ''}` : '';
-  return `<div class="dr-panel">
-    <div class="dr-tiles">
-      ${tile(chestMark(), 'green', 'Today', today, { extra: `${dr.state === 'ready' ? 'ready' : ''} ${dr.state === 'claimed' ? `r-${esc(dr.today?.winner?.rarity ?? 'common')} won` : ''}`, action: 'reward-open', tip: 'Open the daily reward' })}
-      ${tile(icon('bolt'), 'gold', 'Streak', `<b>${dr.streak ?? 0}<small> days</small></b><span>best ${Math.max(s.bestStreak ?? 0, dr.streak ?? 0)}</span>`)}
-      ${tile(icon('trophy'), 'violet', 'Level', lv ? `<b>${lv.level}</b><span class="bar" data-tip="${lv.progress} of ${lv.progress + lv.toNext} XP to Level ${lv.level + 1}"><i style="width:${lv.toNext ? Math.min(100, (lv.progress / (lv.progress + lv.toNext)) * 100) : 0}%"></i></span>` : '<b>—</b>')}
-      ${tile(icon('sparkle'), 'blue', 'Cards', `<b>${dr.collection?.owned ?? 0}<small>/${dr.collection?.total ?? 0}</small></b><span>${dr.collection?.total ? Math.round((dr.collection.owned / dr.collection.total) * 100) : 0}% done</span>`, { action: 'reward-collection', tip: 'Every card, with your odds by rarity' })}
-    </div>
-    <div class="dr-section">
-      <div class="dr-section-head"><b>Last 30 days</b><span class="dr-legend"><i class="claimed"></i>Claimed<i class="missed"></i>Missed<i class="short"></i>Under an hour</span></div>
-      ${daysStrip(s.days)}
-    </div>
-    <div class="dr-section grow">
-      <div class="dr-section-head"><b>Claims</b><span class="muted">${s.claims ?? 0}</span><span class="spacer"></span><span class="dr-rate">${rate}</span></div>
-      <div class="dr-claims">${(dr.recent ?? []).map(claimRow).join('') || '<div class="side-note">Every claim shows here, with its duplicates counted. Kick keeps no list of its own.</div>'}</div>
-    </div>
-  </div>`;
-}
-
-// ------------------------------------------------------------------ the collection
-
-/**
- * Every card Kick has: yours in colour, the rest dimmed, with how many times you've won each.
- * @param {{ cards: object[], wins: Record<string, number> }} col
- * @param {{ rarity?: string, show?: 'all'|'owned'|'missing' }} filter
- */
-function collectionView(col, { rarity = 'all', show = 'all' } = {}, dr = null) {
-  const cards = (col?.cards ?? []).filter((c) => (rarity === 'all' || c.rarity === rarity) && (show === 'all' || (show === 'owned' ? c.owned : !c.owned)));
-  const seg = (action, value, options) => `<div class="tabs">${options.map(([v, label]) => `<button class="tab ${value === v ? 'active' : ''}" data-action="${action}" data-id="${v}">${label}</button>`).join('')}</div>`;
-  return `<div class="dr-collection">
-    ${
-      dr
-        ? `<aside class="dr-col-side">
-        ${rarityTable(dr, { won: true, filter: rarity })}
-        <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>On the next claim, by Kick’s odds</small></span></div>
-        <div class="dr-luck">${luckLine(dr.stats)}</div>
-        <p class="dr-col-note">Kick only gives odds by rarity, so every card of a rarity counts as equally likely. Won and Dupes count the claims Pear Drops saw.</p>
-      </aside>`
-        : ''
-    }
-    <div class="dr-col-main">
-      <div class="dr-col-bar"><b>${rarity === 'all' ? 'Every card' : `${rarityName(rarity)} cards`}</b><span class="muted">${cards.length}</span>${rarity === 'all' ? '' : `<button class="btn sm ghost" data-action="col-rarity" data-id="all">${icon('x')} Every rarity</button>`}<span class="spacer"></span>${seg('col-show', show, [['all', 'All'], ['owned', 'Owned'], ['missing', 'Missing']])}</div>
-      <div class="dr-col-grid">${cards
-        .map((c) => {
-          const won = col.wins?.[c.id] ?? 0;
-          return `<div class="dr-col-card r-${esc(c.rarity)} ${c.owned ? 'owned' : 'missing'}" data-tip="${esc(`${cardName(c)} · ${rarityName(c.rarity)} ${c.type ?? 'emote'}${c.owned ? '' : '\nNot in your collection yet'}${won ? `\nWon ${won === 1 ? 'once' : `${won} times`}` : ''}`)}">${img(c.image)}${won > 1 ? `<span class="dr-won-count">×${won}</span>` : ''}</div>`;
-        })
-        .join('')}</div>
-    </div>
-  </div>`;
 }

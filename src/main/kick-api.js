@@ -161,6 +161,28 @@ class KickApi {
   }
 
   // ---- Following (the same calls kick.com's own Follow button makes) ----
+  // ---- Daily reward (gamification). Every reply is { data, message } ----
+  async dailyChallenges(query) {
+    return this.request(`${WEB}/api/v1/gamification/challenges`, { query });
+  }
+
+  async collectibles() {
+    return this.request(`${WEB}/api/v1/gamification/collectibles`);
+  }
+
+  async level() {
+    return this.request(`${WEB}/api/v1/gamification/user/level`);
+  }
+
+  async streak(userId) {
+    return this.request(`${WEB}/api/v1/gamification/users/${encodeURIComponent(userId)}/streak`);
+  }
+
+  /** Really claims: only from the user's Claim, or the automatic claim they chose. */
+  async claimDaily(challengeId) {
+    return this.request(`${WEB}/api/v1/gamification/challenges/${encodeURIComponent(challengeId)}/claim`, { method: 'POST', body: {} });
+  }
+
   async follow(slug) {
     return this.request(`${KICK}/api/v2/channels/${encodeURIComponent(slug)}/follow`, { method: 'POST' });
   }

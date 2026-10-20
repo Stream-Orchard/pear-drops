@@ -3,7 +3,7 @@
 // brings the app forward.
 
 // The kinds, in the order Settings lists them.
-const KINDS = ['claimed', 'ready', 'ended', 'trouble', 'conflict', 'signedOut', 'done', 'newDrops'];
+const KINDS = ['claimed', 'ready', 'ended', 'trouble', 'conflict', 'signedOut', 'done', 'newDrops', 'dailyReady', 'dailyClaimed'];
 const DEFAULT_NOTIFY = Object.fromEntries(KINDS.map((k) => [k, false]));
 // The same notification again within this long isn't shown twice.
 const REPEAT_MS = 10 * 60_000;

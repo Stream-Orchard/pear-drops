@@ -153,8 +153,7 @@ const actions = {
   },
   'reward-claim': (el) => reveal(el.closest('.dr-card'), () => window.pd.dailyReward.claim(el.dataset.id)),
   'reward-replay': (el) => reveal(el.closest('.dr-card'), () => window.pd.dailyReward.lastClaim()),
-  'reward-insights': () => window.pd.tray.showMain('daily'),
-  'reward-collection': () => window.pd.tray.showMain('daily'),
+  'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
   'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
 };
 
