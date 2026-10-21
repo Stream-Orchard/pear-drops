@@ -1,8 +1,9 @@
 // Menu bar / system tray: an icon that draws the current drop's progress as a ring (the logo
-// while no stream is live for the drops left, the hopping chest while the daily reward waits),
-// and a popover with the live state and quick controls. On macOS the icon is a template (one
-// colour, tinted by the system to suit the menu bar) unless it has something to say: farming,
-// a conflict or error, or the waiting reward.
+// while no stream is live for the drops left, or the chest in a ring while the daily reward's
+// hour fills instead; the hopping chest while the reward waits), and a popover with the live state
+// and quick controls. On macOS the icon is a template (one colour, tinted by the system to suit
+// the menu bar) unless it has something to say: farming, a conflict or error, the daily reward's
+// hour filling, or the waiting reward.
 const { Tray, BrowserWindow, nativeImage, screen, ipcMain, systemPreferences } = require('electron');
 const path = require('path');
 
@@ -355,6 +356,54 @@ function chestPixels(t = 0, { size = 18, scale = 2 } = {}) {
   return { buf: canvas.toBGRA(), px };
 }
 
+// The chest in its ring: rewardChest() in src/renderer/daily-reward.js, at its tray size (a
+// 22-unit ring, r 9 and 2 wide, round a 16 px chest in its 26 px box).
+const DAILY = { ring: 9, width: 2, view: 22, chest: (22 * 16) / 26 };
+
+/** A circle's arc in pixels, clockwise from the top, as one outline. */
+function arcOutline(c, r, fraction) {
+  const steps = Math.max(2, Math.ceil(fraction * 64));
+  const points = Array.from({ length: steps + 1 }, (_, k) => {
+    const a = ((fraction * k) / steps) * Math.PI * 2;
+    return [c + r * Math.sin(a), c - r * Math.cos(a)];
+  });
+  return [{ points, closed: false }];
+}
+
+/** The still chest in a ring filled to `fraction`, as BGRA pixels: the daily reward's hour filling. */
+function dailyPixels(fraction, { size = 18, scale = 2 } = {}) {
+  const px = size * scale;
+  const k = px / DAILY.view;
+  const canvas = new Pixels(px);
+  const f = Math.max(0, Math.min(1, fraction));
+  const same = ([x, y]) => [x, y];
+  canvas.stroke(arcOutline(px / 2, DAILY.ring * k, 1), same, DAILY.width * k, [140, 146, 156], 120 / 255);
+  if (f >= 0.005) canvas.stroke(arcOutline(px / 2, DAILY.ring * k, f), same, DAILY.width * k, [83, 252, 24]);
+  const unit = (DAILY.chest * k) / 24;
+  const chest = ([x, y]) => [px / 2 + (x - 12) * unit, px / 2 + (y - 12) * unit];
+  const body = pathOutlines(CHEST.body);
+  canvas.fill(body, chest, [83, 252, 24], 0.14);
+  canvas.stroke(body, chest, 2 * unit, [83, 252, 24]);
+  for (const d of CHEST.lines) canvas.stroke(pathOutlines(d), chest, 2 * unit, [83, 252, 24]);
+  return { buf: canvas.toBGRA(), px };
+}
+
+/**
+ * The daily reward on the icon. Ready to claim: the hopping chest, over anything else. Its hour
+ * filling while no stream plays for the drops (none live, or every drop done): the chest in its
+ * ring, with its percent. Farming, paused or in trouble, the drop's own ring stays.
+ * @param {object} info farmer.trayInfo()
+ * @param {object|null} daily the daily reward's challenge: { state, minutes, threshold }
+ */
+function withDailyReward(info, daily) {
+  if (daily?.state === 'ready') return { ...info, mark: 'chest', tooltip: `${info.tooltip} · Daily reward ready to claim` };
+  if (daily?.state === 'earning' && (info.mark === 'logo' || info.tone === 'done')) {
+    const fraction = Math.min(1, Math.max(0, daily.minutes) / Math.max(1, daily.threshold));
+    return { ...info, mark: 'daily', fraction, title: `${Math.floor(fraction * 100)}%`, tooltip: `${info.tooltip} · Daily reward ${daily.minutes} of ${daily.threshold} min` };
+  }
+  return info;
+}
+
 function toImage({ buf, px }, template = false) {
   const image = nativeImage.createFromBitmap(buf, { width: px, height: px, scaleFactor: 2 });
   if (template) image.setTemplateImage(true);
@@ -403,15 +452,16 @@ class TrayController {
     this.tray.on('right-click', () => this.toggle());
   }
 
-  /** info: { tone, fraction, title, tooltip, mark }; mark: 'chest' or 'logo' in place of the ring. */
+  /** info: { tone, fraction, title, tooltip, mark }; mark: 'chest', 'logo' or 'daily' (the chest in a ring of `fraction`) in place of the ring. */
   update(info, { showPercent = true } = {}) {
     if (!this.tray) return;
-    const key = info.mark ?? `${info.tone}:${Math.round(info.fraction * 100)}`;
+    const key = info.mark === 'daily' ? `daily:${Math.round(info.fraction * 100)}` : (info.mark ?? `${info.tone}:${Math.round(info.fraction * 100)}`);
     if (key !== this.iconKey) {
       this.iconKey = key;
       this.stopHop();
       if (info.mark === 'chest') this.startHop();
       else if (info.mark === 'logo') this.tray.setImage((this.icons.logo ??= this.image(logoPixels({ template: this.mac }), this.mac)));
+      else if (info.mark === 'daily') this.tray.setImage(this.image(dailyPixels(info.fraction)));
       else {
         const template = this.mac && !COLOURED.has(info.tone);
         this.tray.setImage(this.image(ringPixels(info.fraction, info.tone, { template }), template));
@@ -526,4 +576,4 @@ class TrayController {
   }
 }
 
-module.exports = { TrayController, ringPixels, logoPixels, chestPixels, pathOutlines, HOP_FRAMES, HOP_MS, WIDTH };
+module.exports = { TrayController, ringPixels, logoPixels, chestPixels, dailyPixels, withDailyReward, pathOutlines, HOP_FRAMES, HOP_MS, WIDTH };

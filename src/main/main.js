@@ -10,7 +10,7 @@ const { Store } = require('./store');
 const { setupSecurity, guardContents, keepOnKick, openLink } = require('./security');
 const guard = require('./guard');
 const { createDemo } = require('./demo');
-const { TrayController } = require('./tray');
+const { TrayController, withDailyReward } = require('./tray');
 const { History } = require('./history');
 const { openDb, OLD_FILES } = require('./db');
 const { Backups, EVERY, KEEP } = require('./backups');
@@ -115,12 +115,7 @@ function sendState() {
 
 function updateTray() {
   if (!tray || quitting) return;
-  const info = auth.status === 'signed-in' ? farmer.trayInfo() : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
-  // The chest hops on the icon while the daily reward waits to be claimed.
-  if (auth.status === 'signed-in' && dailyReward?.daily?.state === 'ready') {
-    info.mark = 'chest';
-    info.tooltip += ' · Daily reward ready to claim';
-  }
+  const info = auth.status === 'signed-in' ? withDailyReward(farmer.trayInfo(), dailyReward?.daily) : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
   tray.update(info, { showPercent: store.get().trayPercent });
 }
 
@@ -906,6 +901,7 @@ app.whenReady().then(async () => {
     },
   });
   tray.create();
+  if (global.pdDebug) global.pdDebug.tray = tray;
   setInterval(updateTray, 15_000);
   if (DEMO) setupDemo();
   powerMonitor.on('resume', () => auth.status === 'signed-in' && !farmer.paused && farmer.handleResume());

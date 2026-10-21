@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { TrayController, ringPixels, logoPixels, chestPixels, pathOutlines, HOP_FRAMES, HOP_MS, WIDTH } = require('../../../src/main/tray');
+const { TrayController, ringPixels, logoPixels, chestPixels, dailyPixels, withDailyReward, pathOutlines, HOP_FRAMES, HOP_MS, WIDTH } = require('../../../src/main/tray');
 
 /** A popover window that, like Windows with display scaling, reports itself a little bigger than it was set. */
 function fakeWindow({ inflate = 3 } = {}) {
@@ -152,6 +152,40 @@ test('the chest hops: it crouches, leaps, lands, and throws its pixels only as i
 });
 
 /** A controller with a fake tray that keeps the images it's given. */
+test('the daily reward’s hour is the chest, still, in a ring filled clockwise from the top', () => {
+  const half = dailyPixels(0.5);
+  assert.equal(half.px, 36);
+  assert.equal(at(half, 0.02, 0.02).a, 0, 'clear at the corners');
+  const green = (p) => p.a === 255 && p.g > 240 && p.r < 100;
+  assert.ok(green(at(half, 0.5, 0.09)), 'filled from the top');
+  assert.ok(green(at(half, 0.91, 0.5)), 'round the right');
+  const left = at(half, 0.09, 0.5);
+  assert.ok(left.a > 0 && left.a < 160 && left.g < 200, 'the rest is the faint track');
+  assert.ok(green(at(half, 0.41, 0.5)), 'the chest’s side, in the middle');
+  assert.equal(at(half, 0.5, 0.25).a, 0, 'a gap between the chest and its ring');
+  const none = dailyPixels(0);
+  assert.ok(at(none, 0.5, 0.09).a < 160, 'nothing watched: all track');
+  assert.ok(green(at(none, 0.41, 0.5)), 'and the chest');
+  assert.deepEqual(dailyPixels(-1).buf, none.buf);
+  assert.ok(green(at(dailyPixels(1), 0.09, 0.5)), 'the whole ring at the hour');
+});
+
+test('the daily reward on the icon: the chest when ready, its ring while the hour fills with no stream playing, else the drop’s ring', () => {
+  const waiting = { tone: 'waiting', fraction: 0, title: '', tooltip: 'Pear Drops · No live streams', mark: 'logo' };
+  const earning = { state: 'earning', minutes: 37, threshold: 60 };
+  assert.deepEqual(withDailyReward(waiting, earning), { ...waiting, mark: 'daily', fraction: 37 / 60, title: '61%', tooltip: 'Pear Drops · No live streams · Daily reward 37 of 60 min' });
+  const done = { tone: 'done', fraction: 0, title: '', tooltip: 'Pear Drops · Every emote and badge drop is claimed' };
+  assert.equal(withDailyReward(done, earning).mark, 'daily', 'every drop done');
+  assert.equal(withDailyReward(waiting, { state: 'earning', minutes: 0, threshold: 0 }).fraction, 0);
+  const farming = info();
+  for (const other of [farming, info({ tone: 'paused', fraction: 0 }), info({ tone: 'error' })]) assert.equal(withDailyReward(other, earning), other, other.tone);
+  const ready = withDailyReward(farming, { state: 'ready', minutes: 60, threshold: 60 });
+  assert.equal(ready.mark, 'chest');
+  assert.equal(ready.tooltip, 'Pear Drops · Daily reward ready to claim');
+  assert.equal(withDailyReward(waiting, { state: 'ready' }).mark, 'chest', 'over the logo too');
+  for (const daily of [{ state: 'claimed', minutes: 60, threshold: 60 }, null, undefined]) assert.equal(withDailyReward(waiting, daily), waiting);
+});
+
 function iconSetup({ motion = true, mac = false } = {}) {
   const shown = [];
   const tray = new TrayController({
@@ -234,6 +268,20 @@ test('on macOS the icon is a template unless it’s farming, in trouble, or the 
     assert.equal(other.shown.at(-1).template, false, JSON.stringify(more));
   }
   assert.deepEqual(other.shown.at(-1).buf, logoPixels().buf);
+});
+
+test('the daily ring is drawn as its percent changes, in colour on macOS too', () => {
+  const { tray, shown } = iconSetup({ mac: true });
+  tray.update(info({ tone: 'waiting', mark: 'daily', fraction: 0.5 }));
+  tray.update(info({ tone: 'waiting', mark: 'daily', fraction: 0.501 }));
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].template, false, 'its hour filling is something to say');
+  assert.deepEqual(shown[0].buf, dailyPixels(0.5).buf);
+  tray.update(info({ tone: 'waiting', mark: 'daily', fraction: 0.52 }));
+  assert.equal(shown.length, 2);
+  assert.deepEqual(shown[1].buf, dailyPixels(0.52).buf);
+  tray.update(info({ tone: 'waiting', mark: 'logo' }));
+  assert.deepEqual(shown[2].buf, logoPixels({ template: true }).buf, 'claimed elsewhere: the logo again');
 });
 
 test('with reduced motion the chest sits still', (t) => {
