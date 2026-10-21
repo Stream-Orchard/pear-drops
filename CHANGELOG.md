@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.16 (current)
+## 0.1.17 (current)
+- The tray shows the daily reward's chest in a filling ring while no stream plays for the drops
+
+## 0.1.16
 - On macOS the tray icon matches the menu bar (white or black) while quiet, and keeps its colour while farming, in trouble, or the daily reward waits
 
 ## 0.1.15
