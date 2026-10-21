@@ -28,6 +28,14 @@ const allOffline = (on = true) =>
     },
     { all: CHANNELS, on },
   );
+/** Waits for the tray icon to be drawn as `key` ('daily:62', 'chest', a tone and percent). */
+async function trayIcon(key) {
+  for (let i = 0; i < 60; i++) {
+    if ((await a.app.evaluate(() => global.pdDebug.tray.iconKey)) === key) return;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error(`the tray icon is still ${await a.app.evaluate(() => global.pdDebug.tray.iconKey)}, not ${key}`);
+}
 const fits = () => a.win.evaluate(() => document.querySelector('#content').scrollHeight - document.querySelector('#content').clientHeight);
 
 test('paused with a channel live, the chart shows what resuming would bring, with times from resuming', async () => {
@@ -82,6 +90,22 @@ test('paused with nothing live, the radar stands still', async () => {
   await until(a.win, () => document.querySelector('#chart .idle-scene.is-scan'), 'the radar again', 10000);
 });
 
+test('with nothing live, the tray shows the daily reward’s hour filling round its chest; paused, the paused ring; ready, the hopping chest', async () => {
+  const daily = (minutes) => a.demo((d, minutes) => d.daily({ minutes }), minutes);
+  await daily(37);
+  await trayIcon('daily:62');
+  await daily(45);
+  await trayIcon('daily:75');
+  await setPaused(true);
+  await trayIcon('paused:0');
+  await setPaused(false);
+  await trayIcon('daily:75');
+  await daily(60);
+  await trayIcon('chest');
+  await daily(37);
+  await trayIcon('daily:62');
+});
+
 test('with every drop collected, the rewards in an arc', async () => {
   await a.demo(async (d) => {
     for (let i = 0; i < 3; i++) {
@@ -94,4 +118,5 @@ test('with every drop collected, the rewards in an arc', async () => {
   assert.ok((await a.win.locator('#chart .is-reward').count()) >= 4, 'the rewards collected');
   assert.match(await a.win.textContent('#chart .card-sub'), /Nothing left to farm/);
   assert.ok((await fits()) <= 2);
+  await trayIcon('daily:62');
 });
