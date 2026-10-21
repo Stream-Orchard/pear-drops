@@ -145,6 +145,7 @@ const actions = {
   skip: () => window.pd.tray.action('skip'),
   'reward-open': () => {
     page = 'reward';
+    window.pd.dailyReward.opened();
     render();
   },
   'reward-back': () => {
