@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('pd', {
   dailyReward: {
     claim: (id) => ipcRenderer.invoke('daily:claim', id),
     lastClaim: () => ipcRenderer.invoke('daily:last-claim'),
+    opened: () => ipcRenderer.invoke('daily:opened'),
   },
   history: (opts) => ipcRenderer.invoke('history:view', opts),
   onHistoryChanged: (callback) => {

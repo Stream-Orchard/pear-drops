@@ -1156,6 +1156,7 @@ function renderRewardPop() {
 function openReward(open = !ui.rewardOpen) {
   if (ui.rewardOpen === open) return;
   ui.rewardOpen = open;
+  if (open) window.pd.dailyReward.opened();
   // The docked stream is drawn over the page, so it steps aside like it does for a modal.
   if (!ui.modal) window.pd.suspendPlayer(open);
   render();

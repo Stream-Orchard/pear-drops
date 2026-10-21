@@ -350,6 +350,21 @@ class Connected extends EventEmitter {
     this.changed();
   }
 
+  /**
+   * Whether a connected app is playing Kick as this account right now: its players signed in, a
+   * channel open, the same user. Kick's daily hour fills from those too.
+   */
+  kickPlayersWatching() {
+    const a = this.auth();
+    const user = a.status === 'signed-in' ? a.user?.username?.toLowerCase() : null;
+    if (!user) return false;
+    for (const heard of this.heard.values()) {
+      const k = heard['players.changed']?.platforms?.kick;
+      if (k?.signedIn && k.open?.length > 0 && k.account?.user?.toLowerCase() === user) return true;
+    }
+    return false;
+  }
+
   /** For the Settings card and the credit banner. Logos come separately (icons()), once. */
   state() {
     return {

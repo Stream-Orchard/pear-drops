@@ -146,6 +146,29 @@ test('players that stay signed in: a warning on the card, and the credit banner 
   await until(a.win, () => !document.querySelector('#banner .banner'), 'the banner to clear', 10000);
 });
 
+test('its Kick players watching as this account count for the daily reward while Pear Drops is paused', async () => {
+  const label = () => a.win.textContent('.dr-pop .dr-claim');
+  const watching = () => a.app.evaluate(() => global.pdDemo.dailyReward().snapshot().watching);
+  await a.demo((d) => d.daily({ minutes: 37 })); // the hour still being earned
+  await a.win.evaluate(() => window.pd.pause(true));
+  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto' }));
+  await until(a.win, () => document.querySelector('#hero')?.textContent.includes('Paused'), 'paused');
+  await a.win.click('#titlebar-actions .dr-chest');
+  await until(a.win, () => /Watch \d+ more min/.test(document.querySelector('.dr-pop .dr-claim')?.textContent ?? ''), 'nothing watching');
+  assert.equal(await watching(), false);
+  await a.demo((d) => d.multiview({ signedIn: true, mode: 'signed-in' }));
+  await until(a.win, () => /Claim in \d+ min/.test(document.querySelector('.dr-pop .dr-claim')?.textContent ?? ''), 'the hour earned in Stream Multiview', 15000);
+  assert.equal(await watching(), true);
+  assert.ok(await a.app.evaluate(() => global.pdDemo.dailyReward().timer?._idleTimeout <= 120_000), 'the next check within 2 minutes, not 10');
+  assert.match(await a.win.getAttribute('#titlebar-actions .dr-chest', 'data-tip'), /min to go$/, 'not "(not watching)"');
+  await a.demo((d) => d.multiview({ signedIn: false, mode: 'auto' }));
+  await until(a.win, () => /Watch \d+ more min/.test(document.querySelector('.dr-pop .dr-claim')?.textContent ?? ''), 'signed out again', 15000);
+  assert.match(await label(), /Watch \d+ more min/);
+  await a.win.keyboard.press('Escape');
+  await a.win.evaluate(() => window.pd.pause(false));
+  await until(a.win, () => !document.querySelector('#hero')?.textContent.includes('Paused'), 'farming again', 15000);
+});
+
 test('Activity: every message between the two this run, in words, a page at a time that fits', async () => {
   await openTab();
   await until(a.win, () => document.querySelector('.app-card.connected'), 'connected', 15000);

@@ -13,10 +13,11 @@ const MEDIA = 'https://static.kick.com/rewards/daily-rewards/';
 const MEDIA_HOST = 'https://static.kick.com/';
 
 // How often Kick is asked (it's behind Cloudflare, so as little as works):
-const EARNING_MS = 2 * MIN; // while the hour is being earned and Pear Drops is watching (as kick.com does)
+const EARNING_MS = 2 * MIN; // while the hour is being earned and Pear Drops (or a connected app) is watching, as kick.com does
 const IDLE_MS = 10 * MIN; // otherwise: someone may be watching elsewhere, or claim on kick.com
 const CARDS_MS = 6 * 60 * MIN; // the card list, level and streak, besides after each claim
 const RETRY_MS = 3 * MIN; // after Kick didn't answer
+const OPENED_MS = 15_000; // the card opened: looks again unless it just did
 const AUTO_BEFORE_MS = 15 * MIN; // "Before it resets": this long before midnight UTC
 const REMIND_BEFORE_MS = 60 * MIN; // "ready" again, an hour before it resets, if still waiting
 const CLAIM_MODES = ['self', 'before-reset', 'now'];
@@ -196,7 +197,7 @@ class DailyReward extends EventEmitter {
    * @param {object} o.kick dailyChallenges(query), collectibles(), level(), streak(userId), claimDaily(id)
    * @param {{ load: () => object, save: (v: object) => void }} o.slot what's kept between launches
    * @param {() => object} o.settings the app's settings (dailyClaim)
-   * @param {() => boolean} o.watching whether Pear Drops is watching a stream right now
+   * @param {() => boolean} o.watching whether Pear Drops (or a connected app's Kick players, as this account) is watching a stream right now
    * @param {() => (string|number|null)} o.userId the signed-in Kick account's id
    * @param {{ add: (type: string, data: object) => void }} [o.history]
    * @param {boolean} [o.kickMedia] play Kick's videos (demo mode never goes to the network, so draws its own crate)
@@ -217,6 +218,7 @@ class DailyReward extends EventEmitter {
     this.level = null;
     this.streak = null;
     this.cardsAt = 0;
+    this.checkedAt = 0; // when Kick was last asked
     this.rarities = new Map();
     this.error = false;
     this.claiming = false;
@@ -242,7 +244,12 @@ class DailyReward extends EventEmitter {
     if (this.running) this.schedule(1500);
   }
 
-  /** Pear Drops started watching: while the hour is being earned, look more often from now on. */
+  /** The card was opened: what it says now, unless that was just asked (or a claim is under way). */
+  opened() {
+    if (this.running && !this.claiming && this.now() - this.checkedAt >= OPENED_MS) this.refresh();
+  }
+
+  /** Watching started (here or in a connected app): while the hour is being earned, look more often from now on. */
   watchingStarted() {
     if (this.running && this.daily?.state === 'earning' && !this.claiming) this.schedule(5000);
   }
@@ -250,6 +257,7 @@ class DailyReward extends EventEmitter {
   async refresh({ full = false } = {}) {
     if (!this.running) return;
     const was = this.daily?.state ?? null;
+    this.checkedAt = this.now();
     try {
       const wantCards = full || !this.collection || this.now() - this.cardsAt > CARDS_MS || (this.daily?.endsAt && this.now() >= this.daily.endsAt);
       const [challenges, oneOff] = await Promise.all([this.kick.dailyChallenges(), wantCards ? this.kick.dailyChallenges({ recurrence: 'one_off' }).catch(() => null) : null]);
@@ -422,5 +430,6 @@ module.exports = {
   claimText,
   dayOf,
   AUTO_BEFORE_MS,
+  OPENED_MS,
   REMIND_BEFORE_MS,
 };

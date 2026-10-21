@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const dr = require('../../../src/main/daily-reward');
-const { DailyReward } = dr;
+const { DailyReward, OPENED_MS } = dr;
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -292,6 +292,26 @@ test('watching again while the hour is earned asks Kick soon', async () => {
   await settle();
   reward.watchingStarted();
   assert.equal(timers.next, 5000);
+});
+
+test('the card opened asks Kick at once, unless it just did or a claim is under way', async () => {
+  const { reward, kick, timers, clock } = setup();
+  reward.opened();
+  assert.equal(kick.calls.challenges, 0, 'not before it starts');
+  reward.start();
+  await settle();
+  reward.opened();
+  assert.equal(kick.calls.challenges, 1, 'it just asked');
+  clock.now += OPENED_MS;
+  reward.opened();
+  await settle();
+  assert.equal(kick.calls.challenges, 2);
+  assert.equal(kick.calls.cards, 1, 'only the challenge');
+  assert.equal(timers.list.length, 1, 'and the next check after it');
+  clock.now += OPENED_MS;
+  reward.claiming = true;
+  reward.opened();
+  assert.equal(kick.calls.challenges, 2, 'a claim reads it again itself');
 });
 
 test('a claim plays Kick’s reel, records it, keeps it for Replay, and reads the cards again', async () => {

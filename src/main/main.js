@@ -268,7 +268,7 @@ function createDailyReward() {
     kick: api,
     slot: db.slot('dailyReward'),
     settings: () => store.get(),
-    watching: () => auth.status === 'signed-in' && !!farmer.current && !farmer.paused,
+    watching: rewardWatching,
     userId: () => auth.user?.id ?? null,
     history,
     kickMedia: !DEMO,
@@ -288,12 +288,20 @@ function createDailyReward() {
   });
   // Kick's realtime "the hour is done", when the docked page hears it.
   watcher.on('gamification', () => dailyReward.goalReached());
-  let watching = false;
-  farmer.on('update', () => {
-    const now = !!farmer.current && !farmer.paused;
-    if (now && !watching) dailyReward.watchingStarted();
-    watching = now;
-  });
+  farmer.on('update', noticeWatching);
+}
+
+/** Whether the daily hour is being earned: Pear Drops is watching, or a connected app's Kick players are, as this account. */
+function rewardWatching() {
+  return auth.status === 'signed-in' && ((!!farmer.current && !farmer.paused) || !!connected?.kickPlayersWatching());
+}
+
+/** Watching started (here or in a connected app): the daily reward looks more often from now on. */
+let wasWatching = false;
+function noticeWatching() {
+  const now = rewardWatching();
+  if (now && !wasWatching) dailyReward?.watchingStarted();
+  wasWatching = now;
 }
 
 function startFarming() {
@@ -568,6 +576,10 @@ function registerIpc() {
   // The daily reward's Claim and Replay, from the dashboard or the tray.
   appIpc.handle('daily:claim', (_e, id) => (auth.status === 'signed-in' && dailyReward ? dailyReward.claim(idArg(id) == null ? undefined : String(id), { by: 'you' }) : { error: 'Sign in to Kick first.' }));
   appIpc.handle('daily:last-claim', () => dailyReward?.lastClaim() ?? null);
+  // The card opened: what it shows comes from Kick now, not from the last check.
+  appIpc.handle('daily:opened', () => {
+    if (auth.status === 'signed-in') dailyReward?.opened();
+  });
   mainIpc.handle('auth:login', () => openLogin());
   mainIpc.handle('history:view', (_e, opts = {}) => {
     const campaignId = typeof opts.campaignId === 'string' ? opts.campaignId : null;
@@ -868,6 +880,7 @@ app.whenReady().then(async () => {
     appDataDir: DEMO ? path.join(app.getPath('userData'), 'demo-apps') : app.getPath('appData'),
   });
   connected.on('change', sendState);
+  connected.on('change', noticeWatching);
   // The Activity view refetches its page when there's something new (at most a few times a second).
   let activityTimer = null;
   connected.on('activity', () => {

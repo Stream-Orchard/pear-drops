@@ -195,6 +195,33 @@ test('farming stops while its Kick players are out on Auto: the wait to sign the
   cleanup();
 });
 
+test('Kick players watching: signed in as this account with a channel open, until they stop or the app goes', () => {
+  const { c, auth, cleanup } = setup();
+  const kick = (k) => ({ platforms: { kick: { signedIn: true, mode: 'signed-in', account: { platform: 'kick', user: 'PearFan' }, open: [{ platform: 'kick', slug: 'pixelpear' }], ...k } } });
+  const hear = (k) => c.link.emit('event', MV, 'players.changed', kick(k));
+  assert.equal(c.kickPlayersWatching(), false, 'nothing heard');
+  hear({});
+  assert.equal(c.kickPlayersWatching(), true, 'the same user, whatever its case');
+  hear({ signedIn: false });
+  assert.equal(c.kickPlayersWatching(), false, 'signed out');
+  hear({ open: [] });
+  assert.equal(c.kickPlayersWatching(), false, 'nothing open');
+  hear({ account: { platform: 'kick', user: 'someoneelse' } });
+  assert.equal(c.kickPlayersWatching(), false, 'another account');
+  hear({ account: null });
+  assert.equal(c.kickPlayersWatching(), false, 'no account');
+  c.link.emit('event', MV, 'players.changed', { platforms: {} });
+  assert.equal(c.kickPlayersWatching(), false, 'no Kick players');
+  hear({});
+  auth.status = 'signed-out';
+  assert.equal(c.kickPlayersWatching(), false, 'Pear Drops signed out');
+  auth.status = 'signed-in';
+  assert.equal(c.kickPlayersWatching(), true);
+  c.link.emit('disconnected', MV, 'closed');
+  assert.equal(c.kickPlayersWatching(), false, 'the app gone');
+  cleanup();
+});
+
 test('a heartbeat heard tells the Activity view, so its tile is current', async () => {
   const { c, cleanup } = setup();
   let told = 0;

@@ -77,6 +77,19 @@ test('the card opens under the chest, fits the window without scrolling, and clo
   await until(a.win, () => !document.querySelector('.dr-pop'), 'closed by Esc');
 });
 
+test('opening the card asks Kick again, so it shows the minutes as they are now', async () => {
+  // Kick's count moves on between checks; the last check was a while ago.
+  await a.app.evaluate(() => {
+    global.pdDemo.api.daily.minutes = 41;
+    global.pdDemo.dailyReward().checkedAt = 0;
+  });
+  await a.win.click(chest);
+  await until(a.win, () => /41 of 60 min/.test(document.querySelector('.dr-pop')?.textContent ?? ''), 'the minutes from Kick, on opening');
+  await a.win.keyboard.press('Escape');
+  await until(a.win, () => !document.querySelector('.dr-pop'), 'closed');
+  await a.demo((d) => d.daily({ minutes: 37 }));
+});
+
 test('ready: the chest becomes a "Claim reward" chip and hops, and claiming plays the reveal', async () => {
   await a.app.evaluate(() => global.pdDemo.daily({ minutes: 60, winner: 'card-rare-0' }));
   await until(a.win, () => document.querySelector('#titlebar-actions .dr-chest.state-ready.chip'), 'the chip');
