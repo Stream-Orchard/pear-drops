@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.17 (current)
+## 0.1.18 (current)
+- Daily reward: counts Stream Multiview's signed-in Kick players as watching, and checks again when its card opens
+
+## 0.1.17
 - The tray shows the daily reward's chest in a filling ring while no stream plays for the drops
 
 ## 0.1.16
