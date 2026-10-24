@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.21 (current)
+## 0.1.22 (current)
+- Every Kick crate gets its own tab: Trick or Treat shows its prizes by name, and claim buttons glow in each crate's colours
+- The stream keeps playing behind the daily reward card, Settings and What's New instead of disappearing
+
+## 0.1.21
 - Electron 44.9.3, past the certificate advisory that fails npm audit in CI
 - Event crates like Kick's Trick or Treat get their own animated section, and the reveal stays until you're done
 
