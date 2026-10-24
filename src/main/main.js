@@ -115,7 +115,7 @@ function sendState() {
 
 function updateTray() {
   if (!tray || quitting) return;
-  const info = auth.status === 'signed-in' ? withDailyReward(farmer.trayInfo(), dailyReward?.daily) : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
+  const info = auth.status === 'signed-in' ? withDailyReward(farmer.trayInfo(), dailyReward?.chest()) : { tone: 'idle', fraction: 0, title: '', tooltip: 'Pear Drops · signed out' };
   tray.update(info, { showPercent: store.get().trayPercent });
 }
 
@@ -281,10 +281,14 @@ function createDailyReward() {
   dailyReward.on('reminder', (s) =>
     notifier.send('dailyReady', { title: 'Daily reward still waiting', body: s.claimMode === 'before-reset' ? `It resets at ${resets(s)}. Pear Drops claims it 15 minutes before, if you haven’t.` : `It resets at ${resets(s)}. Claim it before then.`, view: 'dashboard' }),
   );
-  dailyReward.on('claimed', ({ reel, by }) => {
+  // An event's crate (Kick's Trick or Treat, say), filled by watching.
+  dailyReward.on('crate-ready', (c) =>
+    notifier.send('dailyReady', { title: `${c.name || 'Event reward'} ready`, body: c.endsAt ? `Claim it before ${resets(c)}.` : 'Claim it in Pear Drops.', view: 'dashboard' }),
+  );
+  dailyReward.on('claimed', ({ reel, by, crate }) => {
     if (by === 'you') return;
-    const kind = `${reel.winner?.rarity ?? 'common'} ${reel.winner?.type ?? 'emote'}`;
-    notifier.send('dailyClaimed', { title: 'Daily reward claimed', body: reel.duplicate ? `A ${kind} you already had: level progress instead.` : `A ${kind}, new to your collection.`, view: 'dashboard' });
+    const kind = `${reel.winner?.rarity ?? 'common'} ${reel.winner?.type ?? 'reward'}`;
+    notifier.send('dailyClaimed', { title: `${crate || 'Daily reward'} claimed`, body: reel.duplicate ? `A ${kind} you already had: level progress instead.` : `A ${kind}, new to your collection.`, view: 'dashboard' });
   });
   // Kick's realtime "the hour is done", when the docked page hears it.
   watcher.on('gamification', () => dailyReward.goalReached());
@@ -485,10 +489,20 @@ function setupDemo() {
     },
     /**
      * The daily reward, set up for a test or a capture: minutes watched today (60 makes it ready),
-     * 'claimed', the card the next claim wins, the streak. Then the app asks the stand-in again.
+     * 'claimed', the card the next claim wins, the streak, and an event's crate: its minutes of 180
+     * (180 makes it ready), 'claimed', or null for none; eventWinner, the prize its claim gives
+     * ('prize-0' to 'prize-4'). Then the app asks the stand-in again.
      */
-    daily: async ({ minutes, claimed = false, winner, streak, welcome } = {}) => {
+    daily: async ({ minutes, claimed = false, winner, streak, welcome, event, eventName = 'Harvest Moon', eventWinner } = {}) => {
       const d = demo.api.daily;
+      if (event === null) demo.api.event = null;
+      else if (event !== undefined) {
+        const e = (demo.api.event ??= { id: 'event-demo', minutes: 0, status: 'in_progress' });
+        e.name = eventName;
+        if (event === 'claimed') Object.assign(e, { minutes: 180, status: 'claimed' });
+        else Object.assign(e, { minutes: event, status: event >= 180 ? 'claimable' : 'in_progress', won: null });
+      }
+      if (eventWinner !== undefined && demo.api.event) demo.api.event.nextWinner = eventWinner;
       if (minutes !== undefined) Object.assign(d, { minutes, status: minutes >= 60 ? 'claimable' : 'in_progress' });
       if (claimed) d.status = 'claimed';
       if (winner !== undefined) demo.api.nextWinner = winner;
@@ -575,7 +589,7 @@ function registerIpc() {
   appIpc.handle('app:getState', () => appState());
   // The daily reward's Claim and Replay, from the dashboard or the tray.
   appIpc.handle('daily:claim', (_e, id) => (auth.status === 'signed-in' && dailyReward ? dailyReward.claim(idArg(id) == null ? undefined : String(id), { by: 'you' }) : { error: 'Sign in to Kick first.' }));
-  appIpc.handle('daily:last-claim', () => dailyReward?.lastClaim() ?? null);
+  appIpc.handle('daily:last-claim', (_e, id) => dailyReward?.lastClaim(idArg(id) == null ? undefined : String(id)) ?? null);
   // The card opened: what it shows comes from Kick now, not from the last check.
   appIpc.handle('daily:opened', () => {
     if (auth.status === 'signed-in') dailyReward?.opened();

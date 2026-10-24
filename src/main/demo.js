@@ -276,6 +276,34 @@ const DROP_TABLE = [
   ['mythic', 5],
 ];
 
+/**
+ * A made-up event's prize, square like Kick's (an event's prizes aren't collectible cards: Kick
+ * sends only a thumbnail): the emote on a tile in its rarity's colour.
+ */
+function prizeImage(glyph, hue, rarity) {
+  const c = RARITY_COLOUR[rarity];
+  return svgUri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},85%,58%)"/><stop offset="1" stop-color="hsl(${hue + 30},75%,32%)"/></linearGradient></defs>
+    <rect x="4" y="4" width="112" height="112" rx="26" fill="url(#g)" stroke="${c}" stroke-width="4"/>
+    <ellipse cx="44" cy="30" rx="26" ry="10" fill="#fff" opacity=".18"/>
+    <text x="60" y="80" text-anchor="middle" font-size="56">${glyph}</text>
+  </svg>`);
+}
+// A made-up event crate's prizes: [rarity, glyph, hue], and its odds.
+const EVENT_PRIZES = [
+  ['common', '🌾', 40],
+  ['common', '🍂', 20],
+  ['uncommon', '🦉', 270],
+  ['rare', '🌕', 50],
+  ['mythic', '🌠', 300],
+].map(([rarity, glyph, hue], i) => ({ id: `prize-${i}`, rarity, thumbnail_url: prizeImage(glyph, hue, rarity) }));
+const EVENT_TABLE = [
+  ['common', 500],
+  ['uncommon', 299],
+  ['rare', 200],
+  ['mythic', 1],
+];
+
 // ------------------------------------------------------------------ fake API
 
 class DemoApi {
@@ -295,6 +323,9 @@ class DemoApi {
     this.owned = new Set(this.cards.filter((c) => OWNED[c.rarity](Number(c.id.split('-').pop()))).map((c) => c.id));
     this.daily = { id: 'daily-demo', minutes: 37, status: 'in_progress' };
     this.welcome = { id: 'welcome-demo', status: 'in_progress' };
+    // An event's crate, as Kick lists Trick or Treat: another daily challenge, featured, 3 hours a
+    // day, for a week. Only when a test or a capture adds it (pdDemo.daily({ event })).
+    this.event = null;
     this.levelData = { level: 42, progress_xp: 340, xp_to_next_level: 260 };
     this.streakDays = 12;
     this.nextWinner = null; // a test or the trailer can pick the card the next claim wins
@@ -368,8 +399,29 @@ class DemoApi {
     if (query?.recurrence === 'one_off')
       return { data: [{ id: this.welcome.id, name: 'Welcome Reward', recurrence: 'one_off', status: this.welcome.status, featured: false, condition: { type: 'onboarding_completed', progress: 0, threshold: 1 }, drop_table: table, animations: null }], message: 'success' };
     const d = this.daily;
+    const e = this.event;
+    const week = { starts_at: window.starts_at, ends_at: new Date(day.getTime() + 7 * 86_400_000).toISOString() };
     return {
-      data: [{ id: d.id, name: 'Daily Reward', recurrence: 'daily', status: d.status, featured: false, window, condition: { type: 'watch_time_minutes', progress: d.minutes, threshold: 60 }, drop_table: table, animations: null }],
+      data: [
+        { id: d.id, name: 'Daily Reward', recurrence: 'daily', status: d.status, featured: false, window, condition: { type: 'watch_time_minutes', progress: d.minutes, threshold: 60 }, drop_table: table, animations: null },
+        ...(e
+          ? [
+              {
+                id: e.id,
+                name: e.name,
+                recurrence: 'daily',
+                status: e.status,
+                featured: true,
+                window,
+                active_period: week,
+                condition: { type: 'watch_time_minutes', progress: e.minutes, threshold: 180 },
+                drop_table: EVENT_TABLE.map(([rarity, weighting]) => ({ rarity, weighting })),
+                animations: null,
+                ...(e.won ? { winner: e.won } : {}),
+              },
+            ]
+          : []),
+      ],
       message: 'success',
     };
   }
@@ -388,6 +440,7 @@ class DemoApi {
 
   /** The stand-in claim: Kick's reel (its 24 tiles), a winner picked by the odds, a duplicate's level progress. */
   async claimDaily(id) {
+    if (this.event && id === this.event.id) return this.claimEvent();
     const target = id === this.welcome.id ? this.welcome : this.daily;
     if (target.status !== 'claimable') throw Object.assign(new Error('HTTP 400'), { status: 400, body: { message: 'Challenge not claimable' } });
     let roll = Math.random() * 1_000_000;
@@ -410,6 +463,19 @@ class DemoApi {
       },
       message: 'success',
     };
+  }
+
+  /** An event's crate opens at once, with no reel: just its prize, a square thumbnail. */
+  claimEvent() {
+    const e = this.event;
+    if (e.status !== 'claimable') throw Object.assign(new Error('HTTP 400'), { status: 400, body: { message: 'Challenge not claimable' } });
+    let roll = Math.random() * 1000;
+    const rarity = EVENT_TABLE.find(([, w]) => (roll -= w) < 0)?.[0] ?? 'common';
+    const pool = EVENT_PRIZES.filter((p) => p.rarity === rarity);
+    const prize = EVENT_PRIZES.find((p) => p.id === e.nextWinner) ?? pool[Math.floor(Math.random() * pool.length)];
+    e.status = 'claimed';
+    e.won = { id: prize.id, rarity: prize.rarity, card_url: '', thumbnail_url: prize.thumbnail_url };
+    return { data: { reveal_type: 'instant', roulette: [], winner: e.won, consolation: null }, message: 'success' };
   }
 
   async livestreams(categoryId) {
@@ -467,6 +533,10 @@ class DemoApi {
     if (this.daily.status === 'in_progress') {
       this.daily.minutes = Math.min(60, this.daily.minutes + amount);
       if (this.daily.minutes >= 60) this.daily.status = 'claimable';
+    }
+    if (this.event?.status === 'in_progress') {
+      this.event.minutes = Math.min(180, this.event.minutes + amount);
+      if (this.event.minutes >= 180) this.event.status = 'claimable';
     }
     const c = ch(slug);
     const live = Object.entries(LIVE).find(([, list]) => list.some(([s]) => s === slug));

@@ -127,3 +127,25 @@ test('the stand-in daily reward: the hour fills from watching, a claim picks a c
   assert.equal((await api.claimDaily('welcome-demo')).data.consolation, null, 'a new card');
   assert.equal((await api.streak()).data.length_days, 13, 'only the daily one keeps the streak');
 });
+
+test('the stand-in event crate: listed like Kick’s Trick or Treat, filled by watching, and opened at once onto a square prize', async () => {
+  const { api } = createDemo();
+  api.loggedIn = true;
+  assert.equal((await api.dailyChallenges()).data.length, 1, 'only when a test or a capture adds it');
+  api.event = { id: 'event-demo', name: 'Harvest Moon', minutes: 174, status: 'in_progress' };
+  const [, e] = (await api.dailyChallenges()).data;
+  assert.deepEqual([e.name, e.recurrence, e.featured, e.condition.threshold, e.animations], ['Harvest Moon', 'daily', true, 180, null]);
+  assert.ok(Date.parse(e.active_period.ends_at) > Date.parse(e.window.ends_at), 'a new one every day of its week');
+  await assert.rejects(api.claimDaily('event-demo'), { status: 400 }, 'not ready yet');
+  for (let i = 0; i < 3; i++) api.creditWatch('pixelpear');
+  assert.equal((await api.dailyChallenges()).data[1].status, 'claimable');
+  api.event.nextWinner = 'prize-4';
+  const { data: won } = await api.claimDaily('event-demo');
+  assert.deepEqual([won.reveal_type, won.roulette.length, won.winner.rarity, won.winner.card_url], ['instant', 0, 'mythic', '']);
+  assert.ok(won.winner.thumbnail_url.startsWith('data:image/svg+xml'));
+  const [, after] = (await api.dailyChallenges()).data;
+  assert.deepEqual([after.status, after.winner.id], ['claimed', 'prize-4']);
+  // Picked by its odds when no test chose.
+  api.event = { id: 'event-demo', name: 'Harvest Moon', minutes: 180, status: 'claimable' };
+  assert.ok((await api.claimDaily('event-demo')).data.winner.id.startsWith('prize-'));
+});

@@ -53,6 +53,21 @@ function oddsOf(table) {
   }));
 }
 
+// An event's look, from its name and where Kick keeps its videos (Trick or Treat's are in
+// rewards/halloween-2610/): Kick sends no theme. Anything else is a plain 'event'.
+const THEMES = [
+  ['halloween', /hallowe'?en|trick.?or.?treat|spook|pumpkin|haunt/i],
+  ['winter', /christmas|x-?mas|holiday|winter|snow|santa|festive|frost/i],
+  ['valentine', /valentine|sweetheart/i],
+  ['newyear', /new.?year|countdown|\bnye\b/i],
+  ['spring', /easter|spring|bunny|bloom/i],
+  ['summer', /summer|beach|sunshine/i],
+];
+function themeOf(name, idleUrl) {
+  const words = `${name ?? ''} ${typeof idleUrl === 'string' && idleUrl.startsWith(MEDIA_HOST) ? idleUrl.slice(MEDIA_HOST.length) : ''}`;
+  return THEMES.find(([, re]) => re.test(words))?.[0] ?? 'event';
+}
+
 /** One challenge, in the app's words: earning, ready or claimed. */
 function readChallenge(c) {
   if (!c || typeof c !== 'object' || c.id == null) return null;
@@ -69,34 +84,50 @@ function readChallenge(c) {
     startsAt: time(c.window?.starts_at),
     endsAt: time(c.window?.ends_at),
     featured: !!c.featured,
+    // An event's crate (Kick's Trick or Treat) resets daily like the daily one, until its event ends.
+    until: time(c.active_period?.ends_at),
     revealType: c.reveal_type ?? null,
     odds: oddsOf(c.drop_table),
     media: { idle: mediaUrl(c.animations?.idle_url, `${MEDIA}idle`), unbox: mediaUrl(c.animations?.unbox_url, `${MEDIA}unbox`) },
+    ownMedia: typeof c.animations?.idle_url === 'string' && c.animations.idle_url.startsWith(MEDIA_HOST),
+    theme: themeOf(c.name, c.animations?.idle_url),
     winner: c.winner ? cardOf(c.winner) : null,
     consolation: c.consolation ?? null,
   };
 }
 
 /**
- * The daily one and the rest (event crates, the Welcome Reward). Only the others Pear Drops can do
- * something about: one that's ready to claim, or one that fills by watching. The Welcome Reward
- * waits on Kick's own sign-up steps, a pop-up kick.com shows when it chooses, with no link to it.
+ * The daily one and the rest: an event's crate (Kick lists it as another daily challenge, featured,
+ * with videos and odds of its own) or the Welcome Reward. Only the others Pear Drops can do
+ * something about: one that's ready to claim, one that fills by watching, or an event's that was
+ * claimed today (it stays, showing what it gave). The Welcome Reward waits on Kick's own sign-up
+ * steps, a pop-up kick.com shows when it chooses, with no link to it.
  */
 function readChallenges(body, oneOff = null) {
   const all = [...listOf(body), ...listOf(oneOff)].map(readChallenge).filter(Boolean);
   const unique = [...new Map(all.map((c) => [c.id, c])).values()];
-  const daily = unique.find((c) => c.recurrence === 'daily' && c.condition === 'watch_time_minutes') ?? null;
-  return { daily, extras: unique.filter((c) => c !== daily && (c.state === 'ready' || (c.state === 'earning' && c.condition === 'watch_time_minutes'))) };
+  const watched = unique.filter((c) => c.recurrence === 'daily' && c.condition === 'watch_time_minutes');
+  const daily = watched.find((c) => !c.featured) ?? watched[0] ?? null;
+  const extras = unique.filter(
+    (c) => c !== daily && (c.state === 'ready' || (c.state === 'earning' && c.condition === 'watch_time_minutes') || (c.state === 'claimed' && c.recurrence === 'daily')),
+  );
+  return { daily, extras };
 }
 
 // Kick's card pictures are https; the demo's are drawn as data images.
 const isImage = (u) => typeof u === 'string' && (u.startsWith('https://') || u.startsWith('data:image/'));
 
-/** A card as the pages show it: its picture says its name, so there's no name. */
-function cardOf(c) {
+/**
+ * A card as the pages show it: its picture says its name, so there's no name. An event's prize
+ * isn't one of the collectible cards: no card picture, just a square one, and no type.
+ * @param {Map<string, string>} [types] the collectible cards' types, by id (Kick's winners come without)
+ */
+function cardOf(c, types = new Map()) {
   if (!c || typeof c !== 'object') return null;
   const image = [c.card_url, c.thumbnail_url, c.item_url, c.image_url].find(isImage) ?? null;
-  return { id: c.id == null ? null : String(c.id), rarity: RARITIES.includes(c.rarity) ? c.rarity : 'common', type: c.type === 'badge' ? 'badge' : 'emote', image };
+  const id = c.id == null ? null : String(c.id);
+  const type = ['badge', 'emote'].includes(c.type) ? c.type : (types.get(id) ?? null);
+  return { id, rarity: RARITIES.includes(c.rarity) ? c.rarity : 'common', type, image, square: !isImage(c.card_url) };
 }
 
 /** Kick's cards, counted: how many there are, and how many are yours, rarity by rarity. */
@@ -129,9 +160,9 @@ function duplicateChance(odds, byRarity) {
  * was a duplicate (and the level progress it turned into). The reel's tiles come without a
  * rarity; the card list has it.
  */
-function reelOf(reply, rarities = new Map()) {
+function reelOf(reply, rarities = new Map(), types = new Map()) {
   const r = unwrap(reply) ?? {};
-  const winner = cardOf(r.winner);
+  const winner = cardOf(r.winner, types);
   const items = (Array.isArray(r.roulette) ? r.roulette : [])
     .map((t) => ({ id: t?.id == null ? null : String(t.id), image: [t?.item_url, t?.card_url, t?.thumbnail_url].find(isImage) ?? null, rarity: rarities.get(String(t?.id)) ?? 'common' }))
     .filter((t) => t.image);
@@ -173,22 +204,25 @@ const claimMode = (settings) => (CLAIM_MODES.includes(settings?.dailyClaim) ? se
  * When to look again, in ms from now: soon while the hour is being earned on this computer (and
  * right when it should be done), rarely otherwise, and at the reset.
  */
-function nextCheckIn({ daily, watching, now, error = false }) {
+function nextCheckIn({ daily, extras = [], watching, now, error = false }) {
   if (error) return RETRY_MS;
   if (!daily) return IDLE_MS;
   const reset = daily.endsAt ? Math.max(1000, daily.endsAt - now + 5000) : Infinity;
+  // An event's crate fills from the same watching: the soonest of them.
+  const earning = [daily, ...extras].filter((c) => c.state === 'earning' && c.condition === 'watch_time_minutes');
   let next = IDLE_MS;
-  if (daily.state === 'earning' && watching) next = Math.min(EARNING_MS, Math.max(5000, (daily.threshold - daily.minutes) * MIN + 30_000));
-  if (daily.state === 'claimed') next = reset;
+  if (earning.length && watching) next = Math.min(EARNING_MS, ...earning.map((c) => Math.max(5000, (c.threshold - c.minutes) * MIN + 30_000)));
+  else if (daily.state === 'claimed' && !extras.some((c) => c.state !== 'claimed')) next = reset;
   return Math.min(next, reset);
 }
 
-/** What the record in History says about a claim. */
-function claimText(reel) {
-  const kind = `${reel.winner?.rarity ? reel.winner.rarity[0].toUpperCase() + reel.winner.rarity.slice(1) : 'Common'} ${reel.winner?.type ?? 'emote'}`;
-  if (!reel.duplicate) return { reward: kind, text: `${kind}, new to your collection` };
+/** What the record in History says about a claim: an event's crate says its name first. */
+function claimText(reel, crate = null) {
+  const kind = `${reel.winner?.rarity ? reel.winner.rarity[0].toUpperCase() + reel.winner.rarity.slice(1) : 'Common'} ${reel.winner?.type ?? 'reward'}`;
+  const from = crate ? `${crate}: ` : '';
+  if (!reel.duplicate) return { reward: kind, text: `${from}${kind}, new to your collection` };
   const xp = reel.xpMinutes ? `, +${reel.xpMinutes} min watch time${reel.levelTo ? ` to Level ${reel.levelTo}` : ''}` : '';
-  return { reward: kind, text: `${kind}, a duplicate${xp}` };
+  return { reward: kind, text: `${from}${kind}, a duplicate${xp}` };
 }
 
 class DailyReward extends EventEmitter {
@@ -206,7 +240,9 @@ class DailyReward extends EventEmitter {
   constructor({ kick, slot, settings, watching, userId, history = null, kickMedia = true, now = () => Date.now(), timers = { set: setTimeout, clear: clearTimeout } }) {
     super();
     Object.assign(this, { kick, slot, settings, watching, userId, history, kickMedia, now, timers });
-    this.saved = { ...(slot?.load?.() ?? {}) }; // { day, reel, by }: the last claim, for the card and Replay
+    // { day, reel, by, events: { [id]: { day, reel, by } } }: the last claims (the daily one's and
+    // each event crate's), for the card, Replay and See it.
+    this.saved = { ...(slot?.load?.() ?? {}) };
     this.reset();
   }
 
@@ -220,10 +256,11 @@ class DailyReward extends EventEmitter {
     this.cardsAt = 0;
     this.checkedAt = 0; // when Kick was last asked
     this.rarities = new Map();
+    this.types = new Map();
     this.error = false;
     this.claiming = false;
     this.reminded = null; // the day "an hour left" was said
-    this.autoTried = null; // the day an automatic claim was tried
+    this.autoTried = {}; // challenge id -> the day an automatic claim was tried
     this.timer && this.timers.clear(this.timer);
     this.timer = null;
   }
@@ -257,6 +294,7 @@ class DailyReward extends EventEmitter {
   async refresh({ full = false } = {}) {
     if (!this.running) return;
     const was = this.daily?.state ?? null;
+    const wasExtras = new Map(this.extras.map((e) => [e.id, e.state]));
     this.checkedAt = this.now();
     try {
       const wantCards = full || !this.collection || this.now() - this.cardsAt > CARDS_MS || (this.daily?.endsAt && this.now() >= this.daily.endsAt);
@@ -274,6 +312,7 @@ class DailyReward extends EventEmitter {
     if (!this.running) return;
     const now = this.daily?.state ?? null;
     if (now === 'ready' && was === 'earning') this.emit('ready', this.snapshot());
+    for (const e of this.extras) if (e.state === 'ready' && wasExtras.get(e.id) === 'earning') this.emit('crate-ready', { id: e.id, name: e.name, endsAt: e.recurrence === 'daily' ? e.endsAt : null });
     this.emit('change');
     this.afterRefresh();
   }
@@ -289,33 +328,42 @@ class DailyReward extends EventEmitter {
       this.collection = collectionOf(cards);
       const list = listOf(cards);
       this.rarities = new Map(list.filter((c) => c?.id != null).map((c) => [String(c.id), RARITIES.includes(c.rarity) ? c.rarity : 'common']));
+      this.types = new Map(list.filter((c) => c?.id != null && ['badge', 'emote'].includes(c.type)).map((c) => [String(c.id), c.type]));
     }
     if (level) this.level = levelOf(level) ?? this.level;
     if (streak) this.streak = num(unwrap(streak)?.length_days, this.streak ?? 0);
     this.cardsAt = this.now();
   }
 
-  /** Claims on its own when the user chose so, reminds before the reset, then waits for the next check. */
+  /**
+   * Claims on its own when the user chose so (the daily crate, and an event's, which resets the same
+   * way), reminds before the reset, then waits for the next check.
+   */
   afterRefresh() {
     const d = this.daily;
     const now = this.now();
-    if (d?.state === 'ready' && d.endsAt) {
-      const day = dayOf(d.startsAt ?? now);
-      const mode = claimMode(this.settings());
-      const autoAt = mode === 'now' ? now : mode === 'before-reset' ? d.endsAt - AUTO_BEFORE_MS : Infinity;
-      if (now >= autoAt && this.autoTried !== day) {
-        this.autoTried = day;
-        this.claim(d.id, { by: 'auto' });
+    const mode = claimMode(this.settings());
+    let soonest = Infinity;
+    for (const c of [d, ...this.extras].filter((x) => x?.state === 'ready' && x.endsAt && (x === d || x.recurrence === 'daily'))) {
+      const day = dayOf(c.startsAt ?? now);
+      const autoAt = mode === 'now' ? now : mode === 'before-reset' ? c.endsAt - AUTO_BEFORE_MS : Infinity;
+      if (now >= autoAt && this.autoTried[c.id] !== day) {
+        this.autoTried[c.id] = day;
+        this.claim(c.id, { by: 'auto' });
         return;
       }
+      soonest = Math.min(soonest, autoAt);
+    }
+    if (d?.state === 'ready' && d.endsAt) {
+      const day = dayOf(d.startsAt ?? now);
       if (mode !== 'now' && now >= d.endsAt - REMIND_BEFORE_MS && this.reminded !== day) {
         this.reminded = day;
         this.emit('reminder', this.snapshot());
       }
-      const soonest = Math.min(autoAt, this.reminded === day ? Infinity : d.endsAt - REMIND_BEFORE_MS);
-      return this.schedule(Math.min(nextCheckIn({ daily: d, watching: this.watching(), now }), Math.max(1000, soonest - now)));
+      if (this.reminded !== day) soonest = Math.min(soonest, d.endsAt - REMIND_BEFORE_MS);
     }
-    this.schedule(nextCheckIn({ daily: d, watching: this.watching(), now, error: this.error }));
+    const next = nextCheckIn({ daily: d, extras: this.extras, watching: this.watching(), now, error: this.error });
+    this.schedule(soonest === Infinity ? next : Math.min(next, Math.max(1000, soonest - now)));
   }
 
   schedule(ms) {
@@ -338,15 +386,29 @@ class DailyReward extends EventEmitter {
     if (this.claiming) return { error: 'It’s being claimed already.' };
     this.claiming = true;
     try {
-      const reel = reelOf(await this.kick.claimDaily(id), this.rarities);
+      const reel = reelOf(await this.kick.claimDaily(id), this.rarities, this.types);
       const isDaily = id === this.daily?.id;
+      const crate = isDaily ? null : this.extras.find((e) => e.id === id);
       if (isDaily) {
-        this.saved = { day: dayOf(this.daily.startsAt ?? this.now()), reel, by };
-        this.slot?.save?.(this.saved);
+        this.saved = { ...this.saved, day: dayOf(this.daily.startsAt ?? this.now()), reel, by };
         this.daily = { ...this.daily, state: 'claimed', minutes: this.daily.threshold };
-      } else this.extras = this.extras.filter((e) => e.id !== id);
-      this.history?.add('daily-reward', { ...claimText(reel), rewardImage: reel.winner?.image ?? null, rarity: reel.winner?.rarity, duplicate: reel.duplicate, by });
-      this.emit('claimed', { reel, by });
+      } else {
+        // An event's crate stays on the card, showing what it gave, until it resets.
+        const day = dayOf(crate?.startsAt ?? this.now());
+        const events = Object.fromEntries(Object.entries(this.saved.events ?? {}).filter(([, e]) => e.day === day));
+        this.saved = { ...this.saved, events: { ...events, [id]: { day, reel, by } } };
+        this.extras = this.extras.flatMap((e) => (e.id !== id ? [e] : e.recurrence === 'daily' ? [{ ...e, state: 'claimed', minutes: e.threshold, winner: reel.winner }] : []));
+      }
+      this.slot?.save?.(this.saved);
+      this.history?.add('daily-reward', {
+        ...claimText(reel, crate?.name || null),
+        ...(crate ? { crate: crate.name || null } : {}),
+        rewardImage: reel.winner?.image ?? null,
+        rarity: reel.winner?.rarity,
+        duplicate: reel.duplicate,
+        by,
+      });
+      this.emit('claimed', { reel, by, crate: crate?.name ?? null });
       this.emit('change');
       this.claiming = false;
       // The card list, level and streak changed.
@@ -366,10 +428,29 @@ class DailyReward extends EventEmitter {
     }
   }
 
-  /** Today's claim's reel, for Replay. */
-  lastClaim() {
+  /** Today's claim's reel (the daily crate's, or the event crate `id`'s), for Replay and See it. */
+  lastClaim(id = this.daily?.id) {
     const d = this.daily;
-    return d && this.saved?.reel && this.saved.day === dayOf(d.startsAt ?? this.now()) ? this.saved.reel : null;
+    if (d && id === d.id) return this.saved?.reel && this.saved.day === dayOf(d.startsAt ?? this.now()) ? this.saved.reel : null;
+    const e = this.extras.find((x) => x.id === id);
+    const s = this.saved?.events?.[id];
+    return e && s?.reel && s.day === dayOf(e.startsAt ?? this.now()) ? s.reel : null;
+  }
+
+  /**
+   * What a chest shows (the title bar's, the tray's, a connected app's): the daily crate, or ready
+   * when an event's crate is waiting, whatever the daily one is doing.
+   */
+  chest() {
+    const d = this.daily;
+    const e = this.extras.find((x) => x.state === 'ready');
+    if (!d || d.state === 'ready' || !e) return d;
+    return { ...d, state: 'ready', endsAt: e.recurrence === 'daily' && e.endsAt ? e.endsAt : d.endsAt, crate: e.name || null, theme: e.theme };
+  }
+
+    /** A winner Kick gave without its type, with the type from the card list (or none: an event's prize). */
+  typed(card) {
+    return card && !card.type ? { ...card, type: this.types.get(card.id) ?? null } : (card ?? null);
   }
 
   /** What the pages draw. */
@@ -379,7 +460,7 @@ class DailyReward extends EventEmitter {
     if (!d) return { state: this.error ? 'unavailable' : 'loading', extras: [] };
     const reel = this.lastClaim();
     const collection = this.collection ?? { owned: 0, total: 0, byRarity: {} };
-    const winner = reel?.winner ?? d.winner;
+    const winner = this.typed(reel?.winner ?? d.winner);
     return {
       state: d.state,
       id: d.id,
@@ -395,6 +476,8 @@ class DailyReward extends EventEmitter {
       media: this.kickMedia ? d.media : null,
       claiming: this.claiming,
       claimMode: claimMode(this.settings()),
+      // An event's crate waits: the chests say "ready" too.
+      crateReady: this.extras.some((e) => e.state === 'ready'),
       today:
         d.state === 'claimed'
           ? {
@@ -406,7 +489,28 @@ class DailyReward extends EventEmitter {
               replay: !!reel?.items?.length,
             }
           : null,
-      extras: this.extras.map((e) => ({ id: e.id, name: e.name, condition: e.condition, state: e.state, minutes: e.minutes, threshold: e.threshold })),
+      extras: this.extras.map((e) => {
+        const reel = e.state === 'claimed' ? this.lastClaim(e.id) : null;
+        return {
+          id: e.id,
+          name: e.name,
+          condition: e.condition,
+          state: e.state,
+          minutes: e.minutes,
+          threshold: e.threshold,
+          endsAt: e.recurrence === 'daily' ? e.endsAt : null,
+          until: e.until,
+          featured: e.featured,
+          theme: e.theme,
+          odds: e.odds,
+          // Its own crate's videos (an event's), if Kick has them; otherwise the pages draw ours.
+          media: this.kickMedia && e.ownMedia ? e.media : null,
+          won:
+            e.state === 'claimed'
+              ? { winner: this.typed(reel?.winner ?? e.winner), duplicate: reel ? reel.duplicate : !!e.consolation, by: reel ? this.saved.events[e.id].by : 'elsewhere', replay: !!reel }
+              : null,
+        };
+      }),
     };
   }
 }
@@ -429,6 +533,7 @@ module.exports = {
   nextCheckIn,
   claimText,
   dayOf,
+  themeOf,
   AUTO_BEFORE_MS,
   OPENED_MS,
   REMIND_BEFORE_MS,
