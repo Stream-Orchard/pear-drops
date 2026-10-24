@@ -28,6 +28,39 @@ test('durations, counts and ETAs read naturally', () => {
   assert.match(run('fmtEta(32)'), /^32m · /);
 });
 
+test('ETAs say the day when it isn\'t today: the weekday in the next six days, the date after that, the year when it isn\'t this one', () => {
+  const now = new Date(2026, 9, 24, 12, 0).getTime(); // a Saturday, midday
+  ctx.Date = class extends Date {
+    constructor(...a) {
+      super(...(a.length ? a : [now]));
+    }
+    static now() {
+      return now;
+    }
+  };
+  try {
+    const time = { hour: 'numeric', minute: '2-digit' };
+    const at = (days, h, m) => new Date(2026, 9, 24 + days, h, m);
+    const eta = (d) => run(`fmtEta(${(d - now) / MIN})`).split(' · ')[1];
+    assert.equal(eta(at(0, 14, 36)), at(0, 14, 36).toLocaleTimeString([], time), 'today: the time only');
+    assert.equal(eta(at(3, 2, 36)), at(3, 2, 36).toLocaleString([], { weekday: 'short', ...time }), 'in 3 days: the weekday and time');
+    assert.equal(eta(at(6, 23, 0)), at(6, 23, 0).toLocaleString([], { weekday: 'short', ...time }), 'in 6 days: still the weekday');
+    const date = { weekday: 'short', day: 'numeric', month: 'short' };
+    assert.equal(eta(at(7, 2, 36)), at(7, 2, 36).toLocaleDateString([], date), 'a week away: the date, not today\'s weekday');
+    assert.equal(eta(at(20, 9, 0)), at(20, 9, 0).toLocaleDateString([], date), 'further away: the date');
+    assert.equal(run(`fmtWhen(${new Date(2027, 0, 5, 9, 0).getTime()})`), new Date(2027, 0, 5, 9, 0).toLocaleDateString([], { ...date, year: 'numeric' }), 'next year: with the year');
+    assert.equal(run(`fmtWhen(${at(-1, 9, 0).getTime()})`), at(-1, 9, 0).toLocaleDateString([], date), 'yesterday: the date');
+    ctx.Date = class extends ctx.Date {
+      constructor(...a) {
+        super(...(a.length ? a : [at(0, 23, 30)]));
+      }
+    };
+    assert.equal(run(`fmtWhen(${at(1, 0, 42).getTime()})`), at(1, 0, 42).toLocaleString([], { weekday: 'short', ...time }), '11:30 PM to 12:42 AM is tomorrow, though under a day away');
+  } finally {
+    ctx.Date = Date;
+  }
+});
+
 test('progressChart draws history, a forecast with reward markers, and stays finite', () => {
   ctx.args = {
     points: [

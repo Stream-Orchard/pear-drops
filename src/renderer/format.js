@@ -18,6 +18,20 @@ function fmtDur(ms) {
 const fmtMin = (minutes) => (Number.isFinite(minutes) ? fmtDur(minutes * MIN) : '—');
 const fmtClock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+// When a time is, in the computer's locale: "2:36 AM" today, "Tue 2:36 AM" in the next six days,
+// "Sat, Oct 31" after that (or before today), with the year when it isn't this one.
+// A weekday a week away would read as today, so that gets a date. Stream Multiview says it the same way.
+function fmtWhen(t) {
+  const d = new Date(t);
+  const now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const days = Math.round((day(d) - day(now)) / 86_400_000);
+  const time = { hour: 'numeric', minute: '2-digit' };
+  if (days === 0) return d.toLocaleTimeString([], time);
+  if (days > 0 && days < 7) return d.toLocaleString([], { weekday: 'short', ...time });
+  return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() && { year: 'numeric' }) });
+}
+
 function fmtAgo(t) {
   if (!t) return 'never';
   const d = Date.now() - t;
@@ -72,7 +86,7 @@ function fmtEnds(iso) {
 function fmtEta(minutes) {
   if (!Number.isFinite(minutes) || minutes > 60 * 24 * 30) return '—';
   if (minutes <= 0) return 'now';
-  return `${fmtMin(minutes)} · ${fmtClock(Date.now() + minutes * MIN)}`;
+  return `${fmtMin(minutes)} · ${fmtWhen(Date.now() + minutes * MIN)}`;
 }
 
 // Charts are drawn at the card's real width so their text isn't stretched.
