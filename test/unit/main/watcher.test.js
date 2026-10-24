@@ -72,3 +72,120 @@ test("the page's reports: a video that ended or failed, and Kick's realtime even
   assert.deepEqual(heard, ['GamificationWatchTimeGoalReached']);
   assert.equal(hints.length, 3);
 });
+
+// ------------------------------------------------------------------ the stream's <webview>s
+
+const { EventEmitter } = require('node:events');
+const { Watcher } = require('../../../src/main/watcher');
+const { PARTITION } = require('../../../src/main/kick-api');
+
+/** A page's contents, as far as the watcher uses them (a webview's, or the main window's). */
+function fakeContents(id, { type = 'webview', host = null } = {}) {
+  const wc = new EventEmitter();
+  Object.assign(wc, {
+    id,
+    loaded: [],
+    sent: [],
+    muted: false,
+    hostWebContents: host,
+    getType: () => type,
+    isDestroyed: () => false,
+    setAudioMuted: (m) => (wc.muted = m),
+    setWindowOpenHandler: (fn) => (wc.openHandler = fn),
+    loadURL: async (url) => wc.loaded.push(url),
+    send: (...a) => wc.sent.push(a),
+    insertCSS: async () => {},
+    setZoomFactor: () => {},
+  });
+  return wc;
+}
+function setupWatcher(settings = {}) {
+  const host = fakeContents(1, { type: 'window' });
+  const win = { webContents: host, isDestroyed: () => false };
+  const all = new Map([[1, host]]);
+  const ipc = { handlers: {}, on(name, fn) { this.handlers[name] = fn; } };
+  const w = new Watcher(() => win, () => settings, { ipcMain: ipc, contents: { fromId: (id) => all.get(id) ?? null } });
+  return { w, host, all, ipc };
+}
+
+test('the page is asked for the stream’s <webview>s: the player and, in light mode, its chat; none once closed', () => {
+  const { w, host } = setupWatcher();
+  w.ensureViews();
+  assert.deepEqual(host.sent.at(-1), ['player:spec', { gen: 1, mode: 'light', chat: true, partition: PARTITION }]);
+  w.ensureViews();
+  assert.equal(host.sent.length, 1, 'asked once');
+  w.destroyViews();
+  assert.deepEqual(host.sent.at(-1), ['player:spec', null]);
+  const full = setupWatcher({ playerMode: 'full' });
+  full.w.ensureViews();
+  assert.deepEqual(full.host.sent.at(-1)[1], { gen: 1, mode: 'full', chat: false, partition: PARTITION });
+});
+
+test('only the <webview>s asked for attach, on Kick’s session, each with its preload, sandboxed and never throttled', () => {
+  const { w } = setupWatcher();
+  assert.equal(w.allowAttach({}, { src: 'about:blank#player', partition: PARTITION }), false, 'none asked for yet');
+  w.ensureViews();
+  const prefs = { preload: '/elsewhere.js', nodeIntegration: true, sandbox: false, webSecurity: false, contextIsolation: false, plugins: true };
+  const params = { src: 'about:blank#player', partition: PARTITION };
+  assert.equal(w.allowAttach(prefs, params), true);
+  assert.match(prefs.preload, /preload[\\/]watch\.js$/);
+  assert.deepEqual({ ...prefs, preload: 'x' }, { partition: PARTITION, preload: 'x', contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false });
+  assert.equal(params.src, 'about:blank', 'starts blank: the stream is loaded once it’s handed over');
+  const chat = {};
+  assert.equal(w.allowAttach(chat, { src: 'about:blank#chat', partition: PARTITION }), true);
+  assert.match(chat.preload, /preload[\\/]chat\.js$/);
+  assert.equal(w.allowAttach({}, { src: 'https://example.com/', partition: PARTITION }), false, 'another page');
+  assert.equal(w.allowAttach({}, { src: 'about:blank#player', partition: 'persist:other' }), false, 'another session');
+  assert.equal(w.allowAttach({}, undefined), false);
+  const full = setupWatcher({ playerMode: 'full' });
+  full.w.ensureViews();
+  assert.equal(full.w.allowAttach({}, { src: 'about:blank#chat', partition: PARTITION }), false, 'no chat in full mode');
+});
+
+test('a <webview> handed over is taken only if it’s the main window’s own, of the current spec; then the stream loads in it', () => {
+  const { w, host, all } = setupWatcher();
+  w.ensureViews();
+  const player = fakeContents(5, { host });
+  const chat = fakeContents(6, { host });
+  const stranger = fakeContents(7, { host: fakeContents(99, { type: 'window' }) });
+  for (const c of [player, chat, stranger]) all.set(c.id, c);
+  assert.equal(w.attach('player', 1, 1), false, 'the window itself');
+  assert.equal(w.attach('player', 1, 7), false, 'another window’s webview');
+  assert.equal(w.attach('player', 0, 5), false, 'an old spec');
+  assert.equal(w.attach('nope', 1, 5), false);
+  assert.equal(w.attach('player', 1, 404), false, 'gone');
+  w.watch('arcadia');
+  assert.equal(w.view, null, 'not handed over yet: nothing to load');
+  assert.equal(w.attach('player', 1, 5), true);
+  assert.equal(w.view.webContents, player);
+  assert.deepEqual(player.loaded, ['https://player.kick.com/arcadia?autoplay=true&muted=false']);
+  assert.equal(player.muted, true);
+  assert.equal(w.attach('player', 1, 5), true, 'again: no harm');
+  assert.equal(player.loaded.length, 1);
+  assert.equal(w.attach('chat', 1, 6), true);
+  assert.deepEqual(chat.loaded, ['https://kick.com/popout/arcadia/chat']);
+  player.emit('destroyed');
+  assert.equal(w.view, null, 'closed with the page');
+});
+
+test('the player’s reports count only from its own page: the chat’s only for Kick’s realtime events', () => {
+  const { w, host, all, ipc } = setupWatcher();
+  w.ensureViews();
+  const player = fakeContents(5, { host });
+  const chat = fakeContents(6, { host });
+  all.set(5, player).set(6, chat);
+  w.attach('player', 1, 5);
+  w.attach('chat', 1, 6);
+  w.watch('arcadia');
+  const events = [];
+  w.on('watch-event', (e) => events.push(e.channelId));
+  w.on('gamification', (e) => events.push(e.event));
+  ipc.handlers['watch:event']({ sender: player }, { kind: 'watch-event', channelId: 7 });
+  ipc.handlers['watch:event']({ sender: chat }, { kind: 'watch-event', channelId: 8 });
+  ipc.handlers['watch:event']({ sender: chat }, { kind: 'realtime', event: 'App\\Events\\GamificationWatchTimeGoalReached' });
+  ipc.handlers['watch:event']({ sender: fakeContents(9) }, { kind: 'watch-event', channelId: 9 });
+  assert.deepEqual(events, [7, 'GamificationWatchTimeGoalReached']);
+  const q = { sender: player };
+  ipc.handlers['watch:quality'](q);
+  assert.equal(q.returnValue, null);
+});

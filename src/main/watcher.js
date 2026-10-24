@@ -1,4 +1,4 @@
-const { app, WebContentsView, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain: electronIpc, webContents: allContents } = require('electron');
 const { EventEmitter } = require('events');
 const path = require('path');
 const { PARTITION, KICK } = require('./kick-api');
@@ -96,20 +96,33 @@ const CHAT_CSS = `
 const ZOOM = { page: 0.8, player: 1, chat: 0.9 };
 
 /**
- * Hosts the stream (and chat) in views docked inside the main window. Kick's own
- * player code sends the watch-time events; this class only loads the pages, keeps
- * their audio muted at the window level and reports what the player is doing.
+ * Hosts the stream (and chat) docked inside the main window. Kick's own player code sends the
+ * watch-time events; this class only loads the pages, keeps their audio muted at the window level
+ * and reports what the player is doing.
+ *
+ * The pages are <webview>s in the app's own page (as Stream Multiview shows streams), so the
+ * page's pop-ups (the daily reward's card, Settings) sit over the stream without hiding it. The
+ * page makes them from `spec` (which, and their session), main.js has each one checked as it's
+ * attached (allowAttach: Kick's preload, sandboxed, never throttled), and the page then hands its
+ * contents over (attach). In capture mode they're offscreen windows mirrored into the page.
  */
 class Watcher extends EventEmitter {
-  constructor(getWindow, getSettings) {
+  /**
+   * @param {() => BrowserWindow} getWindow the main window
+   * @param {() => object} getSettings
+   * @param {{ ipcMain?: object, contents?: { fromId: (id: number) => object } }} [electron] Electron's, or a test's stand-ins
+   */
+  constructor(getWindow, getSettings, { ipcMain = electronIpc, contents = allContents } = {}) {
     super();
     this.getWindow = getWindow;
     this.getSettings = getSettings;
-    this.view = null; // the player (light) or the whole channel page (full)
+    this.contents = contents;
+    this.view = null; // the player (light) or the whole channel page (full): { webContents }
     this.chatView = null; // the popout chat (light mode only)
     this.mode = null;
     this.bounds = null;
-    this.suspended = false;
+    this.spec = null; // the <webview>s the page should have: { gen, mode, chat, partition }
+    this.gen = 0;
     this.reset(null);
 
     ipcMain.on('watch:event', (event, msg) => {
@@ -155,23 +168,71 @@ class Watcher extends EventEmitter {
     const mode = this.settingsMode;
     if (this.mode !== mode) this.destroyViews();
     this.mode = mode;
-    if (!this.view || this.view.webContents.isDestroyed()) this.view = this.createView('player');
-    if (mode === 'light' && (!this.chatView || this.chatView.webContents.isDestroyed())) this.chatView = this.createView('chat');
+    if (MIRROR) {
+      if (!this.view || this.view.webContents.isDestroyed()) this.view = this.createMirror('player');
+      if (mode === 'light' && (!this.chatView || this.chatView.webContents.isDestroyed())) this.chatView = this.createMirror('chat');
+    } else if (!this.spec) {
+      this.gen += 1;
+      this.spec = { gen: this.gen, mode, chat: mode === 'light', partition: PARTITION };
+      this.sendSpec();
+    }
     this.applyBounds();
     return this.view;
   }
 
-  createView(role) {
-    const webPreferences = {
+  /** Tells the page which <webview>s to have (none: null). */
+  sendSpec() {
+    const win = this.getWindow();
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('player:spec', this.spec);
+  }
+
+  /**
+   * A <webview> the page is about to attach (main.js's will-attach-webview): only the ones the
+   * spec asks for, on Kick's session, starting blank. Each gets its role's preload, sandboxed and
+   * never throttled (it plays while out of sight), whatever the page asked for. -> allowed
+   */
+  allowAttach(webPreferences, params) {
+    const role = { 'about:blank#player': 'player', 'about:blank#chat': 'chat' }[params?.src];
+    if (MIRROR || !this.spec || !role || (role === 'chat' && !this.spec.chat) || params.partition !== PARTITION) return false;
+    for (const key of Object.keys(webPreferences)) delete webPreferences[key];
+    Object.assign(webPreferences, {
       partition: PARTITION,
       preload: path.join(__dirname, '..', 'preload', role === 'chat' ? 'chat.js' : 'watch.js'),
       contextIsolation: true,
       sandbox: true,
+      nodeIntegration: false,
+      webSecurity: true,
       backgroundThrottling: false,
-    };
-    const view = MIRROR ? this.createMirror(webPreferences, role) : new WebContentsView({ webPreferences });
-    view.setBackgroundColor('#0b0d10');
-    const wc = view.webContents;
+    });
+    params.src = 'about:blank';
+    return true;
+  }
+
+  /**
+   * The page attached the <webview> for `role` (of spec `gen`): its contents, by id. Only a
+   * webview of the main window's own page, of the current spec. -> taken
+   */
+  attach(role, gen, id) {
+    if (MIRROR || !this.spec || gen !== this.spec.gen || !['player', 'chat'].includes(role) || (role === 'chat' && !this.spec.chat)) return false;
+    const wc = this.contents.fromId(Number(id));
+    const host = this.getWindow()?.webContents;
+    if (!wc || wc.isDestroyed() || wc.getType() !== 'webview' || !host || wc.hostWebContents !== host) return false;
+    const key = role === 'chat' ? 'chatView' : 'view';
+    if (this[key]?.webContents === wc) return true;
+    this.wire(wc, role);
+    this[key] = { webContents: wc };
+    wc.once('destroyed', () => {
+      if (this[key]?.webContents === wc) this[key] = null;
+    });
+    if (this.slug) {
+      if (role === 'player') this.load('player');
+      else if (this.showChat) this.load('chat');
+    }
+    return true;
+  }
+
+  /** What every page of the stream gets: muted, links to the browser, staying on the stream, crash reports. */
+  wire(wc, role) {
     wc.setAudioMuted(true);
     // Links from Kick's page open in the browser: http(s) only, and just after you clicked in it.
     const open = (url) => openLink(url, { from: wc });
@@ -229,24 +290,33 @@ class Watcher extends EventEmitter {
         this.emit('crashed', { reason: description || `load error ${code}` });
       });
     }
-    if (!MIRROR) this.getWindow()?.contentView.addChildView(view);
-    return view;
   }
 
   destroyViews() {
+    if (this.spec) {
+      // The page removes its <webview>s, which closes their pages.
+      this.spec = null;
+      this.sendSpec();
+    }
     for (const key of ['view', 'chatView']) {
       const v = this[key];
       if (!v) continue;
-      try {
-        this.getWindow()?.contentView.removeChildView(v);
-      } catch {}
-      if (!v.webContents.isDestroyed()) v.webContents.close();
+      if (MIRROR && !v.webContents.isDestroyed()) v.webContents.close();
       this[key] = null;
     }
   }
 
-  createMirror(webPreferences, role) {
-    const win = new BrowserWindow({ show: false, width: 420, height: 760, webPreferences: { ...webPreferences, offscreen: true } });
+  /** Capture mode: the page offscreen, its frames sent to the main window to draw. */
+  createMirror(role) {
+    const webPreferences = {
+      partition: PARTITION,
+      preload: path.join(__dirname, '..', 'preload', role === 'chat' ? 'chat.js' : 'watch.js'),
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+      offscreen: true,
+    };
+    const win = new BrowserWindow({ show: false, width: 420, height: 760, backgroundColor: '#0b0d10', webPreferences });
     win.webContents.setFrameRate(30);
     let last = 0;
     win.webContents.on('paint', (_e, _dirty, image) => {
@@ -256,12 +326,8 @@ class Watcher extends EventEmitter {
       const target = this.getWindow();
       if (target && !target.isDestroyed() && !target.webContents.isDestroyed() && this.slug) target.webContents.send('player:frame', role, image.toJPEG(85));
     });
-    return {
-      webContents: win.webContents,
-      setBackgroundColor: (c) => win.setBackgroundColor(c),
-      setVisible: () => {},
-      setBounds: ({ width, height }) => win.setContentSize(width, height),
-    };
+    this.wire(win.webContents, role);
+    return { webContents: win.webContents, setBounds: ({ width, height }) => win.setContentSize(width, height) };
   }
 
   /** The stream's own pages (player, popout chat, channel page), not anywhere else on Kick. */
@@ -318,6 +384,8 @@ class Watcher extends EventEmitter {
       if (this.chatView && !this.chatView.webContents.isDestroyed() && this.showChat) this.chatView.webContents.loadURL(URLS.chat(this.slug)).catch(() => {});
       return;
     }
+    // Not attached yet (the page is making it): attach() loads it.
+    if (!this.view || this.view.webContents.isDestroyed()) return;
     const url = this.mode === 'full' ? URLS.page(this.slug) : URLS.player(this.slug);
     this.view.webContents.loadURL(url).catch(() => {});
   }
@@ -355,23 +423,16 @@ class Watcher extends EventEmitter {
 
   // ------------------------------------------------------------------ layout
 
-  /** rect: {x, y, width, height} in window DIPs, or null to hide. */
+  /** rect: {x, y, width, height} in window DIPs, or null when out of sight. Capture mode sizes its offscreen pages by it. */
   setBounds(rect) {
     this.bounds = rect;
     this.applyBounds();
   }
 
-  /** Temporarily hide the views, e.g. while a modal is open in the main UI. */
-  setSuspended(value) {
-    this.suspended = value;
-    this.applyBounds();
-  }
-
   applyBounds() {
-    if (!this.view) return;
-    const visible = !!this.bounds && !this.suspended && this.bounds.width > 10 && this.bounds.height > 10;
-    this.view.setVisible(visible);
-    this.chatView?.setVisible(visible && this.showChat);
+    // The <webview>s are laid out by the page itself.
+    if (!MIRROR || !this.view) return;
+    const visible = !!this.bounds && this.bounds.width > 10 && this.bounds.height > 10;
     if (!visible) return;
     const x = Math.round(this.bounds.x);
     const y = Math.round(this.bounds.y);

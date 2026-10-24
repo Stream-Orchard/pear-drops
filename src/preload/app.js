@@ -70,7 +70,14 @@ contextBridge.exposeInMainWorld('pd', {
     return () => ipcRenderer.removeListener('show-view', listener);
   },
   setPlayerBounds: (rect) => ipcRenderer.invoke('player:bounds', rect),
-  suspendPlayer: (value) => ipcRenderer.invoke('player:suspend', value),
+  // The docked stream's <webview>s: which to have, and each one's contents once attached.
+  playerSpec: () => ipcRenderer.invoke('player:spec'),
+  onPlayerSpec: (cb) => {
+    const listener = (_e, spec) => cb(spec);
+    ipcRenderer.on('player:spec', listener);
+    return () => ipcRenderer.removeListener('player:spec', listener);
+  },
+  playerAttached: (role, gen, id) => ipcRenderer.invoke('player:attached', role, gen, id),
   playerDevtools: () => ipcRenderer.invoke('player:devtools'),
   openExternal: (url) => ipcRenderer.invoke('open:external', url),
   updates: {

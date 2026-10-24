@@ -19,7 +19,7 @@ await a.close();
 ```
 
 - `a.win` is the main window, a Playwright page. Selectors: `src/renderer/*.js` and `test/launch/*.test.js`.
-- The docked stream is a separate view, so it isn't in a page screenshot. Launch with `{ mirror: true }` to draw it into the window (as the trailer does).
+- The docked stream is a `<webview>` in the page, but a page screenshot leaves its contents out. Launch with `{ mirror: true }` to draw it into the window (as the trailer does), or capture the whole window from Electron (`BrowserWindow.capturePage()`), which shows it as people see it.
 - **Video:** `await a.record('name', async () => { … })` captures every painted frame and writes an MP4 with ffmpeg (`brew install ffmpeg`, `winget install Gyan.FFmpeg` or `apt install ffmpeg`).
 - **Sizes:** check the dashboard at 1280×800, 1512×944 and the screen's full size. It should fit without page scrolling from about 1440×900 up.
 

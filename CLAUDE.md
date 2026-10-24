@@ -17,7 +17,7 @@ An Electron app that farms Kick emote and badge drops. `src/main/` is the Electr
 
 ## How the app works
 
-- Kick credits watch time from its own player's WebSocket `user_event` (`tracking.user.watch.livestream`, about every 120 s while playing). The app runs the real kick.com page in a docked view (`watcher.js`) and never sends these itself.
+- Kick credits watch time from its own player's WebSocket `user_event` (`tracking.user.watch.livestream`, about every 120 s while playing). The app runs the real kick.com page in a `<webview>` docked in its own page (`watcher.js`), so its pop-ups sit over the stream, and never sends these itself.
 - Kick credits **one stream per account**. `farmer.js` counts uncredited watch events to detect another session taking the credit.
 - All Kick API calls run inside a hidden kick.com page (`kick-api.js`). The login token is read there and never leaves it.
 - The renderer updates the DOM by morphing it (`setHTML` in `format.js`), so ticking numbers don't rebuild images or shift the layout. Charts are drawn at measured sizes and kept out of the layout flow.
