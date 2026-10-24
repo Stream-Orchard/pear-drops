@@ -182,6 +182,7 @@ test('the daily reward on the icon: the chest when ready, its ring while the hou
   const ready = withDailyReward(farming, { state: 'ready', minutes: 60, threshold: 60 });
   assert.equal(ready.mark, 'chest');
   assert.equal(ready.tooltip, 'Pear Drops · Daily reward ready to claim');
+  assert.equal(withDailyReward(farming, { state: 'ready', crate: 'Trick or Treat' }).tooltip, 'Pear Drops · Trick or Treat ready to claim', 'an event’s crate, by its name');
   assert.equal(withDailyReward(waiting, { state: 'ready' }).mark, 'chest', 'over the logo too');
   for (const daily of [{ state: 'claimed', minutes: 60, threshold: 60 }, null, undefined]) assert.equal(withDailyReward(waiting, daily), waiting);
 });

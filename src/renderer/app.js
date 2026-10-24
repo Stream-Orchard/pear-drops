@@ -1,4 +1,4 @@
-/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, fmtFinish, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, revealDone, revealFor, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, fmtFinish, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -1163,31 +1163,32 @@ function openReward(open = !ui.rewardOpen) {
   render();
 }
 
-/** Claims the reward (or the event crate `id`) and plays the reveal in `card`. */
+/** Claims the reward (or the event crate `id`) and plays the reveal in `card`, until Done. */
 async function claimReward(card, id, tile) {
   const dr = dailyReward();
   if (ui.revealing || !dr) return;
   ui.revealing = true;
-  card.querySelector('.dr-claim')?.setAttribute('disabled', '');
+  for (const b of card.querySelectorAll('.dr-claim, .dr-crate-claim')) b.setAttribute('disabled', '');
+  const how = revealFor(dr, id);
   const r = await window.pd.dailyReward.claim(id);
-  if (r?.items?.length) {
+  if (r?.winner) {
     card.classList.add('revealing');
-    await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dr.media?.unbox, tile });
-  } else if (r?.error) toast({ title: 'Couldn’t open the daily reward', body: r.error, kind: 'alert' });
+    await playReveal(card.querySelector('.dr-reveal'), r, { ...how, tile });
+  } else if (r?.error) toast({ title: `Couldn’t open ${how.title ? `the ${how.title} crate` : 'the daily reward'}`, body: r.error, kind: 'alert' });
   // Claimed already (kick.com got there first): the card shows what it was.
   endReveal(card);
   ui.revealing = false;
   render();
 }
 
-/** The last claim's reel again (an automatic claim's, say). */
-async function replayReward(card, tile) {
+/** The last claim's reveal again (an automatic claim's, say), the daily crate's or the event crate `id`'s. */
+async function replayReward(card, id, tile) {
   if (ui.revealing) return;
-  const r = await window.pd.dailyReward.lastClaim();
-  if (!r?.items?.length) return;
+  const r = await window.pd.dailyReward.lastClaim(id);
+  if (!r?.winner) return;
   ui.revealing = true;
   card.classList.add('revealing');
-  await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile });
+  await playReveal(card.querySelector('.dr-reveal'), r, { ...revealFor(dailyReward(), id), tile });
   endReveal(card);
   ui.revealing = false;
   render();
@@ -1502,7 +1503,8 @@ const actions = {
   'reward-open': () => openReward(),
   'reward-close': () => openReward(false),
   'reward-claim': (el) => claimReward(el.closest('.dr-card'), el.dataset.id, 120),
-  'reward-replay': (el) => replayReward(el.closest('.dr-card'), 120),
+  'reward-replay': (el) => replayReward(el.closest('.dr-card'), el.dataset.id, 120),
+  'reward-done': () => revealDone(),
   'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
   // Kick's own page of every card, with the ones you own.
   'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
@@ -1753,7 +1755,7 @@ document.addEventListener('change', (event) => {
   if (key) window.pd.setSettings({ [key]: Number(event.target.value) });
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && ui.rewardOpen && !ui.modal) return ui.revealing || openReward(false);
+  if (event.key === 'Escape' && ui.rewardOpen && !ui.modal) return ui.revealing ? revealDone() : openReward(false);
   if (event.key === 'Escape' && ui.modal === 'settings' && ui.settingsTab === 'apps' && act.app) closeActivity();
   else if (event.key === 'Escape' && ui.modal) closeModal();
 });

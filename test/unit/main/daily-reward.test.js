@@ -182,7 +182,11 @@ test('the collection counts cards by rarity, and the duplicate chance weighs wha
 });
 
 test('a card has no name: its picture shows it', () => {
-  assert.deepEqual(dr.cardOf({ id: 7, rarity: 'epic', type: 'badge', card_url: 'https://ext.cdn.kick.com/x.webp' }), { id: '7', rarity: 'epic', type: 'badge', image: 'https://ext.cdn.kick.com/x.webp' });
+  assert.deepEqual(dr.cardOf({ id: 7, rarity: 'epic', type: 'badge', card_url: 'https://ext.cdn.kick.com/x.webp' }), { id: '7', rarity: 'epic', type: 'badge', image: 'https://ext.cdn.kick.com/x.webp', square: false });
+  // An event's prize: no card picture, a square thumbnail, and no type (unless the card list knows it).
+  const prize = dr.cardOf({ id: 'p1', rarity: 'uncommon', card_url: '', thumbnail_url: 'https://content.kick.com/public/rewards/thumbnails/p1.webp' });
+  assert.deepEqual([prize.image, prize.square, prize.type], ['https://content.kick.com/public/rewards/thumbnails/p1.webp', true, null]);
+  assert.equal(dr.cardOf({ id: 'c1', rarity: 'common', card_url: 'https://a/c1' }, new Map([['c1', 'badge']])).type, 'badge');
   assert.equal(dr.cardOf({ id: 1, rarity: 'odd', card_url: 'http://insecure' }).image, null);
   assert.equal(dr.cardOf({ id: 1, rarity: 'odd' }).rarity, 'common');
   assert.equal(dr.cardOf(null), null);
@@ -217,7 +221,8 @@ test('the level is a share of the way to the next, as kick.com shows it', () => 
 test('a claim is recorded in History in words, with the card’s picture', () => {
   assert.deepEqual(dr.claimText({ winner: { rarity: 'rare', type: 'emote' }, duplicate: false }), { reward: 'Rare emote', text: 'Rare emote, new to your collection' });
   assert.equal(dr.claimText({ winner: { rarity: 'common', type: 'badge' }, duplicate: true, xpMinutes: 12, levelTo: 66 }).text, 'Common badge, a duplicate, +12 min watch time to Level 66');
-  assert.equal(dr.claimText({ winner: null, duplicate: true }).text, 'Common emote, a duplicate');
+  assert.equal(dr.claimText({ winner: null, duplicate: true }).text, 'Common reward, a duplicate');
+  assert.deepEqual(dr.claimText({ winner: { rarity: 'uncommon', type: null }, duplicate: false }, 'Trick or Treat'), { reward: 'Uncommon reward', text: 'Trick or Treat: Uncommon reward, new to your collection' });
 });
 
 test('Kick is asked often while the hour is earned here, rarely otherwise, and again at the reset', () => {
@@ -479,4 +484,152 @@ test('demo mode draws its own crate; with Kick, its videos', async () => {
   await settle();
   assert.match(reward.snapshot().media.unbox, /unbox\.webm$/);
   assert.equal(dr.dayOf(NOW + DAY), '2026-10-21');
+});
+
+// ------------------------------------------------------------------ an event's crate
+
+/** An event's crate as Kick lists Trick or Treat: another daily challenge, featured, 3 hours, with videos of its own (made-up ids). */
+function eventCrate({ status = 'in_progress', progress = 112, id = 'ev-1', name = 'Trick or Treat', ...rest } = {}) {
+  return challenge({
+    id,
+    name,
+    status,
+    featured: true,
+    condition: { type: 'watch_time_minutes', progress, threshold: 180 },
+    active_period: { starts_at: '2026-10-20T00:00:00Z', ends_at: '2026-10-28T00:00:00Z' },
+    drop_table: [
+      { rarity: 'common', weighting: 500 },
+      { rarity: 'uncommon', weighting: 299 },
+      { rarity: 'rare', weighting: 200 },
+      { rarity: 'mythic', weighting: 1 },
+    ],
+    animations: { idle_url: 'https://static.kick.com/rewards/halloween-2610/idle', unbox_url: 'https://static.kick.com/rewards/halloween-2610/unbox' },
+    ...rest,
+  });
+}
+// Kick's reply to an event crate's claim: its prize alone, a square thumbnail, no reel.
+const PRIZE = { id: 'p1', rarity: 'uncommon', card_url: '', thumbnail_url: 'https://content.kick.com/public/rewards/thumbnails/p1.webp' };
+const prizeClaim = () => ({ data: { reveal_type: 'instant', roulette: [], winner: PRIZE, consolation: null } });
+
+test('an event’s crate is another daily challenge: the plain one is still the daily, whichever comes first', () => {
+  const read = dr.readChallenges({ data: [eventCrate(), challenge()] });
+  assert.equal(read.daily.id, 'ch-1');
+  assert.deepEqual(read.extras.map((e) => [e.id, e.name, e.state, e.threshold]), [['ev-1', 'Trick or Treat', 'earning', 180]]);
+  const e = read.extras[0];
+  assert.equal(e.until, Date.parse('2026-10-28T00:00:00Z'), 'its event’s end');
+  assert.equal(e.media.unbox, 'https://static.kick.com/rewards/halloween-2610/unbox.webm');
+  assert.equal(e.ownMedia, true);
+  assert.equal(e.theme, 'halloween');
+  assert.deepEqual(e.odds.map((o) => o.rarity), ['common', 'uncommon', 'rare', 'mythic']);
+  // Claimed today, it stays listed, showing what it gave; a claimed one-off doesn't.
+  const claimed = dr.readChallenges({ data: [challenge(), eventCrate({ status: 'claimed', winner: PRIZE })] });
+  assert.deepEqual(claimed.extras.map((x) => [x.state, x.winner.image, x.winner.square]), [['claimed', PRIZE.thumbnail_url, true]]);
+  assert.equal(dr.readChallenge(challenge({ animations: null })).ownMedia, false, 'Kick’s default videos are the daily crate’s');
+});
+
+test('an event’s theme comes from its name or its videos’ folder, or is a plain event', () => {
+  assert.equal(dr.themeOf('Trick or Treat', 'https://static.kick.com/rewards/halloween-2610/idle'), 'halloween');
+  assert.equal(dr.themeOf('Mystery Box', 'https://static.kick.com/rewards/halloween-2610/idle'), 'halloween', 'the folder says it');
+  assert.equal(dr.themeOf('Holiday Cheer', null), 'winter');
+  assert.equal(dr.themeOf('Xmas Crate', null), 'winter');
+  assert.equal(dr.themeOf('Valentine’s Box', null), 'valentine');
+  assert.equal(dr.themeOf('New Year Countdown', null), 'newyear');
+  assert.equal(dr.themeOf('Spring Bloom', null), 'spring');
+  assert.equal(dr.themeOf('Summer Splash', null), 'summer');
+  assert.equal(dr.themeOf('Anniversary', null), 'event');
+  assert.equal(dr.themeOf('Anniversary', 'https://example.com/halloween/idle'), 'event', 'only Kick’s own media host');
+  assert.equal(dr.themeOf(undefined, undefined), 'event');
+});
+
+test('claiming an event’s crate keeps it on the card with its prize, for See it, and records its name', async () => {
+  const kick = fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate({ status: 'claimable', progress: 180 })], claim: prizeClaim });
+  const { reward, events, stored, emitted } = setup({ kick, settings: { dailyClaim: 'self' } });
+  reward.start();
+  await settle();
+  const crate = reward.snapshot().extras[0];
+  assert.deepEqual([crate.state, crate.theme, crate.endsAt, crate.until], ['ready', 'halloween', Date.parse('2026-10-21T00:00:00Z'), Date.parse('2026-10-28T00:00:00Z')]);
+  assert.match(crate.media.idle, /halloween-2610\/idle\.webm$/);
+  const reel = await reward.claim('ev-1');
+  assert.deepEqual([reel.items.length, reel.revealType, reel.winner.image, reel.winner.type], [1, 'instant', PRIZE.thumbnail_url, null]);
+  assert.equal(events[0].text, 'Trick or Treat: Uncommon reward, new to your collection');
+  assert.equal(events[0].crate, 'Trick or Treat');
+  assert.equal(emitted.find(([e]) => e === 'claimed')[1].crate, 'Trick or Treat');
+  assert.deepEqual(stored.value.events['ev-1'].day, '2026-10-20');
+  assert.equal(stored.value.day, undefined, 'the daily crate’s own claim is untouched');
+  const after = reward.snapshot().extras[0];
+  assert.deepEqual([after.state, after.won.winner.image, after.won.duplicate, after.won.by, after.won.replay], ['claimed', PRIZE.thumbnail_url, false, 'you', true]);
+  assert.deepEqual(reward.lastClaim('ev-1'), reel);
+  assert.equal(reward.lastClaim(), null, 'not the daily crate’s');
+  // Kick lists it as claimed from then on: still there, still with See it.
+  await settle();
+  await reward.refresh();
+  assert.equal(reward.snapshot().extras[0].won.replay, true);
+});
+
+test('an event crate’s See it survives a restart the same day, not the next; claimed on kick.com shows Kick’s prize', async () => {
+  const reel = { items: [{ image: PRIZE.thumbnail_url, rarity: 'uncommon' }], winnerIndex: 0, winner: { id: 'p1', rarity: 'uncommon', type: null, image: PRIZE.thumbnail_url, square: true }, duplicate: false };
+  const kick = fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate({ status: 'claimed', winner: PRIZE })] });
+  const { reward } = setup({ kick, saved: { events: { 'ev-1': { day: '2026-10-20', reel, by: 'auto' } } } });
+  reward.start();
+  await settle();
+  assert.deepEqual(reward.snapshot().extras[0].won.by, 'auto');
+  assert.equal(reward.lastClaim('ev-1').winner.rarity, 'uncommon');
+  const next = { starts_at: '2026-10-21T00:00:00Z', ends_at: '2026-10-22T00:00:00Z' };
+  kick.challenges = [challenge({ status: 'claimed', window: next }), eventCrate({ status: 'claimed', winner: PRIZE, window: next })];
+  await reward.refresh();
+  assert.equal(reward.lastClaim('ev-1'), null);
+  const won = reward.snapshot().extras[0].won;
+  assert.deepEqual([won.winner.image, won.by, won.replay], [PRIZE.thumbnail_url, 'elsewhere', false]);
+  assert.equal(reward.lastClaim('nope'), null);
+});
+
+test('an event’s crate ready: said once, the chests show it, and the claim setting claims it too', async () => {
+  const kick = fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate()], claim: prizeClaim });
+  const { reward, events, emitted } = setup({ kick, settings: { dailyClaim: 'self' } });
+  const ready = [];
+  reward.on('crate-ready', (c) => ready.push(c));
+  reward.start();
+  await settle();
+  assert.equal(reward.chest().state, 'claimed');
+  assert.equal(reward.snapshot().crateReady, false);
+  kick.challenges = [challenge({ status: 'claimed' }), eventCrate({ status: 'claimable', progress: 180 })];
+  await reward.refresh();
+  await reward.refresh();
+  assert.deepEqual(ready, [{ id: 'ev-1', name: 'Trick or Treat', endsAt: Date.parse('2026-10-21T00:00:00Z') }]);
+  assert.equal(reward.snapshot().crateReady, true);
+  assert.deepEqual([reward.chest().state, reward.chest().crate, reward.chest().theme], ['ready', 'Trick or Treat', 'halloween']);
+  assert.equal(emitted.filter(([e]) => e === 'ready').length, 0, 'the daily crate’s "ready" is its own');
+  assert.equal(kick.calls.claim, 0, '"Myself": never on its own');
+  // "Right away": claimed at once, once.
+  const now = setup({ kick: fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate({ status: 'claimable', progress: 180 })], claim: prizeClaim }), settings: { dailyClaim: 'now' } });
+  now.reward.start();
+  await settle();
+  await settle();
+  assert.equal(now.kick.calls.claim, 1);
+  assert.deepEqual([now.events[0].by, now.events[0].crate], ['auto', 'Trick or Treat']);
+  assert.equal(events.length, 0);
+});
+
+test('"Before it resets" claims a waiting event crate 15 minutes before midnight UTC, after the daily one', async () => {
+  const challenges = [challenge({ status: 'claimable', progress: 60 }), eventCrate({ status: 'claimable', progress: 180 })];
+  const kick = fakeKick({ challenges, claim: (id) => (id === 'ev-1' ? prizeClaim() : { data: { reveal_type: 'roulette', roulette: [], winner: { id: 'c1', rarity: 'common', card_url: 'https://ext.cdn.kick.com/c1.webp' } } }) });
+  const { reward, events, timers, clock } = setup({ kick, now: Date.parse('2026-10-20T23:00:00Z') });
+  reward.start();
+  await settle();
+  assert.equal(kick.calls.claim, 0);
+  assert.ok(timers.next <= 45 * MIN, 'wakes for the claim');
+  clock.now = Date.parse('2026-10-20T23:46:00Z');
+  await reward.refresh();
+  for (let i = 0; i < 6; i++) await settle();
+  assert.equal(kick.calls.claim, 2);
+  assert.deepEqual(events.map((e) => e.crate ?? 'daily'), ['daily', 'Trick or Treat']);
+  assert.equal(events[0].text, 'Common emote, new to your collection', 'the card list knows a daily card’s type');
+});
+
+test('an event crate filling as you watch is checked as often as the daily hour', () => {
+  const daily = dr.readChallenge(challenge({ status: 'claimed' }));
+  const crate = dr.readChallenge(eventCrate({ progress: 179 }));
+  assert.equal(dr.nextCheckIn({ daily, extras: [crate], watching: true, now: NOW }), 90_000);
+  assert.equal(dr.nextCheckIn({ daily, extras: [crate], watching: false, now: NOW }), 10 * MIN);
+  assert.equal(dr.nextCheckIn({ daily, extras: [{ ...crate, state: 'claimed' }], watching: true, now: NOW }), 4 * 60 * MIN + 5000);
 });

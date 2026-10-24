@@ -1,4 +1,4 @@
-/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtFinish, streamHealth, streamNotice, setHTML, img, applyFont */
+/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, revealDone, revealFor, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtFinish, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 let page = 'main'; // or 'reward': the daily reward's card, claimed right here
@@ -150,25 +150,27 @@ const actions = {
     render();
   },
   'reward-back': () => {
-    if (revealing) return;
+    if (revealing) return revealDone();
     page = 'main';
     render();
   },
-  'reward-claim': (el) => reveal(el.closest('.dr-card'), () => window.pd.dailyReward.claim(el.dataset.id)),
-  'reward-replay': (el) => reveal(el.closest('.dr-card'), () => window.pd.dailyReward.lastClaim()),
+  'reward-claim': (el) => reveal(el.closest('.dr-card'), el.dataset.id, () => window.pd.dailyReward.claim(el.dataset.id)),
+  'reward-replay': (el) => reveal(el.closest('.dr-card'), el.dataset.id, () => window.pd.dailyReward.lastClaim(el.dataset.id)),
+  'reward-done': () => revealDone(),
   'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
   'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
 };
 
-/** Claims (or replays) the daily reward, with the whole reveal in the popover. */
-async function reveal(card, get) {
+/** Claims (or replays) the daily reward or the event crate `id`, with the whole reveal in the popover, until Done. */
+async function reveal(card, id, get) {
   if (revealing || !card) return;
   revealing = true;
-  card.querySelector('.dr-claim')?.setAttribute('disabled', '');
+  for (const b of card.querySelectorAll('.dr-claim, .dr-crate-claim')) b.setAttribute('disabled', '');
+  const how = revealFor(dailyReward(), id);
   const r = await get();
-  if (r?.items?.length) {
+  if (r?.winner) {
     card.classList.add('revealing');
-    await playReveal(card.querySelector('.dr-reveal'), r, { unbox: dailyReward()?.media?.unbox, tile: 92 });
+    await playReveal(card.querySelector('.dr-reveal'), r, { ...how, tile: 92 });
   }
   endReveal(card);
   revealing = false;

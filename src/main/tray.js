@@ -393,10 +393,10 @@ function dailyPixels(fraction, { size = 18, scale = 2 } = {}) {
  * filling while no stream plays for the drops (none live, or every drop done): the chest in its
  * ring, with its percent. Farming, paused or in trouble, the drop's own ring stays.
  * @param {object} info farmer.trayInfo()
- * @param {object|null} daily the daily reward's challenge: { state, minutes, threshold }
+ * @param {object|null} daily the daily reward's challenge: { state, minutes, threshold, crate } (crate: an event's, waiting)
  */
 function withDailyReward(info, daily) {
-  if (daily?.state === 'ready') return { ...info, mark: 'chest', tooltip: `${info.tooltip} · Daily reward ready to claim` };
+  if (daily?.state === 'ready') return { ...info, mark: 'chest', tooltip: `${info.tooltip} · ${daily.crate || 'Daily reward'} ready to claim` };
   if (daily?.state === 'earning' && (info.mark === 'logo' || info.tone === 'done')) {
     const fraction = Math.min(1, Math.max(0, daily.minutes) / Math.max(1, daily.threshold));
     return { ...info, mark: 'daily', fraction, title: `${Math.floor(fraction * 100)}%`, tooltip: `${info.tooltip} · Daily reward ${daily.minutes} of ${daily.threshold} min` };

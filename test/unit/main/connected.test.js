@@ -497,6 +497,14 @@ test('rewards.daily says where the daily reward is at: enough for a chest, and n
   assert.deepEqual(c.dailyReward(), { state: 'earning', account: { platform: 'kick', user: 'pearfan' }, minutes: 37, threshold: 60, endsAt: '2026-10-21T00:00:00.000Z' });
   daily.value = { state: 'ready', minutes: 60, threshold: 60, endsAt };
   assert.equal(c.dailyReward().state, 'ready');
+  // An event's crate waiting (Trick or Treat) is "waiting to be claimed" too, whatever the daily one does: its chest shows Claim.
+  daily.value = { state: 'claimed', minutes: 60, threshold: 60, endsAt, crateReady: true };
+  assert.deepEqual(c.dailyReward(), { state: 'ready', account: { platform: 'kick', user: 'pearfan' }, threshold: 60, endsAt: '2026-10-21T00:00:00.000Z' });
+  daily.value = { state: 'earning', minutes: 12, threshold: 60, endsAt, crateReady: true };
+  assert.equal(c.dailyReward().state, 'ready');
+  assert.equal(c.dailyReward().minutes, undefined, 'no daily minutes on a ready chest');
+  daily.value = { state: 'loading', crateReady: true };
+  assert.equal(c.dailyReward().state, 'unavailable');
   daily.value = { state: 'loading' };
   assert.deepEqual(c.dailyReward(), { state: 'unavailable', account: { platform: 'kick', user: 'pearfan' } }, 'not known yet: nothing to show');
   daily.value = null;

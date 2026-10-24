@@ -18,12 +18,27 @@ test.after(async () => {
 
 const chest = '#titlebar-actions .dr-chest';
 const events = () => readDb(a.data, (db) => db.events().map((r) => r.e));
-const claimDone = (page) => until(page, () => document.querySelector('.dr-card.state-claimed') && !document.querySelector('.dr-card.revealing'), 'the claimed card', 40000);
+/** The prize stays on show until Done: presses it, and waits for the card. */
+async function done(page) {
+  await until(page, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the prize', 40000);
+  await page.click('.dr-reveal .dr-done');
+  await until(page, () => !document.querySelector('.dr-card.revealing'), 'back to the card');
+}
+async function claimDone(page) {
+  await done(page);
+  await until(page, () => document.querySelector('.dr-card.state-claimed'), 'the claimed card');
+}
+/** The tray's popover, open (the icon's click toggles it: open already, it would close). */
 async function tray() {
   await a.demo((d) => d.openTray());
   for (let i = 0; i < 40; i++) {
     const w = a.app.windows().find((x) => x.url().endsWith('tray.html'));
-    if (w) return w;
+    if (w) {
+      if (await a.app.evaluate(() => global.pdDebug.tray.window.isVisible())) return w;
+      // It was open, so that closed it: once more (a click just after it hides doesn't count).
+      await a.win.waitForTimeout(300);
+      await a.demo((d) => d.openTray());
+    }
     await a.win.waitForTimeout(150);
   }
   throw new Error('no tray popover');
@@ -126,6 +141,11 @@ test('ready: the chest becomes a "Claim reward" chip and hops, and claiming play
     return Math.abs(won.x + won.width / 2 - (mark.x + mark.width / 2));
   });
   assert.ok(off < 1, `the winner under the mark (${off}px off)`);
+  // The prize stays until Done (it once went back to the card after a moment).
+  await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the prize', 20000);
+  await a.win.waitForTimeout(3500);
+  assert.equal(await a.win.evaluate(() => document.querySelector('.dr-reveal')?.dataset.phase), 'celebrate', 'still showing the prize');
+  assert.equal(await a.win.isVisible('.dr-reveal .dr-done'), true);
   await claimDone(a.win);
   assert.match(await a.win.textContent('.dr-pop .dr-result'), /Rare emote\s*New/);
   assert.match(await a.win.textContent('.dr-pop .dr-actions'), /Replay/);
@@ -143,7 +163,10 @@ test('Replay plays the reel again, and Collection opens Kick’s own page', asyn
   await a.win.click(chest);
   await a.win.click('.dr-pop [data-action="reward-replay"]');
   await until(a.win, () => document.querySelector('.dr-card.revealing'), 'the reel again');
-  await claimDone(a.win);
+  // Esc ends the reveal first, then closes the card.
+  await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the prize', 40000);
+  await a.win.keyboard.press('Escape');
+  await until(a.win, () => !document.querySelector('.dr-card.revealing') && document.querySelector('.dr-pop'), 'back to the card, still open');
   await a.win.click('.dr-pop [data-action="reward-collection"]');
   assert.ok((await a.app.evaluate(() => global.pdOpened)).includes('https://kick.com/collectibles'));
   await a.win.keyboard.press('Escape');
@@ -152,9 +175,10 @@ test('Replay plays the reel again, and Collection opens Kick’s own page', asyn
 test('the Welcome Reward shows once it can be claimed, and claims from the card', async () => {
   await a.app.evaluate(() => global.pdDemo.daily({ welcome: 'claimable', winner: 'card-uncommon-1' }));
   await a.win.click(chest);
-  await until(a.win, () => /Welcome Reward\s*Ready to open/.test(document.querySelector('.dr-pop .dr-extra')?.textContent ?? ''), 'the Welcome Reward, ready');
-  await a.win.click('.dr-pop .dr-extra [data-action="reward-claim"]');
-  await until(a.win, () => !document.querySelector('.dr-card.revealing') && !document.querySelector('.dr-pop .dr-extra'), 'claimed, and gone from the card', 40000);
+  await until(a.win, () => /Welcome Reward\s*Ready to open/.test(document.querySelector('.dr-pop .dr-crate-row')?.textContent ?? ''), 'the Welcome Reward, ready');
+  await a.win.click('.dr-pop .dr-crate-row [data-action="reward-claim"]');
+  await done(a.win);
+  await until(a.win, () => !document.querySelector('.dr-pop .dr-crate-row'), 'claimed, and gone from the card (a one-off)');
   await a.win.keyboard.press('Escape');
 });
 
@@ -173,6 +197,7 @@ test('the tray: the chest at the top right opens the card, and a claim plays rig
   await pop.click('.dr-claim');
   await until(pop, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the winner', 40000);
   assert.match(await pop.textContent('.dr-winner-caption'), /Common emote\s*Duplicate/, 'the reveal says it’s a duplicate');
+  assert.ok(await pop.evaluate(() => document.querySelector('.dr-done').getBoundingClientRect().bottom <= innerHeight), 'Done fits the popover');
   await claimDone(pop);
   assert.match(await pop.textContent('.dr-result'), /You already have this\s*Common emote/);
   assert.match(await pop.textContent('.dr-result'), /\+12m watch time to Level 43/);
@@ -182,6 +207,87 @@ test('the tray: the chest at the top right opens the card, and a claim plays rig
   assert.equal(events().filter((e) => e.type === 'daily-reward').length, 3, 'the daily one, the Welcome Reward, and this');
   await pop.click('[data-action="reward-back"]');
   await until(pop, () => document.querySelector('.tray-now'), 'back to farming');
+});
+
+// ------------------------------------------------------------------ an event's crate
+
+const crateRow = '.dr-pop .dr-crate-row';
+
+test('an event’s crate filling: its own row, in its colours, with the time to go', async () => {
+  await a.app.evaluate(() => global.pdDemo.daily({ event: 112, eventName: 'Harvest Moon' }));
+  await a.win.click(chest);
+  await until(a.win, () => document.querySelector('.dr-pop .dr-crate-row.state-earning'), 'the crate’s row');
+  assert.match(await a.win.textContent(crateRow), /Harvest Moon\s*1h 08m to go/);
+  assert.match(await a.win.getAttribute(crateRow, 'class'), /theme-event/, 'a name with no season: the plain event colours');
+  assert.match(await a.win.getAttribute(crateRow, 'data-tip'), /A new one every day until/);
+  assert.equal(await a.win.evaluate(() => document.querySelector('.dr-pop').scrollHeight - document.querySelector('.dr-pop').clientHeight), 0, 'the card still fits');
+  await a.win.keyboard.press('Escape');
+});
+
+test('an event’s crate ready: the title bar’s chest hops in its colours with its name, and its row shimmers', async () => {
+  await a.app.evaluate(() => global.pdDemo.daily({ event: 180, eventName: 'Trick or Treat', eventWinner: 'prize-3' }));
+  await until(a.win, () => document.querySelector('#titlebar-actions .dr-chest.crate.state-ready.chip.theme-halloween'), 'the event’s chip');
+  await a.win.waitForTimeout(300); // its colour's transition
+  assert.equal((await a.win.textContent(chest)).trim(), 'Trick or Treat');
+  assert.match(await a.win.getAttribute(chest, 'data-tip'), /Trick or Treat is ready\. Claim before/);
+  const look = await a.win.evaluate((sel) => {
+    const c = document.querySelector(sel);
+    return { hop: getComputedStyle(c.querySelector('.chest-box')).animationName, glow: getComputedStyle(c).animationName, colour: getComputedStyle(c).color };
+  }, chest);
+  assert.deepEqual(look, { hop: 'dr-hop', glow: 'dr-glow-ev', colour: 'rgb(255, 122, 26)' });
+  await a.win.click(chest);
+  await until(a.win, () => document.querySelector('.dr-pop .dr-crate-row.state-ready'), 'the ready row');
+  const row = await a.win.evaluate((sel) => {
+    const r = document.querySelector(sel);
+    return { hop: getComputedStyle(r.querySelector('.chest-box')).animationName, edge: getComputedStyle(r, '::before').animationName, text: r.textContent };
+  }, crateRow);
+  assert.equal(row.hop, 'dr-hop');
+  assert.equal(row.edge, 'dr-run');
+  assert.match(row.text, /Trick or Treat\s*Ready to open\s*Claim before/);
+});
+
+test('claiming an event’s crate: it opens onto its prize, which stays until Done, then the row shows it with See it', async () => {
+  await a.win.click(`${crateRow} [data-action="reward-claim"]`);
+  await until(a.win, () => document.querySelector('.dr-reveal.crate.theme-halloween')?.dataset.phase === 'openBox', 'the crate opening, in its colours');
+  await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the prize', 15000);
+  assert.equal(await a.win.evaluate(() => 'instant' in document.querySelector('.dr-reveal').dataset), true, 'no reel');
+  assert.match(await a.win.textContent('.dr-winner-title'), /Trick or Treat/);
+  assert.match(await a.win.textContent('.dr-winner-caption'), /Rare reward\s*New/);
+  assert.equal(await a.win.getAttribute('.dr-winner .dr-won-card', 'alt'), 'Rare reward');
+  await a.win.waitForTimeout(3000);
+  assert.equal(await a.win.evaluate(() => document.querySelector('.dr-reveal')?.dataset.phase), 'celebrate', 'still showing the prize');
+  await a.win.click('.dr-reveal .dr-done');
+  await until(a.win, () => document.querySelector('.dr-pop .dr-crate-row.state-claimed') && !document.querySelector('.dr-card.revealing'), 'the claimed row');
+  assert.match(await a.win.textContent(crateRow), /Trick or Treat\s*Rare reward\s*New\s*See it/);
+  assert.equal(await a.win.locator(`${crateRow} .dr-crate-prize img`).count(), 1, 'its prize’s picture');
+  await until(a.win, () => !document.querySelector('#titlebar-actions .dr-chest.crate'), 'the chest back to the daily one');
+  const claim = events().findLast((e) => e.type === 'daily-reward');
+  assert.deepEqual([claim.text, claim.crate, claim.by], ['Trick or Treat: Rare reward, new to your collection', 'Trick or Treat', 'you']);
+  // See it: the same prize again.
+  await a.win.click(`${crateRow} [data-action="reward-replay"]`);
+  await until(a.win, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the prize again', 15000);
+  assert.match(await a.win.textContent('.dr-winner-caption'), /Rare reward/);
+  await a.win.click('.dr-reveal .dr-done');
+  await until(a.win, () => !document.querySelector('.dr-card.revealing'), 'back to the card');
+  await a.win.keyboard.press('Escape');
+});
+
+test('the tray: an event’s crate waiting makes its chest hop, and claims with the reveal right there', async () => {
+  await a.app.evaluate(() => global.pdDemo.daily({ event: 180, eventName: 'Holiday Cheer', eventWinner: 'prize-0' }));
+  const pop = await tray();
+  await until(pop, () => document.querySelector('.tray-head .dr-chest.crate.state-ready.theme-winter'), 'the event’s chest');
+  assert.equal(await pop.evaluate(() => getComputedStyle(document.querySelector('.tray-head .dr-chest .chest-box')).animationName), 'dr-hop');
+  await pop.click('.tray-head .dr-chest');
+  await until(pop, () => document.querySelector('.dr-card.at-tray .dr-crate-row.state-ready'), 'its row');
+  await pop.click('.dr-crate-row [data-action="reward-claim"]');
+  await until(pop, () => document.querySelector('.dr-reveal')?.dataset.phase === 'celebrate', 'the prize', 15000);
+  assert.ok(await pop.evaluate(() => document.querySelector('.dr-done').getBoundingClientRect().bottom <= innerHeight), 'Done fits the popover');
+  // Back ends the reveal first.
+  await pop.click('[data-action="reward-back"]');
+  await until(pop, () => document.querySelector('.dr-crate-row.state-claimed') && !document.querySelector('.dr-card.revealing'), 'the claimed row');
+  await pop.click('[data-action="reward-back"]');
+  await until(pop, () => document.querySelector('.tray-now'), 'back to farming');
+  await a.demo((d) => d.daily({ event: null }));
 });
 
 test('the claim setting is in Settings › Farming, and the two notification kinds are there', async () => {

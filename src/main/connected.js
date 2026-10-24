@@ -304,10 +304,13 @@ class Connected extends EventEmitter {
     const r = account ? this.reward() : null;
     if (!account || !r) return { state: 'signed-out', account };
     const known = ['earning', 'ready', 'claimed'].includes(r.state);
+    // An event's crate waiting counts as ready (rewards.daily's "waiting to be claimed"): its chest
+    // asks for rewards.daily.show, which opens the card with the crate's Claim.
+    const state = known && r.crateReady ? 'ready' : r.state;
     return compact({
-      state: known ? r.state : 'unavailable',
+      state: known ? state : 'unavailable',
       account,
-      minutes: known && Number.isFinite(r.minutes) ? Math.round(r.minutes) : undefined,
+      minutes: known && state === r.state && Number.isFinite(r.minutes) ? Math.round(r.minutes) : undefined,
       threshold: known && Number.isFinite(r.threshold) ? Math.round(r.threshold) : undefined,
       endsAt: known ? iso(r.endsAt) : undefined,
     });

@@ -103,8 +103,14 @@ function crateStage(dr) {
 
 const rarityChip = (r, extra = '') => `<span class="chip rarity r-${esc(r)}${extra}"><i></i>${rarityName(r)}</span>`;
 
-/** What a card is, in words: "Rare emote". Kick gives no names; the name is on the card's picture. */
-const cardKind = (c) => `${rarityName(c?.rarity)} ${c?.type === 'badge' ? 'badge' : 'emote'}`;
+/**
+ * What a card is, in words: "Rare emote". Kick gives no names; the name is on the card's picture.
+ * An event's prize comes without a type: "Rare reward".
+ */
+const cardKind = (c) => `${rarityName(c?.rarity)} ${['badge', 'emote'].includes(c?.type) ? c.type : 'reward'}`;
+
+/** The event crate waiting to be claimed, when the daily one isn't (the chests show it instead). */
+const readyCrate = (dr) => (dr?.state !== 'ready' && dr?.crateReady ? ((dr.extras ?? []).find((e) => e.state === 'ready') ?? null) : null);
 
 /** What a claimed card was: new, or a duplicate turned into level progress. */
 function winnerLine(t, { short = false } = {}) {
@@ -120,6 +126,8 @@ function winnerLine(t, { short = false } = {}) {
 
 /** What the chest's tooltip says. */
 function chestTip(dr) {
+  const crate = readyCrate(dr);
+  if (crate) return `${crate.name || 'Event reward'} is ready.${crate.endsAt ? ` Claim before ${fmtClock(crate.endsAt)}` : ''}`;
   if (dr.state === 'ready') return `Daily reward is ready. Claim before ${fmtClock(dr.endsAt)}${dr.claimMode === 'before-reset' ? '\nPear Drops claims it 15 minutes before, if you haven’t' : ''}`;
   if (dr.state === 'earning') return `Daily reward · ${dr.minutes} of ${dr.threshold} min\n${dr.threshold - dr.minutes} min to go${dr.watching ? '' : ' (not watching)'}`;
   if (dr.state === 'claimed' && dr.today?.winner) return `Today: a ${cardKind(dr.today.winner).toLowerCase()}${dr.today.duplicate ? ' (a duplicate)' : ''}\nNext one in ${fmtDur(dr.endsAt - Date.now())}`;
@@ -135,15 +143,18 @@ function chestTip(dr) {
  */
 function rewardChest(dr, { where = 'titlebar', tight = false, open = false } = {}) {
   if (!dr || dr.state === 'signed-out' || dr.state === 'hidden') return '';
-  const ready = dr.state === 'ready';
-  const frac = dr.state === 'earning' ? Math.min(1, dr.minutes / Math.max(1, dr.threshold)) : 0;
-  const tone = dr.state === 'claimed' ? `r-${esc(dr.today?.winner?.rarity ?? 'common')}` : '';
+  // An event's crate waiting: the chest hops in the event's colours and says its name.
+  const crate = readyCrate(dr);
+  const state = crate ? 'ready' : dr.state;
+  const ready = state === 'ready';
+  const frac = state === 'earning' ? Math.min(1, dr.minutes / Math.max(1, dr.threshold)) : 0;
+  const tone = crate ? `crate theme-${esc(crate.theme ?? 'event')}` : state === 'claimed' ? `r-${esc(dr.today?.winner?.rarity ?? 'common')}` : '';
   const c = 2 * Math.PI * 9;
   const ring = `<svg class="dr-ring" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" stroke="rgba(255,255,255,.08)" stroke-width="2" fill="none"/>
     <circle class="dr-ring-value" cx="11" cy="11" r="9" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - frac)).toFixed(2)}" transform="rotate(-90 11 11)"/></svg>`;
-  const cls = `dr-chest at-${where} state-${esc(dr.state)} ${tone} ${open ? 'open' : ''} ${ready && !tight && where === 'titlebar' ? 'chip' : ''}`;
-  const label = ready && !tight && where === 'titlebar' ? '<span>Claim reward</span>' : '';
-  return `<button class="${cls}" data-action="reward-open" data-tip="${esc(chestTip(dr))}" aria-label="Daily reward">${dr.state === 'earning' ? ring : ''}${chestMark()}${label}</button>`;
+  const cls = `dr-chest at-${where} state-${esc(state)} ${tone} ${open ? 'open' : ''} ${ready && !tight && where === 'titlebar' ? 'chip' : ''}`;
+  const label = ready && !tight && where === 'titlebar' ? `<span>${crate ? esc(crate.name || 'Event reward') : 'Claim reward'}</span>` : '';
+  return `<button class="${cls}" data-action="reward-open" data-tip="${esc(chestTip(dr))}" aria-label="Daily reward">${state === 'earning' ? ring : ''}${chestMark()}${label}</button>`;
 }
 
 // ------------------------------------------------------------------ the card
@@ -231,22 +242,64 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
     const label = dr.claiming ? 'Claiming…' : ready ? 'Claim' : dr.watching ? `Claim in ${left} min` : `Watch ${left} more min`;
     actions = `<div class="dr-actions"><button class="btn primary lg dr-claim" data-action="reward-claim" ${ready && !dr.claiming ? '' : 'disabled'}>${label}</button></div>`;
   }
-  // Other crates: an event's, or Kick's one-time Welcome Reward (unlocked by its sign-up questions).
-  // Kick's other crates: ready to claim, or filling as you watch.
-  const extras = (dr.extras ?? []).map((e) => {
-    const what = e.state === 'ready' ? 'Ready to open' : `${e.minutes} of ${e.threshold} min watched`;
-    const act = e.state === 'ready' ? `<button class="btn sm primary" data-action="reward-claim" data-id="${esc(e.id)}">Claim</button>` : '';
-    return `<div class="dr-extra">${chestMark()}<span><b>${esc(e.name || 'Reward')}</b><small>${what}</small></span>${act}</div>`;
-  });
+  const extras = (dr.extras ?? []).map((e) => crateRow(e, dr));
   return `<div class="dr-card at-${where} state-${dr.state} ${revealing ? 'revealing' : ''}">${top}${stage}
     <div class="dr-body">${middle}${extras.join('')}</div>${actions}
     <div class="dr-reveal" hidden></div></div>`;
 }
 
+/** The day an event's crate is offered until, as people say it: "Nov 1". */
+const fmtCrateDay = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+/**
+ * Kick's other crates: an event's (Trick or Treat, say: its own name, videos and odds, and a
+ * theme of colours worked out from them) or the one-time Welcome Reward. Filling as you watch,
+ * ready (it hops and shimmers in the event's colours), or claimed today, showing what it gave.
+ */
+function crateRow(e, dr) {
+  const name = esc(e.name || 'Event reward');
+  const left = Math.max(0, e.threshold - e.minutes);
+  const daily = e.until && e.endsAt && e.until > e.endsAt;
+  const tip = [daily ? `A new one every day until ${fmtCrateDay(e.until - 1)}` : '', (e.odds ?? []).map((o) => `${rarityName(o.rarity)} ${fmtChance(o.chance)}`).join(' · ')].filter(Boolean).join('\n');
+  let art = e.media?.idle ? `<video class="dr-crate-video" src="${esc(e.media.idle)}" autoplay loop muted playsinline></video>` : chestMark();
+  let what;
+  let act = '';
+  if (e.state === 'claimed') {
+    const w = e.won?.winner;
+    if (w?.image) art = `<span class="dr-crate-prize r-${esc(w.rarity)}">${img(w.image, '', cardKind(w))}</span>`;
+    what = w ? `${winnerLine({ winner: w, duplicate: e.won.duplicate }, { short: true })}` : `${icon('check')}Claimed${e.won?.by === 'elsewhere' ? ' on Kick' : ''}`;
+    act = e.won?.replay ? `<button class="btn sm" data-action="reward-replay" data-id="${esc(e.id)}">${icon('play')} See it</button>` : '';
+  } else if (e.state === 'ready') {
+    what = `<span class="dr-crate-ready">Ready to open</span>${e.endsAt ? `<span>Claim before ${fmtClock(e.endsAt)}</span>` : ''}`;
+    act = `<button class="btn sm primary dr-crate-claim" data-action="reward-claim" data-id="${esc(e.id)}" ${dr.claiming ? 'disabled' : ''}>Claim</button>`;
+  } else {
+    what = `<span class="bar"><i style="width:${(e.minutes / Math.max(1, e.threshold)) * 100}%"></i></span><span><b>${fmtDur(left * MIN)}</b> to go</span>`;
+  }
+  return `<div class="dr-crate-row theme-${esc(e.theme ?? 'event')} state-${esc(e.state)}" data-id="${esc(e.id)}" ${tip ? `data-tip="${esc(tip)}"` : ''}>
+    <span class="dr-crate-icon">${art}</span><span class="dr-crate-info"><b>${name}</b><small>${what}</small></span>${act}</div>`;
+}
+
+/**
+ * What a reveal plays: the daily crate's video, or the event crate `id`'s (its own, or our crate
+ * in its colours), and its name over the prize.
+ */
+function revealFor(dr, id) {
+  const e = id ? (dr?.extras ?? []).find((x) => x.id === id) : null;
+  return e ? { unbox: e.media?.unbox ?? null, theme: e.theme ?? 'event', title: e.name || null } : { unbox: dr?.media?.unbox ?? null, theme: null, title: null };
+}
+
 // ------------------------------------------------------------------ the reveal
+
+// The prize stays on show until Done (or Esc, or the tray's Back): revealDone() ends it.
+let finishReveal = null;
+function revealDone() {
+  finishReveal?.();
+  finishReveal = null;
+}
 
 /** Puts the card back as it was before a reveal (a redraw won't, when nothing else changed). */
 function endReveal(card) {
+  finishReveal = null;
   if (!card) return;
   card.classList.remove('revealing');
   const layer = card.querySelector('.dr-reveal');
@@ -254,6 +307,8 @@ function endReveal(card) {
   layer.hidden = true;
   layer.replaceChildren();
   delete layer.dataset.phase;
+  delete layer.dataset.instant;
+  layer.className = 'dr-reveal';
 }
 
 const REEL = { speed: 3.5, ease: 'cubic-bezier(0.18, 0.58, 0.12, 1)', pulse: 'cubic-bezier(0.45, 0.05, 0.55, 0.95)' };
@@ -262,30 +317,38 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Kick's reveal, timed like kick.com: the crate opens, the reel slows onto the winner, the
- * winner grows, then its card. Instant crates skip the reel. Resolves when it's over.
+ * winner grows, then its card. Instant crates (an event's) open straight onto the prize. The prize
+ * then stays until Done: resolves when it's dismissed.
  * @param {HTMLElement} root the card's .dr-reveal layer
  * @param {{ items: {image:string, rarity:string}[], winnerIndex: number, winner: object, revealType?: string }} claim
- * @param {{ unbox?: string|null, tile?: number }} o
+ * @param {{ unbox?: string|null, tile?: number, theme?: string|null, title?: string|null }} o theme and title: an event crate's
  */
-async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
+async function playReveal(root, claim, { unbox = null, tile = 120, theme = null, title = null } = {}) {
   root.hidden = false;
+  root.className = `dr-reveal ${theme ? `crate theme-${esc(theme)}` : ''}`;
   root.style.setProperty('--tile', `${tile}px`);
   const fast = reduceMotion();
-  const tiles = [...claim.items, ...claim.items, claim.items[0]].filter(Boolean);
-  const stop = claim.items.length + claim.winnerIndex;
+  const items = claim.items ?? [];
+  const tiles = [...items, ...items, items[0]].filter(Boolean);
+  const stop = items.length + claim.winnerIndex;
   const w = claim.winner ?? {};
+  const instant = claim.revealType === 'instant' || items.length < 2;
   root.innerHTML = `<div class="dr-reveal-bg"></div>
     <div class="dr-unbox">${unbox ? `<video src="${esc(unbox)}" muted playsinline></video>` : crateArt('opening')}</div>
     <div class="dr-reel"><div class="dr-reel-track">${tiles.map((t, i) => `<div class="dr-tile r-${esc(t.rarity)}" data-i="${i}">${img(t.image)}</div>`).join('')}</div><div class="dr-reel-mark"></div></div>
-    <div class="dr-winner r-${esc(w.rarity ?? 'common')}"><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card', cardKind(w))}
-      <div class="dr-winner-caption">${winnerLine({ winner: w, duplicate: !!claim.duplicate }, { short: true })}</div></div>`;
+    <div class="dr-winner r-${esc(w.rarity ?? 'common')} ${w.square ? 'square' : ''}">${title ? `<div class="dr-winner-title">${chestMark()}${esc(title)}</div>` : ''}
+      <div class="dr-won-wrap"><div class="dr-rays"></div><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card', cardKind(w))}</div>
+      <div class="dr-winner-caption">${winnerLine({ winner: w, duplicate: !!claim.duplicate }, { short: true })}</div>
+      <button class="btn primary dr-done" data-action="reward-done">Done</button></div>`;
+  const held = () => {
+    root.dataset.phase = 'celebrate';
+    return new Promise((resolve) => {
+      finishReveal = resolve;
+    });
+  };
+  if (fast) return held();
   const reel = root.querySelector('.dr-reel');
   const track = root.querySelector('.dr-reel-track');
-  if (fast || claim.revealType === 'instant' || claim.items.length < 2) {
-    root.dataset.phase = 'celebrate';
-    await wait(fast ? 0 : 400);
-    return;
-  }
   // An animation's promise, or its own length (plus a little) if the window stops painting:
   // a hidden tray popover mustn't leave the reveal hanging.
   const done = (anim, ms) => Promise.race([anim.finished.catch(() => {}), wait(ms + 400)]);
@@ -302,6 +365,11 @@ async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
       })
     : wait(1900); // our crate's opening (daily-reward.css)
   await Promise.race([opened, wait(6000)]);
+  // An instant crate: no reel. The prize bursts out of the open crate.
+  if (instant) {
+    root.dataset.instant = '';
+    return held();
+  }
 
   // spin: the reel runs at 3.5 tiles a second, easing onto the winner in the second copy.
   // The tile under the mark is ×1.2, the ones beside it ×0.8, as on kick.com.
@@ -331,7 +399,6 @@ async function playReveal(root, claim, { unbox = null, tile = 120 } = {}) {
   if (won) await done(won.animate([{ transform: 'scale(1.2)' }, { transform: 'scale(0.9)' }, { transform: 'scale(1.3)' }], { duration: 1400, easing: REEL.pulse, fill: 'forwards' }), 1400);
   await done(reel.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.92)' }], { duration: 700, easing: REEL.pulse, fill: 'forwards' }), 700);
 
-  // celebrate: the winner's card.
-  root.dataset.phase = 'celebrate';
-  await wait(2200);
+  // celebrate: the winner's card, until Done.
+  return held();
 }
