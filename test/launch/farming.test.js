@@ -200,13 +200,53 @@ test('icon-only buttons all have tooltips, shown by the app', async () => {
   await a.win.mouse.move(5, 500);
 });
 
+/**
+ * Where a click went, for CI's log when one goes astray: what the page heard (and when), what the
+ * stream's pages heard, and how often the page draws. Call it before the click, then print what it returns.
+ */
+async function clickTrace() {
+  await a.win.evaluate(() => {
+    window.__trace = { events: [], frames: 0, at: performance.now() };
+    for (const t of ['pointerdown', 'mousedown', 'click']) document.addEventListener(t, (e) => window.__trace.events.push(`${t}@${e.target.closest('[data-action]')?.dataset.action ?? e.target.tagName}@${Math.round(e.clientX)},${Math.round(e.clientY)}@${Math.round(performance.now() - window.__trace.at)}ms`), { capture: true });
+    const tick = () => {
+      window.__trace.frames += 1;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await a.app.evaluate(({ webContents }) => {
+    globalThis.__guestInput = [];
+    for (const w of webContents.getAllWebContents().filter((x) => x.getType() === 'webview')) {
+      w.on('input-event', (_e, i) => /mouse(Down|Up)|pointer/i.test(i.type) && globalThis.__guestInput.push(`${i.type}@${w.getURL().replace(/^https?:\/\//, '').slice(0, 30)}@${Math.round(i.x ?? -1)},${Math.round(i.y ?? -1)}`));
+    }
+  });
+  return async (label) => {
+    const page = await a.win.evaluate(() => {
+      const r = (q) => document.querySelector(q)?.getBoundingClientRect();
+      const box = (x) => (x ? [x.left, x.top, x.right, x.bottom].map(Math.round) : null);
+      return { ...window.__trace, ms: Math.round(performance.now() - window.__trace.at), views: document.querySelector('#player-views')?.className, chat: box(r('.player-view.chat')), modal: !!document.querySelector('.modal') };
+    });
+    console.log(`CLICK-TRACE ${label} ${JSON.stringify({ ...page, guest: await a.app.evaluate(() => globalThis.__guestInput) })}`);
+  };
+}
+
 test('settings toggles are saved', async () => {
-  await a.win.click('button.icon-only[data-action="settings"]');
-  await a.win.click('[data-action="setting-toggle"][data-key="includeGameDrops"]');
-  await until(a.win, () => document.querySelector('[data-key="includeGameDrops"]')?.classList.contains('on'), 'the toggle to turn on');
-  const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
-  assert.equal(saved.includeGameDrops, true);
-  await a.win.keyboard.press('Escape');
+  const trace = await clickTrace();
+  try {
+    await a.win.click('button.icon-only[data-action="settings"]');
+    await a.win.click('[data-action="setting-toggle"][data-key="includeGameDrops"]');
+    await trace('clicked');
+    await until(a.win, () => document.querySelector('[data-key="includeGameDrops"]')?.classList.contains('on'), 'the toggle to turn on', 5000).catch(async (err) => {
+      await trace('missed');
+      throw err;
+    });
+    const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
+    assert.equal(saved.includeGameDrops, true);
+  } finally {
+    // One miss mustn't leave Settings open over every test after it.
+    await a.win.keyboard.press('Escape');
+    await until(a.win, () => !document.querySelector('.modal'), 'Settings closed').catch(() => a.win.evaluate(() => document.querySelector('.modal-backdrop')?.click()));
+  }
 });
 
 test('Settings › App › Font switches between the system font and the bundled Inter, and is saved', async () => {
