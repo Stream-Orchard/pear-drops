@@ -250,7 +250,8 @@ test('an event’s crate filling: a tab of its own, in its colours; its page say
 test('an event’s crate ready: the title bar’s chip; the card opens on its tab, which glows, and its Claim is in its colours', async () => {
   await a.app.evaluate(() => global.pdDemo.daily({ event: 180, eventName: 'Trick or Treat', eventWinner: 'prize-3' }));
   await until(a.win, () => document.querySelector('#titlebar-actions .dr-chest.crate.state-ready.chip.theme-halloween'), 'the event’s chip');
-  await a.win.waitForTimeout(300); // its colour's transition
+  // Its colour's transition, to its end.
+  await until(a.win, (sel) => getComputedStyle(document.querySelector(sel)).color === 'rgb(255, 122, 26)', 'the event’s colour', 5000, chest);
   assert.equal((await a.win.textContent(chest)).trim(), 'Trick or Treat');
   assert.match(await a.win.getAttribute(chest, 'data-tip'), /Trick or Treat is ready\. Claim before/);
   const look = await a.win.evaluate((sel) => {
