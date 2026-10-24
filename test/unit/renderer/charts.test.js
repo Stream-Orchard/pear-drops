@@ -26,6 +26,9 @@ test('durations, counts and ETAs read naturally', () => {
   assert.equal(run('fmtEta(Infinity)'), '—');
   assert.equal(run('fmtEta(0)'), 'now');
   assert.match(run('fmtEta(32)'), /^32m · /);
+  assert.equal(run('fmtFinish(Infinity)'), '—');
+  assert.equal(run('fmtFinish(0)'), 'now');
+  assert.equal(run('fmtFinish(32)'), run('fmtEta(32)').split(' · ')[1], 'the time of fmtEta, on its own');
 });
 
 test('ETAs say the day when it isn\'t today: the weekday in the next six days, the date after that, the year when it isn\'t this one', () => {

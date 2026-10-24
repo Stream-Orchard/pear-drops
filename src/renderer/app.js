@@ -1,4 +1,4 @@
-/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, fmtFinish, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -338,8 +338,9 @@ function renderHero() {
         <div class="hero-side">
           ${progressRing(frac, { size: 124, stroke: 10, label: `${Math.floor(frac * 100)}%`, sub: primary ? `${primary.units} / ${primary.targetUnits} min` : '' })}
           <dl class="eta">
-            <dt>Next reward</dt><dd>${primary?.next ? fmtEta(fc?.nextMinutes) : 'claiming…'}</dd>
-            <dt>Campaign done</dt><dd>${fmtEta(fc?.doneMinutes)}</dd>
+            <dt>Next reward</dt><dd>${primary?.next ? fmtMin(fc?.nextMinutes) : 'claiming…'}</dd>
+            <dt>Campaign done</dt><dd>${fmtMin(fc?.doneMinutes)}</dd>
+            <dt>Finishes</dt><dd>${fmtFinish(fc?.doneMinutes)}</dd>
             <dt class="opt">Credit rate</dt><dd class="opt">${fc ? `${fc.rate.toFixed(2)}×${fc.observed ? '' : ' est.'}` : '—'}</dd>
             <dt class="opt">Watching for</dt><dd class="opt">${fmtDur(Date.now() - cur.startedWatchingAt)}</dd>
           </dl>
