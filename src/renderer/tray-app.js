@@ -1,8 +1,9 @@
-/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, revealDone, revealFor, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtFinish, streamHealth, streamNotice, setHTML, img, applyFont */
+/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, revealDone, revealFor, openTab, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtFinish, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 let page = 'main'; // or 'reward': the daily reward's card, claimed right here
 let revealing = false;
+let rewardTab = null; // the crate open on the reward page (its tab): chosen as it opens
 
 /** Kick's daily reward, or null before the first answer. */
 function dailyReward() {
@@ -58,7 +59,7 @@ function render() {
   const dr = dailyReward();
   if (page === 'reward' && dr && !['signed-out', 'hidden'].includes(dr.state)) {
     // The reveal owns the card until it's over.
-    if (!revealing) setHTML(root, rewardCard(dr, { where: 'tray' }));
+    if (!revealing) setHTML(root, rewardCard(dr, { where: 'tray', tab: rewardTab }));
     return fit();
   }
   page = 'main';
@@ -146,6 +147,8 @@ const actions = {
   skip: () => window.pd.tray.action('skip'),
   'reward-open': () => {
     page = 'reward';
+    // It opens on a crate that's ready (the daily one first).
+    rewardTab = openTab(dailyReward());
     window.pd.dailyReward.opened();
     render();
   },
@@ -158,6 +161,12 @@ const actions = {
   'reward-replay': (el) => reveal(el.closest('.dr-card'), el.dataset.id, () => window.pd.dailyReward.lastClaim(el.dataset.id)),
   'reward-done': () => revealDone(),
   'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
+  'reward-prizes': () => window.pd.openExternal('https://kick.com/drops/rewards'),
+  'reward-tab': (el) => {
+    if (revealing) return;
+    rewardTab = el.dataset.id;
+    render();
+  },
   'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
 };
 
@@ -165,7 +174,7 @@ const actions = {
 async function reveal(card, id, get) {
   if (revealing || !card) return;
   revealing = true;
-  for (const b of card.querySelectorAll('.dr-claim, .dr-crate-claim')) b.setAttribute('disabled', '');
+  for (const b of card.querySelectorAll('.dr-claim')) b.setAttribute('disabled', '');
   const how = revealFor(dailyReward(), id);
   const r = await get();
   if (r?.winner) {

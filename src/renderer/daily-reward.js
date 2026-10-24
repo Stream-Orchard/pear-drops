@@ -195,22 +195,88 @@ function factsRow(dr) {
   </div>`;
 }
 
+// ------------------------------------------------------------------ the crates, as tabs
+
 /**
- * The daily reward card: earning, ready or claimed, with the claim and the reveal.
- * @param {object} dr the daily reward state
- * @param {{ where?: 'pop'|'tray', revealing?: boolean }} o
+ * Every crate Kick offers today: the daily one first, then the others in Kick's order (an
+ * event's, the Welcome Reward). One tab each; a single crate has no tabs.
  */
-function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
-  if (!dr) return '';
-  const left = Math.max(0, dr.threshold - dr.minutes);
-  const head = {
-    earning: `Resets at ${fmtClock(dr.endsAt)}`,
-    ready: `Claim before ${fmtClock(dr.endsAt)}`,
-    claimed: `Next one in ${fmtDur(dr.endsAt - Date.now())}`,
-  }[dr.state];
+function crateList(dr) {
+  const daily = { id: dr.id ?? 'daily', daily: true, label: 'Daily', title: 'Daily reward', state: dr.state, theme: 'daily' };
+  return [daily, ...(dr.extras ?? []).map((e) => ({ id: e.id, label: e.name || 'Event reward', title: e.name || 'Event reward', state: e.state, theme: e.theme ?? 'event', prize: e.won?.winner }))];
+}
+
+/** The tab the card opens on: the daily crate when it's ready, else a ready one, else the daily. */
+function openTab(dr) {
+  if (!dr || dr.state === 'ready') return dr?.id ?? null;
+  return (dr.extras ?? []).find((e) => e.state === 'ready')?.id ?? dr.id ?? null;
+}
+
+function crateTabs(crates, active) {
+  return crates
+    .map((c) => {
+      const mark = c.state === 'claimed' && c.prize?.image ? `<span class="dr-tab-prize r-${esc(c.prize.rarity)}">${img(c.prize.image)}</span>` : chestMark();
+      const tip = c.state === 'ready' ? `${c.title}: ready to claim` : c.title;
+      return `<button class="dr-tab theme-${esc(c.theme)} state-${esc(c.state)} ${c.id === active ? 'on' : ''}" data-action="reward-tab" data-id="${esc(c.id)}" data-tip="${esc(tip)}" aria-pressed="${c.id === active}">${mark}<span>${esc(c.label)}</span></button>`;
+    })
+    .join('');
+}
+
+/** A day's watch time as people say it: "3h", "1h 30m", "60 min". */
+const fmtHours = (minutes) => (minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60}h` : fmtLeft(minutes));
+
+/** "36 min", or "1h 08m" for an event's longer wait. */
+const fmtLeft = (minutes) => (minutes < 60 ? `${minutes} min` : fmtDur(minutes * MIN));
+
+/**
+ * The claim button, the same for every crate in its colours (the daily's are Kick's green). Ready:
+ * one solid colour under the label, the second running round its edge, the chest hopping. Filling:
+ * a dark face that never changes under the label; the progress runs along its bottom edge and
+ * round the chest, and glows when nearly there.
+ * @param {{ id?: string, state: string, theme: string, minutes: number, threshold: number, watching: boolean, claiming: boolean, daily?: boolean }} c
+ */
+function claimButton(c) {
+  const id = c.daily ? '' : ` data-id="${esc(c.id)}"`;
+  if (c.state === 'ready') {
+    return `<button class="btn lg dr-claim ready theme-${esc(c.theme)} ${c.claiming ? 'busy' : ''}" data-action="reward-claim"${id} ${c.claiming ? 'disabled' : ''}>${chestMark()}<span>${c.claiming ? 'Claiming…' : 'Claim'}</span></button>`;
+  }
+  const left = Math.max(0, c.threshold - c.minutes);
+  const frac = Math.min(1, c.minutes / Math.max(1, c.threshold));
+  const r = 2 * Math.PI * 11;
+  const ring = `<span class="dr-claim-ring"><svg viewBox="0 0 26 26"><circle class="track" cx="13" cy="13" r="11"/><circle class="val" cx="13" cy="13" r="11" stroke-dasharray="${r.toFixed(2)}" stroke-dashoffset="${(r * (1 - frac)).toFixed(2)}"/></svg>${chestMark()}</span>`;
+  const label = c.watching ? `Claim in <b>${fmtLeft(left)}</b>` : `Watch <b>${left < 60 ? left : fmtDur(left * MIN)}</b> more${left < 60 ? ' min' : ''}`;
+  const near = c.watching && frac >= 0.9 ? 'near' : '';
+  return `<button class="btn lg dr-claim fill theme-${esc(c.theme)} ${c.watching ? '' : 'paused'} ${near}" data-action="reward-claim"${id} disabled>${ring}<span>${label}</span><span class="dr-claim-line"><i style="width:${(frac * 100).toFixed(1)}%"></i></span></button>`;
+}
+
+/**
+ * The card's top: its tabs (more than one crate) or its name, and what to know about the open
+ * crate's time ("Claim before 12:00 AM").
+ */
+function cardHead(crates, active, { where, title, sub, theme }) {
   const close = where === 'tray' ? `<button class="btn sm icon-only ghost" data-action="reward-back" data-tip="Back">${icon('chevronLeft')}</button>` : '';
   const x = where === 'pop' ? `<button class="btn sm icon-only ghost" data-action="reward-close" data-tip="Close (Esc)">${icon('x')}</button>` : '';
-  const top = `<div class="dr-head">${close}${chestMark()}<b>Daily reward</b>${head ? `<span class="dr-head-sub">${head}</span>` : ''}<span class="spacer"></span>${x}</div>`;
+  if (crates.length < 2) return `<div class="dr-head">${close}${chestMark()}<b>${esc(title)}</b>${sub ? `<span class="dr-head-sub">${sub}</span>` : ''}<span class="spacer"></span>${x}</div>`;
+  return `<div class="dr-head tabs">${close}<div class="dr-tabs" role="tablist">${crateTabs(crates, active)}</div><span class="spacer"></span>${x}</div>
+    <div class="dr-subline theme-${esc(theme)}"><b>${esc(title)}</b>${sub ? `<span class="dr-head-sub">${sub}</span>` : ''}</div>`;
+}
+
+/** What to know about a crate's time: when it resets, the deadline, or the next one. */
+const crateSub = (state, endsAt) => (!endsAt ? '' : { earning: `Resets at ${fmtClock(endsAt)}`, ready: `Claim before ${fmtClock(endsAt)}`, claimed: `Next one in ${fmtDur(endsAt - Date.now())}` }[state] ?? '');
+
+/**
+ * The daily reward card: a tab per crate Kick offers (the daily one, an event's, the Welcome
+ * Reward), and the open one's page, with the claim and the reveal.
+ * @param {object} dr the daily reward state
+ * @param {{ where?: 'pop'|'tray', revealing?: boolean, tab?: string|null }} o tab: the open crate's id (the daily's when unset or gone)
+ */
+function rewardCard(dr, { where = 'pop', revealing = false, tab = null } = {}) {
+  if (!dr) return '';
+  const crates = dr.state === 'unavailable' || dr.state === 'loading' ? [] : crateList(dr);
+  const e = (dr.extras ?? []).find((x) => x.id === tab);
+  if (e) return crateCard(dr, e, crates, { where, revealing });
+  const left = Math.max(0, dr.threshold - dr.minutes);
+  const top = cardHead(crates, dr.id, { where, title: 'Daily reward', sub: crateSub(dr.state, dr.endsAt), theme: 'daily' });
 
   if (dr.state === 'unavailable' || dr.state === 'loading') {
     return `<div class="dr-card at-${where} state-${dr.state}">${top}
@@ -239,44 +305,93 @@ function rewardCard(dr, { where = 'pop', revealing = false } = {}) {
       ${ready ? '' : `<div class="dr-progress"><span class="label">Watched today</span><span class="bar"><i style="width:${(dr.minutes / Math.max(1, dr.threshold)) * 100}%"></i></span><span><b>${dr.minutes}</b> of ${dr.threshold} min</span></div>`}`;
     middle = `${factsRow(dr)}${rarityTable(dr)}
       <div class="dr-dupe-line">${dupeRing(dr.duplicateChance)}<span><b>${fmtChance(dr.duplicateChance)} chance of a duplicate</b><small>${n(dr.collection?.owned)} of Kick’s ${n(dr.collection?.total)} cards are yours</small></span></div>`;
-    const label = dr.claiming ? 'Claiming…' : ready ? 'Claim' : dr.watching ? `Claim in ${left} min` : `Watch ${left} more min`;
-    actions = `<div class="dr-actions"><button class="btn primary lg dr-claim" data-action="reward-claim" ${ready && !dr.claiming ? '' : 'disabled'}>${label}</button></div>`;
+    actions = `<div class="dr-actions">${claimButton({ ...dr, daily: true, theme: 'daily', minutes: dr.minutes, threshold: dr.threshold, watching: dr.watching || left === 0 })}</div>`;
   }
-  const extras = (dr.extras ?? []).map((e) => crateRow(e, dr));
-  return `<div class="dr-card at-${where} state-${dr.state} ${revealing ? 'revealing' : ''}">${top}${stage}
-    <div class="dr-body">${middle}${extras.join('')}</div>${actions}
+  return `<div class="dr-card at-${where} state-${dr.state} ${crates.length > 1 ? 'tabbed' : ''} ${revealing ? 'revealing' : ''}">${top}${stage}
+    <div class="dr-body">${middle}</div>${actions}
     <div class="dr-reveal" hidden></div></div>`;
 }
 
 /** The day an event's crate is offered until, as people say it: "Nov 1". */
 const fmtCrateDay = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
 
+/** When a prize was won, as people say it: "Today", "Yesterday", "Thu", "Oct 12". */
+function fmtWonDay(t) {
+  if (!t) return '';
+  const day = (x) => new Date(x).setHours(0, 0, 0, 0);
+  const ago = Math.round((day(Date.now()) - day(t)) / 86_400_000);
+  if (ago <= 0) return 'Today';
+  if (ago === 1) return 'Yesterday';
+  return ago < 7 ? new Date(t).toLocaleDateString([], { weekday: 'short' }) : fmtCrateDay(t);
+}
+
+/** A prize in words: "Hoot Hoot · Uncommon emote", or the watch time it gave. */
+function prizeLine(won) {
+  const w = won?.winner;
+  if (!w) return '';
+  if (w.xp) return `<b>Level progress</b><span class="dr-sub"><span class="dr-xp">+${fmtLeft(w.xp)}</span> watch time${won.levelTo ? ` towards Level ${n(won.levelTo)}` : ''}</span>`;
+  const status = won.duplicate ? '<span class="chip">Duplicate</span>' : '<span class="chip green new">New</span>';
+  return w.name ? `<b>${esc(w.name)}</b><span>${cardKind(w)}</span>${status}` : `<b>${cardKind(w)}</b>${status}`;
+}
+
+/** The prizes an event has given, a slot a day: newest first, the empty days still to come. */
+function prizeStrip(e, where) {
+  const prizes = e.prizes ?? [];
+  if (!prizes.length) return '';
+  const slots = Math.max(prizes.length ? 1 : 0, Math.min(e.days ?? prizes.length, where === 'tray' ? 7 : 8));
+  const shown = prizes.slice(0, slots);
+  const tiles = shown.map((p) => `<span class="dr-won-tile r-${esc(p.rarity)}" data-tip="${esc([p.name, cardKind(p), fmtWonDay(p.at)].filter(Boolean).join(' · '))}">${img(p.image, '', p.name || cardKind(p))}<small>${fmtWonDay(p.at)}</small></span>`);
+  const empty = '<span class="dr-won-tile empty"></span>'.repeat(Math.max(0, slots - shown.length));
+  return `<div class="dr-won"><div class="dr-won-head"><span>Won this event</span><b>${n(prizes.length)}</b><span class="spacer"></span>${e.days ? `<span class="dr-won-days">${n(Math.min(prizes.length, e.days))} of ${n(e.days)} days</span>` : ''}</div>
+    <div class="dr-won-row">${tiles.join('')}${empty}</div></div>`;
+}
+
+/** An event's odds: Kick gives no list of its prizes, so no count of which are yours. */
+function crateOdds(e) {
+  if (!e.odds?.length) return '';
+  return `<div class="dr-rarities crate"><div class="dr-rarity head"><span>Rarity</span><span>Chance</span><span></span></div>
+    ${e.odds.map((o) => `<div class="dr-rarity r-${esc(o.rarity)}"><span class="name"><i></i>${rarityName(o.rarity)}</span><span class="pct">${fmtChance(o.chance)}</span><span class="own"><span class="bar"><i style="width:${Math.max(2, o.chance * 100).toFixed(1)}%"></i></span></span></div>`).join('')}</div>`;
+}
+
 /**
- * Kick's other crates: an event's (Trick or Treat, say: its own name, videos and odds, and a
- * theme of colours worked out from them) or the one-time Welcome Reward. Filling as you watch,
- * ready (it hops and shimmers in the event's colours), or claimed today, showing what it gave.
+ * Another crate's page: an event's (Trick or Treat, say: its own name, words, videos and odds,
+ * and a theme of colours worked out from them) or the one-time Welcome Reward. The same parts as
+ * the daily one's, and what's its own: its description, the days it runs, what it has given.
  */
-function crateRow(e, dr) {
-  const name = esc(e.name || 'Event reward');
-  const left = Math.max(0, e.threshold - e.minutes);
+function crateCard(dr, e, crates, { where, revealing }) {
+  const theme = esc(e.theme ?? 'event');
   const daily = e.until && e.endsAt && e.until > e.endsAt;
-  const tip = [daily ? `A new one every day until ${fmtCrateDay(e.until - 1)}` : '', (e.odds ?? []).map((o) => `${rarityName(o.rarity)} ${fmtChance(o.chance)}`).join(' · ')].filter(Boolean).join('\n');
-  let art = e.media?.idle ? `<video class="dr-crate-video" src="${esc(e.media.idle)}" autoplay loop muted playsinline></video>` : chestMark();
-  let what;
-  let act = '';
+  const top = cardHead(crates, e.id, { where, title: e.name || 'Event reward', sub: crateSub(e.state, e.endsAt), theme });
+  const art = e.media?.idle ? `<video class="dr-crate" src="${esc(e.media.idle)}" autoplay loop muted playsinline data-fallback="crate"></video>` : crateArt('idle');
+  let stage;
   if (e.state === 'claimed') {
     const w = e.won?.winner;
-    if (w?.image) art = `<span class="dr-crate-prize r-${esc(w.rarity)}">${img(w.image, '', cardKind(w))}</span>`;
-    what = w ? `${winnerLine({ winner: w, duplicate: e.won.duplicate }, { short: true })}` : `${icon('check')}Claimed${e.won?.by === 'elsewhere' ? ' on Kick' : ''}`;
-    act = e.won?.replay ? `<button class="btn sm" data-action="reward-replay" data-id="${esc(e.id)}">${icon('play')} See it</button>` : '';
-  } else if (e.state === 'ready') {
-    what = `<span class="dr-crate-ready">Ready to open</span>${e.endsAt ? `<span>Claim before ${fmtClock(e.endsAt)}</span>` : ''}`;
-    act = `<button class="btn sm primary dr-crate-claim" data-action="reward-claim" data-id="${esc(e.id)}" ${dr.claiming ? 'disabled' : ''}>Claim</button>`;
+    if (w?.xp) stage = `<div class="dr-stage won xp"><div class="dr-won-glow"></div><div class="dr-xp-big">${icon('trophy')}<b>+${fmtLeft(w.xp)}</b><span>watch time</span></div></div>`;
+    else if (w?.image) stage = `<div class="dr-stage won crate r-${esc(w.rarity)}"><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card square', w.name || cardKind(w))}</div>`;
+    else stage = `<div class="dr-stage crate">${crateArt('dim')}<div class="dr-stage-msg">${icon('check')}Claimed today${e.won?.by === 'elsewhere' ? ' on Kick' : ''}.</div></div>`;
+    if (w) stage += `<div class="dr-result">${prizeLine(e.won)}</div>`;
   } else {
-    what = `<span class="bar"><i style="width:${(e.minutes / Math.max(1, e.threshold)) * 100}%"></i></span><span><b>${fmtDur(left * MIN)}</b> to go</span>`;
+    const ready = e.state === 'ready';
+    const preload = ready && e.media?.unbox ? `<video class="dr-preload" src="${esc(e.media.unbox)}" preload="auto" muted hidden></video>` : '';
+    stage = `<div class="dr-stage crate ${ready ? 'ready' : 'earning'}">${art}${ready ? '<span class="chip dr-ready">Ready</span>' : ''}${preload}</div>
+      ${ready || e.condition !== 'watch_time_minutes' ? '' : `<div class="dr-progress"><span class="label">Watched today</span><span class="bar"><i style="width:${(e.minutes / Math.max(1, e.threshold)) * 100}%"></i></span><span><b>${fmtLeft(e.minutes)}</b> of ${fmtHours(e.threshold)}</span></div>`}`;
   }
-  return `<div class="dr-crate-row theme-${esc(e.theme ?? 'event')} state-${esc(e.state)}" data-id="${esc(e.id)}" ${tip ? `data-tip="${esc(tip)}"` : ''}>
-    <span class="dr-crate-icon">${art}</span><span class="dr-crate-info"><b>${name}</b><small>${what}</small></span>${act}</div>`;
+  const facts = [
+    e.condition === 'watch_time_minutes' ? `<span class="dr-fact" data-tip="Watch time it needs, on any Kick stream">${icon('clock')}<b>${fmtHours(e.threshold)}</b> a day</span>` : '',
+    daily ? `<span class="dr-fact grow">${chestMark()}New one daily until <b>${fmtCrateDay(e.until - 1)}</b></span>` : '',
+  ].join('');
+  const left = Math.max(0, e.threshold - e.minutes);
+  const actions =
+    e.state === 'claimed'
+      ? `${e.won?.replay ? `<button class="btn" data-action="reward-replay" data-id="${esc(e.id)}">${icon('play')} Replay</button>` : ''}<button class="btn" data-action="reward-prizes" data-tip="What you’ve won, on kick.com">${icon('external')} View on Kick</button>`
+      : e.condition === 'watch_time_minutes' || e.state === 'ready'
+        ? claimButton({ ...e, theme: e.theme ?? 'event', watching: dr.watching || left === 0, claiming: dr.claiming })
+        : `<button class="btn" data-action="reward-kick">${icon('external')} Open on Kick</button>`;
+  return `<div class="dr-card at-${where} crate theme-${theme} state-${esc(e.state)} ${crates.length > 1 ? 'tabbed' : ''} ${revealing ? 'revealing' : ''}">${top}
+    ${e.description ? `<p class="dr-desc">${esc(e.description)}</p>` : ''}${stage}
+    <div class="dr-body">${facts ? `<div class="dr-facts">${facts}</div>` : ''}${crateOdds(e)}${prizeStrip(e, where)}</div>
+    <div class="dr-actions">${actions}</div>
+    <div class="dr-reveal" hidden></div></div>`;
 }
 
 /**
@@ -336,9 +451,9 @@ async function playReveal(root, claim, { unbox = null, tile = 120, theme = null,
   root.innerHTML = `<div class="dr-reveal-bg"></div>
     <div class="dr-unbox">${unbox ? `<video src="${esc(unbox)}" muted playsinline></video>` : crateArt('opening')}</div>
     <div class="dr-reel"><div class="dr-reel-track">${tiles.map((t, i) => `<div class="dr-tile r-${esc(t.rarity)}" data-i="${i}">${img(t.image)}</div>`).join('')}</div><div class="dr-reel-mark"></div></div>
-    <div class="dr-winner r-${esc(w.rarity ?? 'common')} ${w.square ? 'square' : ''}">${title ? `<div class="dr-winner-title">${chestMark()}${esc(title)}</div>` : ''}
-      <div class="dr-won-wrap"><div class="dr-rays"></div><div class="dr-won-glow"></div>${img(w.image, 'dr-won-card', cardKind(w))}</div>
-      <div class="dr-winner-caption">${winnerLine({ winner: w, duplicate: !!claim.duplicate }, { short: true })}</div>
+    <div class="dr-winner r-${esc(w.rarity ?? 'common')} ${w.square ? 'square' : ''} ${w.xp ? 'xp' : ''}">${title ? `<div class="dr-winner-title">${chestMark()}${esc(title)}</div>` : ''}
+      <div class="dr-won-wrap"><div class="dr-rays"></div><div class="dr-won-glow"></div>${w.xp ? `<div class="dr-xp-big">${icon('trophy')}<b>+${fmtLeft(w.xp)}</b><span>watch time</span></div>` : img(w.image, 'dr-won-card', w.name || cardKind(w))}</div>
+      <div class="dr-winner-caption">${w.xp ? `<b>Level progress</b>${claim.levelTo ? `<span>towards Level ${n(claim.levelTo)}</span>` : ''}` : w.name ? `<b>${esc(w.name)}</b><span>${cardKind(w)}</span>${claim.duplicate ? '<span class="chip">Duplicate</span>' : '<span class="chip green new">New</span>'}` : winnerLine({ winner: w, duplicate: !!claim.duplicate }, { short: true })}</div>
       <button class="btn primary dr-done" data-action="reward-done">Done</button></div>`;
   const held = () => {
     root.dataset.phase = 'celebrate';

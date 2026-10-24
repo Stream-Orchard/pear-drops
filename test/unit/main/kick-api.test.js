@@ -96,7 +96,7 @@ test('the daily reward’s requests: Kick’s five gamification endpoints, and a
   const api = new KickApi();
   const calls = [];
   api.request = async (url, opts = {}) => {
-    calls.push([url.replace('https://web.kick.com/api/v1/gamification', ''), opts.method ?? 'GET', opts.query]);
+    calls.push([url.replace('https://web.kick.com/api/v1/gamification', '').replace('https://web.kick.com/api/v1', ''), opts.method ?? 'GET', opts.query]);
     return { data: [] };
   };
   await api.dailyChallenges();
@@ -104,6 +104,7 @@ test('the daily reward’s requests: Kick’s five gamification endpoints, and a
   await api.collectibles();
   await api.level();
   await api.streak(4242);
+  await api.rewards();
   await api.claimDaily('ch 1');
   assert.deepEqual(calls, [
     ['/challenges', 'GET', undefined],
@@ -111,6 +112,7 @@ test('the daily reward’s requests: Kick’s five gamification endpoints, and a
     ['/collectibles', 'GET', undefined],
     ['/user/level', 'GET', undefined],
     ['/users/4242/streak', 'GET', undefined],
+    ['/rewards', 'GET', undefined],
     ['/challenges/ch%201/claim', 'POST', undefined],
   ]);
 });

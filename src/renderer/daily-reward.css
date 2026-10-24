@@ -684,10 +684,10 @@
   --ev-hue: -52deg;
 }
 /* The chest's pixels, and our crate's light, in the event's colours. */
-:is(.dr-chest.crate, .dr-crate-row, .dr-reveal.crate) .icon.chest .g {
+:is(.dr-chest.crate, .dr-reveal.crate) .icon.chest .g {
   fill: var(--ev);
 }
-:is(.dr-chest.crate, .dr-crate-row, .dr-reveal.crate) .icon.chest .t {
+:is(.dr-chest.crate, .dr-reveal.crate) .icon.chest .t {
   fill: var(--ev-2);
 }
 .dr-reveal.crate .dr-crate-art,
@@ -720,173 +720,303 @@
   }
 }
 
-/* The crate's row on the card: filling, ready (it hops, shimmers and glows), or what it gave. */
 @property --dr-turn {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
 }
-.dr-crate-row {
-  position: relative;
+
+/* ------------------------------------------------------------- one tab per crate */
+.dr-head.tabs {
+  gap: 4px;
+  margin: -2px -4px 0;
+  height: 32px;
+}
+.dr-tabs {
   display: flex;
   align-items: center;
-  gap: 11px;
-  min-height: 54px;
-  padding: 8px 10px 8px 8px;
-  border-radius: 13px;
-  border: 1px solid color-mix(in srgb, var(--ev) 22%, var(--border));
-  background: linear-gradient(100deg, color-mix(in srgb, var(--ev) 9%, transparent), color-mix(in srgb, var(--ev-2) 4%, transparent) 70%);
-  font-size: 12px;
-  color: var(--text-2);
+  gap: 4px;
+  min-width: 0;
 }
-.dr-crate-icon {
+.dr-tab {
+  -webkit-app-region: no-drag;
   position: relative;
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 11px 0 9px;
   border-radius: 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: 650 12.5px/1 var(--font);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dr-tab.theme-daily {
+  flex: none;
+}
+.dr-tab > span:last-child {
   overflow: hidden;
-  background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--ev) 22%, #0d0f12), #0d0f12 75%);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dr-tab .icon.chest {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  --chest-bg: #15181d;
+}
+.dr-tab:not(.theme-daily) .icon.chest {
   color: var(--ev);
 }
-.dr-crate-icon .icon.chest {
-  width: 24px;
-  height: 24px;
-  --chest-bg: #14161a;
+.dr-tab:hover {
+  color: var(--text-2);
+  background: var(--surface-2);
 }
-.dr-crate-icon .chest-box,
-.dr-crate-icon .chest-burst {
+.dr-tab.on {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-2);
+}
+.dr-tab.on:not(.theme-daily) {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--ev) 16%, transparent), color-mix(in srgb, var(--ev-2) 8%, transparent));
+  border-color: color-mix(in srgb, var(--ev) 35%, transparent);
+}
+/* An event's name in its two colours: bright on the dark card wherever the gradient is. */
+.dr-tab.on:not(.theme-daily) > span:last-child,
+.dr-subline:not(.theme-daily) b {
+  background: linear-gradient(90deg, var(--ev), var(--ev-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* A crate waiting: its tab glows and its chest hops, as the title bar's does. */
+.dr-tab.state-ready {
+  color: var(--ev);
+  border-color: color-mix(in srgb, var(--ev) 40%, transparent);
+  background: color-mix(in srgb, var(--ev) 10%, transparent);
+  animation: dr-glow-ev 2.4s ease-in-out infinite;
+}
+.dr-tab.state-ready .chest-box,
+.dr-tab.state-ready .chest-burst {
   transform-box: view-box;
   transform-origin: 12px 19.5px;
 }
-.dr-crate-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scale(1.35);
-}
-.dr-crate-prize {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--r) 70%, transparent) inset;
-  border-radius: inherit;
-}
-.dr-crate-prize img {
-  width: 82%;
-  height: 82%;
-  object-fit: contain;
-  border-radius: 7px;
-}
-.dr-crate-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.dr-crate-info b {
-  color: var(--text);
-  font: 680 13.5px/1.1 var(--font-display);
-}
-.dr-crate-info small {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-.dr-crate-info small > * {
-  flex: none;
-}
-.dr-crate-info small .icon {
-  width: 13px;
-  height: 13px;
-}
-.dr-crate-info small b {
-  font: inherit;
-  font-weight: 650;
-}
-.dr-crate-info small .chip {
-  font-size: 10.5px;
-}
-.dr-crate-info .bar {
-  flex: 1;
-  max-width: 120px;
-  height: 5px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.07);
-  overflow: hidden;
-}
-.dr-crate-info .bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--ev), var(--ev-2));
-  transition: width 0.6s var(--ease);
-}
-.dr-crate-ready {
-  color: var(--ev);
-  font-weight: 650;
-}
-.dr-crate-row .btn.sm {
-  flex: none;
-}
-/* The app's primary button, in the event's colour. */
-.btn.primary.dr-crate-claim {
-  min-width: 70px;
-  justify-content: center;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ev) 78%, #fff), var(--ev));
-  color: #120a03;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) inset, 0 8px 22px -8px var(--ev);
-}
-.btn.primary.dr-crate-claim:hover {
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) inset, 0 10px 28px -6px var(--ev);
-}
-/* Ready: a light runs round its edge, it glows, and the chest hops like the title bar's. */
-.dr-crate-row.state-ready {
-  border-color: transparent;
-  animation: dr-glow-ev 2.4s ease-in-out infinite;
-}
-.dr-crate-row.state-ready::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  padding: 1px;
-  border-radius: inherit;
-  background: conic-gradient(from var(--dr-turn), color-mix(in srgb, var(--ev) 45%, transparent), var(--ev) 10%, var(--ev-2) 20%, var(--ev) 30%, color-mix(in srgb, var(--ev) 45%, transparent) 40%, color-mix(in srgb, var(--ev) 45%, transparent) 50%, var(--ev) 60%, var(--ev-2) 70%, var(--ev) 80%, color-mix(in srgb, var(--ev) 45%, transparent) 90%);
-  padding: 1.5px;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  animation: dr-run 3.2s linear infinite;
-  pointer-events: none;
-}
-@keyframes dr-run {
-  to {
-    --dr-turn: 1turn;
-  }
-}
-.dr-crate-row.state-ready .chest-box {
+.dr-tab.state-ready .chest-box {
   animation: dr-hop 1.292s linear infinite;
 }
-.dr-crate-row.state-ready .chest-burst {
+.dr-tab.state-ready .chest-burst {
   animation: dr-burst 1.292s linear infinite;
 }
-.dr-crate-row.state-ready .chest-body {
+.dr-tab.state-ready .chest-body {
   fill: color-mix(in srgb, var(--ev) 18%, transparent);
 }
-.dr-crate-row.state-earning .dr-crate-icon {
-  opacity: 0.75;
+/* Claimed: the tab shows what it gave. */
+.dr-tab-prize {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--r) 70%, transparent) inset;
 }
-.dr-card.at-tray .dr-crate-row {
-  min-height: 50px;
+.dr-tab-prize img {
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+  border-radius: 3px;
+}
+.dr-subline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: -4px;
+  min-width: 0;
+}
+.dr-subline b {
+  font: 680 14.5px/1.1 var(--font-display);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.dr-card.state-ready .dr-subline:not(.theme-daily) .dr-head-sub {
+  color: var(--ev);
+}
+/* Tabs and a name line take room: the stage gives it back, so the card still fits. */
+.dr-card.tabbed .dr-stage {
+  height: 146px;
+}
+.dr-card.tabbed .dr-won-card {
+  height: 124px;
+}
+.dr-card.tabbed .dr-won-card.square {
+  height: 104px;
+}
+.dr-card.at-tray.tabbed .dr-stage {
+  height: 124px;
+}
+.dr-card.at-tray.tabbed .dr-won-card {
+  height: 104px;
+}
+.dr-card.at-tray.tabbed .dr-won-card.square {
+  height: 88px;
+}
+.dr-desc {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
+/* ------------------------------------------------------------- another crate's page */
+.dr-stage.crate {
+  border-color: color-mix(in srgb, var(--ev) 25%, var(--border));
+  background: radial-gradient(90% 80% at 50% 100%, color-mix(in srgb, var(--ev) 14%, #0c0e11), #000);
+}
+.dr-stage.crate .dr-crate-art {
+  filter: hue-rotate(var(--ev-hue));
+}
+.dr-stage.crate.earning .dr-crate-art {
+  filter: hue-rotate(var(--ev-hue)) saturate(0.6) brightness(0.8);
+}
+.dr-stage.crate.ready {
+  border-color: color-mix(in srgb, var(--ev) 45%, transparent);
+  box-shadow: 0 0 40px -10px var(--ev) inset;
+}
+.dr-stage.crate .dr-ready {
+  background: color-mix(in srgb, var(--ev) 18%, transparent);
+  color: var(--ev);
+  border-color: color-mix(in srgb, var(--ev) 40%, transparent);
+}
+.dr-card.crate .dr-progress .bar > i {
+  background: linear-gradient(90deg, var(--ev), var(--ev-2));
+}
+.dr-won-card.square {
+  aspect-ratio: 1;
+  height: 128px;
+  border-radius: 24px;
+}
+.dr-card.at-tray .dr-won-card.square {
+  height: 108px;
+}
+/* A prize of watch time: how much, in the level's violet. */
+.dr-stage.xp {
+  --r: var(--violet);
+}
+.dr-xp-big {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--violet);
+}
+.dr-xp-big .icon {
+  width: 30px;
+  height: 30px;
+}
+.dr-xp-big b {
+  font: 750 34px/1 var(--font-display);
+  color: var(--text);
+}
+.dr-xp-big span {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.dr-card.crate .dr-fact > .icon {
+  color: var(--ev);
+}
+.dr-card.crate .dr-fact > .icon.chest {
+  --chest-bg: #16191e;
+}
+.dr-fact.grow {
+  flex: 1;
+  min-width: 0;
+}
+/* An event's odds: each chance as a bar in its rarity's colour. */
+.dr-rarities.crate .own .bar {
+  flex: 1;
+}
+/* What the event has given, a slot a day. */
+.dr-won {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 22px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--ev) 20%, var(--border));
+  background: linear-gradient(100deg, color-mix(in srgb, var(--ev) 8%, transparent), color-mix(in srgb, var(--ev-2) 4%, transparent) 70%);
+}
+.dr-won-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.dr-won-head b {
+  color: var(--ev);
+}
+.dr-won-head .spacer {
+  flex: 1;
+}
+.dr-won-days {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.dr-won-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.dr-won-tile {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: #0d0f12;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--r) 60%, transparent) inset;
+}
+.dr-won-tile img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.dr-won-tile small {
+  position: absolute;
+  top: 42px;
+  font-size: 9.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.dr-won-tile.empty {
+  box-shadow: none;
+  border: 1px dashed var(--border-2);
+  background: none;
+}
+.dr-card.at-tray .dr-won-tile {
+  width: 36px;
+  height: 36px;
+}
+
+/* ------------------------------------------------------------- the claim button */
+/* Every crate's, in its colours (the daily's are Kick's green). The label always sits on one
+   colour, so it reads the same however the button moves. */
+.theme-daily {
+  --ev: #53fc18;
+  --ev-2: #2ee6c5;
+  --ev-hue: 0deg;
+}
 .dr-actions {
   display: flex;
   gap: 8px;
@@ -895,12 +1025,244 @@
   flex: 1;
   justify-content: center;
 }
-.dr-claim:disabled {
+.btn.dr-claim {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  gap: 10px;
+  border: 0;
+}
+.dr-claim .icon.chest {
+  flex: none;
+  overflow: visible;
+}
+.dr-claim .chest-box,
+.dr-claim .chest-burst {
+  transform-box: view-box;
+  transform-origin: 12px 19.5px;
+}
+/* Ready: a solid face in its first colour; the second runs round its edge. */
+.btn.dr-claim.ready {
+  color: #140a06;
+  font-weight: 750;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ev) 82%, #fff), var(--ev) 55%, color-mix(in srgb, var(--ev) 88%, #000));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) inset, 0 8px 24px -8px var(--ev);
+  animation: dr-claim-pulse 2.4s ease-in-out infinite;
+}
+.btn.dr-claim.ready::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  pointer-events: none;
+  background: conic-gradient(from var(--dr-turn), transparent 0 55%, var(--ev-2) 70%, #fff 75%, var(--ev-2) 80%, transparent 95%);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: dr-run 3s linear infinite;
+}
+/* A soft shine now and then, faint enough never to wash out the label. */
+.btn.dr-claim.ready::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 40%, rgba(255, 255, 255, 0.28) 50%, transparent 60%) -150% 0 / 60% 100% no-repeat;
+  animation: dr-claim-shine 3.2s ease-in-out infinite;
+}
+.btn.dr-claim.ready .icon.chest {
+  width: 22px;
+  height: 22px;
+  --chest-bg: transparent;
+}
+.btn.dr-claim.ready .chest-box {
+  animation: dr-hop 1.292s linear infinite;
+}
+.btn.dr-claim.ready .chest-burst {
+  animation: dr-burst 1.292s linear infinite;
+}
+.btn.dr-claim.ready .chest-body {
+  fill: rgba(20, 10, 6, 0.16);
+}
+.btn.dr-claim.ready .chest-burst .g {
+  fill: #140a06;
+}
+.btn.dr-claim.ready .chest-burst .t {
+  fill: color-mix(in srgb, var(--ev-2) 60%, #140a06);
+}
+.btn.dr-claim.ready:hover {
+  filter: brightness(1.05);
+}
+.btn.dr-claim.ready:active {
+  transform: translateY(1px);
+}
+/* Claiming: the chest stops, the shine runs fast until Kick answers. */
+.btn.dr-claim.busy,
+.btn.dr-claim.ready:disabled {
   opacity: 1;
-  background: var(--surface-2);
-  border-color: var(--border);
-  color: var(--muted);
-  box-shadow: none;
+  cursor: default;
+}
+.btn.dr-claim.busy::after {
+  animation-duration: 1s;
+}
+.btn.dr-claim.busy .chest-box {
+  animation: none;
+}
+.btn.dr-claim.busy .chest-burst {
+  animation: none;
+  opacity: 0;
+}
+/* Filling: a dark face that never changes under the label; progress below and round the chest. */
+.btn.dr-claim.fill,
+.btn.dr-claim.fill:disabled {
+  opacity: 1;
+  cursor: default;
+  color: #d6dae0;
+  font-weight: 650;
+  background: #12151a;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ev) 22%, transparent) inset;
+}
+.dr-claim.fill b {
+  color: #fff;
+  font-weight: 760;
+}
+.dr-claim-line {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: rgba(255, 255, 255, 0.07);
+}
+.dr-claim-line > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ev), var(--ev-2), var(--ev)) var(--dr-flow) 0 / 200% 100%;
+  animation: dr-flow 5s linear infinite;
+  transition: width 0.8s var(--ease);
+}
+.dr-claim-line > i::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: -1px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px 3px var(--ev-2);
+  animation: dr-edge 1.8s ease-in-out infinite;
+}
+.dr-claim-ring {
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 26px;
+}
+.dr-claim-ring svg {
+  position: absolute;
+}
+.dr-claim-ring > svg:first-child {
+  inset: 0;
+  width: 26px;
+  height: 26px;
+  transform: rotate(-90deg);
+}
+.dr-claim-ring circle {
+  fill: none;
+  stroke-width: 2.2;
+}
+.dr-claim-ring .track {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.dr-claim-ring .val {
+  stroke: var(--ev);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s var(--ease);
+}
+.dr-claim-ring .icon.chest {
+  left: 7.5px;
+  top: 7px;
+  width: 11px;
+  height: 11px;
+  color: color-mix(in srgb, var(--ev) 75%, #fff);
+  animation: dr-breathe 2.4s ease-in-out infinite;
+}
+.dr-claim-ring .chest-burst {
+  display: none;
+}
+.dr-claim-ring .chest-body {
+  fill: none;
+}
+/* Nearly there: it glows. */
+.btn.dr-claim.fill.near {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ev) 45%, transparent) inset, 0 0 22px -8px var(--ev);
+  animation: dr-near 2.4s ease-in-out infinite;
+}
+/* Nothing watching: it stops, quietly. */
+.btn.dr-claim.fill.paused {
+  color: #9aa1ab;
+}
+.dr-claim.fill.paused b {
+  color: #d6dae0;
+}
+.dr-claim.fill.paused .dr-claim-line > i,
+.dr-claim.fill.paused .dr-claim-ring .val {
+  animation: none;
+  filter: saturate(0.3) brightness(0.8);
+}
+.dr-claim.fill.paused .dr-claim-line > i::after {
+  display: none;
+}
+.dr-claim.fill.paused .dr-claim-ring .icon.chest {
+  animation: none;
+  opacity: 0.6;
+}
+@property --dr-flow {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+@keyframes dr-run {
+  to {
+    --dr-turn: 1turn;
+  }
+}
+@keyframes dr-flow {
+  to {
+    --dr-flow: 200%;
+  }
+}
+@keyframes dr-claim-pulse {
+  50% {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) inset, 0 0 0 4px color-mix(in srgb, var(--ev) 14%, transparent), 0 10px 34px -6px var(--ev);
+  }
+}
+@keyframes dr-claim-shine {
+  0%,
+  40% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
+}
+@keyframes dr-edge {
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 5px 1px var(--ev-2);
+  }
+}
+@keyframes dr-breathe {
+  50% {
+    transform: translateY(-1px) scale(1.06);
+  }
+}
+@keyframes dr-near {
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ev) 65%, transparent) inset, 0 0 30px -6px var(--ev);
+  }
 }
 
 /* The card as the tray's whole page: the tray has its own padding. */
@@ -1319,6 +1681,16 @@
 .dr-winner-caption b {
   font: 700 17px/1 var(--font-display);
 }
+.dr-winner-caption > span:not(.chip) {
+  color: var(--text-2);
+}
+/* A prize of watch time: in the level's violet, the minutes where the picture would be. */
+.dr-winner.xp {
+  --r: var(--violet);
+}
+.dr-winner.xp .dr-xp-big b {
+  font-size: 42px;
+}
 .dr-reveal-bg {
   position: absolute;
   inset: 0;
@@ -1335,10 +1707,17 @@
   .dr-chest.state-ready,
   .dr-chest.state-ready .chest-box,
   .dr-chest.state-ready .chest-burst,
-  .dr-crate-row.state-ready,
-  .dr-crate-row.state-ready::before,
-  .dr-crate-row.state-ready .chest-box,
-  .dr-crate-row.state-ready .chest-burst,
+  .dr-tab.state-ready,
+  .dr-tab.state-ready .chest-box,
+  .dr-tab.state-ready .chest-burst,
+  .dr-claim,
+  .dr-claim::before,
+  .dr-claim::after,
+  .dr-claim .chest-box,
+  .dr-claim .chest-burst,
+  .dr-claim-line > i,
+  .dr-claim-line > i::after,
+  .dr-claim-ring .icon.chest,
   .dr-reveal[data-phase='celebrate'] .dr-rays,
   .dr-crate-art.idle,
   .dr-stage.ready .crate-burst {

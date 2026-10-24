@@ -183,6 +183,11 @@ class KickApi {
     return this.request(`${WEB}/api/v1/gamification/users/${encodeURIComponent(userId)}/streak`);
   }
 
+  /** Everything the account has won (drops, and an event crate's prizes with their names), as kick.com's rewards page lists it. */
+  async rewards() {
+    return this.request(`${WEB}/api/v1/rewards`);
+  }
+
   /** Really claims: only from the user's Claim, or the automatic claim they chose. */
   async claimDaily(challengeId) {
     return this.request(`${WEB}/api/v1/gamification/challenges/${encodeURIComponent(challengeId)}/claim`, { method: 'POST', body: {} });

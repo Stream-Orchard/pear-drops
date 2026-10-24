@@ -16,7 +16,7 @@ const { openDb, OLD_FILES } = require('./db');
 const { Backups, EVERY, KEEP } = require('./backups');
 const { Updates, parseChangelog } = require('./updates');
 const { Connected } = require('./connected');
-const { DailyReward, CLAIM_MODES } = require('./daily-reward');
+const { DailyReward, CLAIM_MODES, kindOf } = require('./daily-reward');
 const { fileKeyStore } = require('@streamorchard/grapevine');
 
 // Errors are logged, never shown as Electron's own error dialog.
@@ -287,8 +287,14 @@ function createDailyReward() {
   );
   dailyReward.on('claimed', ({ reel, by, crate }) => {
     if (by === 'you') return;
-    const kind = `${reel.winner?.rarity ?? 'common'} ${reel.winner?.type ?? 'reward'}`;
-    notifier.send('dailyClaimed', { title: `${crate || 'Daily reward'} claimed`, body: reel.duplicate ? `A ${kind} you already had: level progress instead.` : `A ${kind}, new to your collection.`, view: 'dashboard' });
+    const w = reel.winner;
+    const kind = kindOf(w).toLowerCase().replace('kicks', 'KICKs');
+    const body = w?.xp
+      ? `+${w.xp} min watch time${reel.levelTo ? ` towards Level ${reel.levelTo}` : ''}.`
+      : reel.duplicate
+        ? `A ${kind} you already had: level progress instead.`
+        : `${w?.name ? `${w.name}, a ${kind}` : `A ${kind}`}, new to your collection.`;
+    notifier.send('dailyClaimed', { title: `${crate || 'Daily reward'} claimed`, body, view: 'dashboard' });
   });
   // Kick's realtime "the hour is done", when the docked page hears it.
   watcher.on('gamification', () => dailyReward.goalReached());
@@ -490,19 +496,32 @@ function setupDemo() {
     /**
      * The daily reward, set up for a test or a capture: minutes watched today (60 makes it ready),
      * 'claimed', the card the next claim wins, the streak, and an event's crate: its minutes of 180
-     * (180 makes it ready), 'claimed', or null for none; eventWinner, the prize its claim gives
-     * ('prize-0' to 'prize-4'). Then the app asks the stand-in again.
+     * (180 makes it ready), 'claimed' (on kick.com: its prize, with nothing to replay), or null for
+     * none; its name (a winter one gets winter prizes), the prize its claim gives (eventWinner:
+     * 'prize-0' to 'prize-4', 'gift-0' to 'gift-4', or 'xp' for watch time), how many earlier days
+     * it gave a prize on (eventPast), and how many days it runs (eventDays). Then the app asks the
+     * stand-in again.
      */
-    daily: async ({ minutes, claimed = false, winner, streak, welcome, event, eventName = 'Harvest Moon', eventWinner } = {}) => {
+    daily: async ({ minutes, claimed = false, winner, streak, welcome, event, eventName = 'Harvest Moon', eventWinner, eventPast, eventDays } = {}) => {
       const d = demo.api.daily;
       if (event === null) demo.api.event = null;
       else if (event !== undefined) {
         const e = (demo.api.event ??= { id: 'event-demo', minutes: 0, status: 'in_progress' });
         e.name = eventName;
-        if (event === 'claimed') Object.assign(e, { minutes: 180, status: 'claimed' });
-        else Object.assign(e, { minutes: event, status: event >= 180 ? 'claimable' : 'in_progress', won: null });
+        if (eventWinner !== undefined) e.nextWinner = eventWinner;
+        if (event === 'claimed') {
+          Object.assign(e, { minutes: 180, status: 'claimable' });
+          demo.api.claimEvent();
+        } else Object.assign(e, { minutes: event, status: event >= 180 ? 'claimable' : 'in_progress', won: null });
       }
-      if (eventWinner !== undefined && demo.api.event) demo.api.event.nextWinner = eventWinner;
+      if (event === undefined && eventWinner !== undefined && demo.api.event) demo.api.event.nextWinner = eventWinner;
+      if (eventPast !== undefined && demo.api.event) demo.api.pastPrizes(eventPast);
+      if (eventDays !== undefined && demo.api.event) {
+        const start = new Date();
+        start.setUTCHours(0, 0, 0, 0);
+        const from = start.getTime() - Math.max(0, eventPast ?? 0) * 86_400_000;
+        demo.api.event.period = { starts_at: new Date(from).toISOString(), ends_at: new Date(from + eventDays * 86_400_000).toISOString() };
+      }
       if (minutes !== undefined) Object.assign(d, { minutes, status: minutes >= 60 ? 'claimable' : 'in_progress' });
       if (claimed) d.status = 'claimed';
       if (winner !== undefined) demo.api.nextWinner = winner;
