@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.18 (current)
+## 0.1.19 (current)
+- ETAs say the day when it isn't today: the weekday in the next six days, the date after that
+
+## 0.1.18
 - Daily reward: counts Stream Multiview's signed-in Kick players as watching, and checks again when its card opens
 
 ## 0.1.17
