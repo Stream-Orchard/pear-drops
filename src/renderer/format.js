@@ -86,7 +86,15 @@ function fmtEnds(iso) {
 function fmtEta(minutes) {
   if (!Number.isFinite(minutes) || minutes > 60 * 24 * 30) return '—';
   if (minutes <= 0) return 'now';
-  return `${fmtMin(minutes)} · ${fmtWhen(Date.now() + minutes * MIN)}`;
+  return `${fmtMin(minutes)} · ${fmtFinish(minutes)}`;
+}
+
+// When something `minutes` from now happens, on its own ("Sun 2:40 AM"), for a row of its own
+// where "22h 46m · Sun 2:40 AM" would wrap.
+function fmtFinish(minutes) {
+  if (!Number.isFinite(minutes) || minutes > 60 * 24 * 30) return '—';
+  if (minutes <= 0) return 'now';
+  return fmtWhen(Date.now() + minutes * MIN);
 }
 
 // Charts are drawn at the card's real width so their text isn't stretched.

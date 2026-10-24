@@ -1,4 +1,4 @@
-/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtEta, streamHealth, streamNotice, setHTML, img, applyFont */
+/* global rowArt, rewardChest, rewardCard, playReveal, endReveal, previewAttrs, icon, brandMark, progressRing, MIN, $, esc, fmtDur, fmtMin, fmtAgo, fmtCount, fmtFinish, streamHealth, streamNotice, setHTML, img, applyFont */
 // The tray / menu bar popover: the live state at a glance, with quick controls.
 let state = null;
 let page = 'main'; // or 'reward': the daily reward's card, claimed right here
@@ -81,7 +81,8 @@ function render() {
             <div class="tray-camp">${esc(p?.name ?? '')}</div>
             <dl class="eta">
               <dt>Next reward</dt><dd>${p?.next ? fmtMin(fc?.nextMinutes) : 'claiming…'}</dd>
-              <dt>All done</dt><dd>${fmtEta(fc?.doneMinutes)}</dd>
+              <dt>All done</dt><dd>${fmtMin(fc?.doneMinutes)}</dd>
+              <dt>Finishes</dt><dd>${fmtFinish(fc?.doneMinutes)}</dd>
               <dt>Last credit</dt><dd>${fmtAgo(cur.lastProgressAt)}</dd>
             </dl>
           </div>

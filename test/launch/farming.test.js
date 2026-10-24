@@ -418,6 +418,9 @@ test('the tray popover shows the current drop and controls', async () => {
   });
   await until(pop, () => document.querySelector('.tray-now .ring'), 'the popover content');
   assert.match(await pop.textContent('.tray-foot'), /Pause/);
+  // When it's all done has a row of its own, so "22h 46m · Sun 2:40 AM" doesn't wrap.
+  assert.match(await pop.textContent('.tray-eta .eta'), /All done.*Finishes/s);
+  assert.equal(await pop.evaluate(() => getComputedStyle(document.querySelector('.tray-eta .eta dd')).whiteSpace), 'nowrap');
   await pop.hover('[data-action="quit"]');
   await until(pop, () => document.querySelector('.tooltip.on')?.textContent, 'the quit tooltip');
   assert.equal(await pop.textContent('.tooltip'), 'Quit Pear Drops (stops farming)');

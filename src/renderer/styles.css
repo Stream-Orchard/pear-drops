@@ -1227,6 +1227,7 @@ span.img-missing {
 .eta dd {
   margin: 0;
   text-align: right;
+  white-space: nowrap;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
