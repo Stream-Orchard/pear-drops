@@ -235,7 +235,6 @@ test('settings toggles are saved', async () => {
   try {
     await a.win.click('button.icon-only[data-action="settings"]');
     await a.win.click('[data-action="setting-toggle"][data-key="includeGameDrops"]');
-    await trace('clicked');
     await until(a.win, () => document.querySelector('[data-key="includeGameDrops"]')?.classList.contains('on'), 'the toggle to turn on', 5000).catch(async (err) => {
       await trace('missed');
       throw err;

@@ -939,10 +939,13 @@ function syncPlayerBounds() {
   }
   // The stream's <webview>s sit over the slot. Out of sight (folded away, nothing playing) they're
   // parked off-screen at a size of their own: hidden, or squashed to nothing, Kick's player could stop.
-  playerViews.classList.toggle('parked', !rect);
   // Under a pop-up (Settings, the daily reward's card), the stream takes no clicks: they're the
   // pop-up's, or close it, and a <webview> can take a click meant for what's over it.
-  playerViews.classList.toggle('covered', !!ui.modal || ui.rewardOpen);
+  const covered = !!ui.modal || ui.rewardOpen;
+  // When it last moved or was covered: the launch tests wait for Chromium to catch up before clicking.
+  if (playerViews.classList.contains('parked') !== !rect || playerViews.classList.contains('covered') !== covered) playerViews.dataset.changedAt = String(performance.now());
+  playerViews.classList.toggle('parked', !rect);
+  playerViews.classList.toggle('covered', covered);
   if (rect) Object.assign(playerViews.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px` });
   const key = JSON.stringify(rect);
   if (key === lastBounds) return;
