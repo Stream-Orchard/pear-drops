@@ -1,6 +1,8 @@
 // Demo mode (PD_DEMO=1): a stand-in Kick with made-up campaigns, channels, emotes
 // and chat. Used by the launch tests and the trailer, so no real account, streamer
 // or chatter ever appears and nothing goes to the network.
+const { themeOf } = require('./daily-reward');
+
 const MIN = 60_000;
 
 // ------------------------------------------------------------------ artwork
@@ -289,14 +291,30 @@ function prizeImage(glyph, hue, rarity) {
     <text x="60" y="80" text-anchor="middle" font-size="56">${glyph}</text>
   </svg>`);
 }
-// A made-up event crate's prizes: [rarity, glyph, hue], and its odds.
-const EVENT_PRIZES = [
-  ['common', '🌾', 40],
-  ['common', '🍂', 20],
-  ['uncommon', '🦉', 270],
-  ['rare', '🌕', 50],
-  ['mythic', '🌠', 300],
-].map(([rarity, glyph, hue], i) => ({ id: `prize-${i}`, rarity, thumbnail_url: prizeImage(glyph, hue, rarity) }));
+// A made-up event crate's prizes: [rarity, name, type, glyph, hue], and its odds. A winter event
+// (its name says so) has prizes of its own, so captures of one look the part.
+const prizeList = (prefix, rows) =>
+  rows.map(([rarity, name, type, glyph, hue], i) => ({ id: `${prefix}-${i}`, rarity, name, type, thumbnail_url: prizeImage(glyph, hue, rarity) }));
+const EVENT_PRIZES = prizeList('prize', [
+  ['common', 'Wheat Sheaf', 'emote', '🌾', 40],
+  ['common', 'Falling Leaf', 'emote', '🍂', 20],
+  ['uncommon', 'Hoot Hoot', 'emote', '🦉', 270],
+  ['rare', 'Full Moon', 'badge', '🌕', 50],
+  ['mythic', 'Shooting Star', 'emote', '🌠', 300],
+]);
+const WINTER_PRIZES = prizeList('gift', [
+  ['common', 'Gift Box', 'emote', '🎁', 0],
+  ['common', 'Cocoa', 'emote', '☕', 25],
+  ['uncommon', 'Pine', 'emote', '🎄', 130],
+  ['rare', 'Frosty', 'badge', '❄️', 195],
+  ['epic', 'Snow Buddy', 'emote', '⛄', 200],
+]);
+const prizesFor = (name) => (themeOf(name) === 'winter' ? WINTER_PRIZES : EVENT_PRIZES);
+/** An id like Kick's (UUIDv7): it starts with the time it was made. */
+const uuid7 = (t) => {
+  const h = Math.floor(t).toString(16).padStart(12, '0') + '7' + [...Array(19)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+};
 const EVENT_TABLE = [
   ['common', 500],
   ['uncommon', 299],
@@ -326,6 +344,7 @@ class DemoApi {
     // An event's crate, as Kick lists Trick or Treat: another daily challenge, featured, 3 hours a
     // day, for a week. Only when a test or a capture adds it (pdDemo.daily({ event })).
     this.event = null;
+    this.inventory = []; // what the stand-in account has won from event crates: Kick's rewards list
     this.levelData = { level: 42, progress_xp: 340, xp_to_next_level: 260 };
     this.streakDays = 12;
     this.nextWinner = null; // a test or the trailer can pick the card the next claim wins
@@ -409,11 +428,12 @@ class DemoApi {
               {
                 id: e.id,
                 name: e.name,
+                description: `Open the ${e.name} crate every day of the event for a made-up prize.`,
                 recurrence: 'daily',
                 status: e.status,
                 featured: true,
                 window,
-                active_period: week,
+                active_period: e.period ?? week,
                 condition: { type: 'watch_time_minutes', progress: e.minutes, threshold: 180 },
                 drop_table: EVENT_TABLE.map(([rarity, weighting]) => ({ rarity, weighting })),
                 animations: null,
@@ -436,6 +456,36 @@ class DemoApi {
 
   async streak() {
     return { data: { length_days: this.streakDays }, message: 'success' };
+  }
+
+  /** Kick's rewards list: every prize the account has won, with its name. */
+  async rewards() {
+    if (!this.loggedIn) throw Object.assign(new Error('Unauthorized'), { status: 401 });
+    // Newest first: the ids start with the time, so they sort by it.
+    return { data: { rewards: [...this.inventory].sort((x, y) => y.id.localeCompare(x.id)) }, message: 'success' };
+  }
+
+  /** An event prize into the rewards list, as Kick files it. */
+  addPrize(prize, event, at = Date.now()) {
+    this.inventory.push({
+      display_label: prize.name,
+      id: uuid7(at),
+      rarity: prize.rarity,
+      reward_id: prize.id,
+      source: 'gamification_reward_chest',
+      source_label: event,
+      thumbnail_url: prize.thumbnail_url,
+      type: prize.type,
+    });
+  }
+
+  /** The event's earlier days, as if a prize was won on each of the last `n`. */
+  pastPrizes(n) {
+    const e = this.event;
+    const pool = prizesFor(e.name);
+    const today = new Date().setUTCHours(0, 0, 0, 0);
+    this.inventory = this.inventory.filter((p) => p.source_label !== e.name || parseInt(p.id.replace(/-/g, '').slice(0, 12), 16) >= today);
+    for (let i = n; i >= 1; i -= 1) this.addPrize(pool[(i * 3) % pool.length], e.name, Date.now() - i * 86_400_000);
   }
 
   /** The stand-in claim: Kick's reel (its 24 tiles), a winner picked by the odds, a duplicate's level progress. */
@@ -465,17 +515,34 @@ class DemoApi {
     };
   }
 
-  /** An event's crate opens at once, with no reel: just its prize, a square thumbnail. */
+  /**
+   * An event's crate opens at once, with no reel: just its prize, a square thumbnail, with no name
+   * (the rewards list has that). Or watch time towards the next level, when a test asks for it.
+   */
   claimEvent() {
     const e = this.event;
     if (e.status !== 'claimable') throw Object.assign(new Error('HTTP 400'), { status: 400, body: { message: 'Challenge not claimable' } });
+    e.status = 'claimed';
+    if (e.nextWinner === 'xp') {
+      e.nextWinner = null;
+      e.won = { id: 'watch-time', rarity: 'common', card_url: '', thumbnail_url: '', watch_time: { watch_time_minutes: 30, next_level_badge: { metadata: { level: this.levelData.level + 1 } } } };
+      return { data: { reveal_type: 'instant', roulette: [], winner: e.won, consolation: null }, message: 'success' };
+    }
+    e.won = this.pickPrize();
+    this.addPrize(prizesFor(e.name).find((p) => p.id === e.won.id), e.name);
+    return { data: { reveal_type: 'instant', roulette: [], winner: e.won, consolation: null }, message: 'success' };
+  }
+
+  /** The event's next prize, by its odds (or the one a test picked), as the claim gives it. */
+  pickPrize() {
+    const e = this.event;
+    const prizes = prizesFor(e.name);
     let roll = Math.random() * 1000;
     const rarity = EVENT_TABLE.find(([, w]) => (roll -= w) < 0)?.[0] ?? 'common';
-    const pool = EVENT_PRIZES.filter((p) => p.rarity === rarity);
-    const prize = EVENT_PRIZES.find((p) => p.id === e.nextWinner) ?? pool[Math.floor(Math.random() * pool.length)];
-    e.status = 'claimed';
-    e.won = { id: prize.id, rarity: prize.rarity, card_url: '', thumbnail_url: prize.thumbnail_url };
-    return { data: { reveal_type: 'instant', roulette: [], winner: e.won, consolation: null }, message: 'success' };
+    const pool = prizes.filter((p) => p.rarity === rarity);
+    const prize = prizes.find((p) => p.id === e.nextWinner) ?? (pool.length ? pool : prizes)[Math.floor(Math.random() * (pool.length || prizes.length))];
+    e.nextWinner = null;
+    return { id: prize.id, rarity: prize.rarity, card_url: '', thumbnail_url: prize.thumbnail_url };
   }
 
   async livestreams(categoryId) {

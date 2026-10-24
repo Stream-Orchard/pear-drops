@@ -149,3 +149,28 @@ test('the stand-in event crate: listed like Kick’s Trick or Treat, filled by w
   api.event = { id: 'event-demo', name: 'Harvest Moon', minutes: 180, status: 'claimable' };
   assert.ok((await api.claimDaily('event-demo')).data.winner.id.startsWith('prize-'));
 });
+
+test('the stand-in rewards list names each event prize won, by event and day; a winter event has its own; watch time on request', async () => {
+  const { api } = createDemo();
+  await assert.rejects(api.rewards(), { status: 401 });
+  api.loggedIn = true;
+  assert.deepEqual((await api.rewards()).data.rewards, []);
+  api.event = { id: 'event-demo', name: 'Trick or Treat', minutes: 180, status: 'claimable', nextWinner: 'prize-2' };
+  await api.claimDaily('event-demo');
+  api.pastPrizes(2);
+  const list = (await api.rewards()).data.rewards;
+  assert.deepEqual(list.map((r) => [r.reward_id, r.display_label, r.source, r.source_label]), [
+    ['prize-2', 'Hoot Hoot', 'gamification_reward_chest', 'Trick or Treat'],
+    ['prize-3', 'Full Moon', 'gamification_reward_chest', 'Trick or Treat'],
+    ['prize-1', 'Falling Leaf', 'gamification_reward_chest', 'Trick or Treat'],
+  ]);
+  const at = (r) => parseInt(r.id.replace(/-/g, '').slice(0, 12), 16);
+  assert.ok(at(list[0]) - at(list[1]) > 80_000_000, 'a day apart, by their ids (UUIDv7, as Kick’s)');
+  assert.equal(list[0].id[14], '7');
+  api.event = { id: 'event-demo', name: 'Winter Wonderland', minutes: 180, status: 'claimable' };
+  assert.ok((await api.claimDaily('event-demo')).data.winner.id.startsWith('gift-'));
+  api.event = { id: 'event-demo', name: 'Winter Wonderland', minutes: 180, status: 'claimable', nextWinner: 'xp' };
+  const { data } = await api.claimDaily('event-demo');
+  assert.deepEqual([data.winner.watch_time.watch_time_minutes, data.winner.watch_time.next_level_badge.metadata.level], [30, 43]);
+  assert.equal((await api.rewards()).data.rewards.length, 4, 'watch time isn’t a reward in the list');
+});

@@ -38,8 +38,8 @@ const CARDS = [
 ];
 
 /** A stand-in for kick-api.js's daily reward calls, counting each. */
-function fakeKick({ challenges = [challenge()], oneOff = [], claim, fail = null } = {}) {
-  const calls = { challenges: 0, oneOff: 0, cards: 0, level: 0, streak: 0, claim: 0 };
+function fakeKick({ challenges = [challenge()], oneOff = [], claim, fail = null, rewards = null } = {}) {
+  const calls = { challenges: 0, oneOff: 0, cards: 0, level: 0, streak: 0, claim: 0, rewards: 0 };
   const kick = {
     calls,
     challenges,
@@ -65,6 +65,15 @@ function fakeKick({ challenges = [challenge()], oneOff = [], claim, fail = null 
       assert.equal(id, 4242);
       return { data: { length_days: 111 }, message: 'success' };
     },
+    // Kick's rewards list (only when a test gives one): what the account has won, by name.
+    ...(rewards
+      ? {
+          rewards: async () => {
+            calls.rewards++;
+            return { data: { rewards: typeof rewards === 'function' ? rewards() : rewards }, message: 'success' };
+          },
+        }
+      : {}),
     async claimDaily(id) {
       calls.claim++;
       // As Kick does: the challenge is claimed from then on.
@@ -243,7 +252,7 @@ test('starting reads everything once; later checks only ask for the challenge', 
   const { reward, kick, timers } = setup();
   reward.start();
   await settle();
-  assert.deepEqual(kick.calls, { challenges: 1, oneOff: 1, cards: 1, level: 1, streak: 1, claim: 0 });
+  assert.deepEqual(kick.calls, { challenges: 1, oneOff: 1, cards: 1, level: 1, streak: 1, claim: 0, rewards: 0 });
   const s = reward.snapshot();
   assert.equal(s.state, 'earning');
   assert.equal(s.minutes, 37);
@@ -632,4 +641,125 @@ test('an event crate filling as you watch is checked as often as the daily hour'
   assert.equal(dr.nextCheckIn({ daily, extras: [crate], watching: true, now: NOW }), 90_000);
   assert.equal(dr.nextCheckIn({ daily, extras: [crate], watching: false, now: NOW }), 10 * MIN);
   assert.equal(dr.nextCheckIn({ daily, extras: [{ ...crate, state: 'claimed' }], watching: true, now: NOW }), 4 * 60 * MIN + 5000);
+});
+
+// ------------------------------------------------------------------ an event's prizes, by name
+
+/** An id like Kick's (UUIDv7): it starts with the time it was made. */
+const uuid7 = (t) => {
+  const h = Math.floor(t).toString(16).padStart(12, '0');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-7abc-8def-0123456789ab`;
+};
+/** An entry of Kick's rewards list (sanitised: made-up names and ids). */
+const listed = (rewardId, { name = 'Hoot Hoot', type = 'emote', rarity = 'uncommon', at = NOW, label = 'Trick or Treat', source = 'gamification_reward_chest' } = {}) => ({
+  display_label: name,
+  id: uuid7(at),
+  rarity,
+  reward_id: rewardId,
+  source,
+  source_label: label,
+  thumbnail_url: `https://content.kick.com/public/rewards/thumbnails/${rewardId}.webp`,
+  type,
+});
+
+test('Kick’s rewards list: each prize’s name, kind, event and when it was won (its id says)', () => {
+  const list = dr.rewardsOf({ data: { rewards: [listed('p1'), listed('d1', { source: 'drops', label: 'A Game', type: 'badge' }), listed('k1', { type: 'kicks', name: '50 KICKs' }), { reward_id: null }, null] } });
+  assert.deepEqual(list.map((p) => [p.id, p.name, p.type, p.source, p.label]), [
+    ['p1', 'Hoot Hoot', 'emote', 'gamification_reward_chest', 'Trick or Treat'],
+    ['d1', 'Hoot Hoot', 'badge', 'drops', 'A Game'],
+    ['k1', '50 KICKs', 'kicks', 'gamification_reward_chest', 'Trick or Treat'],
+  ]);
+  assert.equal(list[0].at, NOW);
+  assert.equal(dr.rewardsOf({ data: [listed('p1', { type: 'odd' })] })[0].type, null, 'an unknown kind');
+  assert.deepEqual(dr.rewardsOf(null), []);
+  assert.equal(dr.idTime('01a16c2e-215a-7a96-af5f-7d964064b669'), Date.parse('2026-10-24T04:32:04.954Z'));
+  assert.equal(dr.idTime('01a16c2e-215a-4a96-af5f-7d964064b669'), null, 'not a UUIDv7');
+  assert.equal(dr.idTime(42), null);
+  assert.equal(dr.kindOf({ rarity: 'rare', type: 'kicks' }), 'Rare KICKs');
+  assert.equal(dr.kindOf({ rarity: 'epic', type: 'redeemable_code' }), 'Epic code');
+  assert.equal(dr.kindOf(null), 'Common reward');
+});
+
+test('an event’s prizes are kept once each, newest first, however often they’re seen', () => {
+  const a = { id: 'p1', name: 'Hoot Hoot', rarity: 'uncommon', at: NOW };
+  const b = { id: 'p2', name: 'Full Moon', rarity: 'rare', at: NOW - DAY };
+  const same = { ...a, at: NOW + 4000 }; // claimed here, then seen in Kick's list
+  const again = { ...a, at: NOW - 3 * DAY }; // the same prize, another day
+  const merged = dr.mergePrizes([b], [same, a, again]);
+  assert.deepEqual(merged.map((p) => [p.id, p.at]), [['p1', NOW + 4000], ['p2', NOW - DAY], ['p1', NOW - 3 * DAY]]);
+  assert.deepEqual(Object.keys(merged[0]).sort(), ['at', 'id', 'image', 'name', 'rarity', 'type']);
+  assert.equal(dr.mergePrizes([], Array.from({ length: 60 }, (_, i) => ({ id: `x${i}`, rarity: 'common', at: NOW - i * DAY }))).length, 40);
+});
+
+test('a prize of watch time: what it gave, in the reel, History and its words', () => {
+  const xp = { id: 'wt', rarity: 'common', card_url: '', thumbnail_url: '', watch_time: { watch_time_minutes: 30, next_level_badge: { metadata: { level: 43 } } } };
+  assert.deepEqual([dr.cardOf(xp).xp, dr.cardOf(xp).levelTo, dr.cardOf(xp).image], [30, 43, null]);
+  const reel = dr.reelOf({ data: { reveal_type: 'instant', roulette: [], winner: xp } });
+  assert.deepEqual([reel.duplicate, reel.xpMinutes, reel.levelTo, reel.items.length], [false, 30, 43, 0]);
+  assert.deepEqual(dr.claimText(reel, 'Winter Wonderland'), { reward: '+30 min watch time', text: 'Winter Wonderland: +30 min watch time to Level 43' });
+  assert.equal(dr.claimText({ winner: { name: 'Hoot Hoot', rarity: 'uncommon', type: 'emote' }, duplicate: false }, 'Trick or Treat').text, 'Trick or Treat: Hoot Hoot, uncommon emote, new to your collection');
+  assert.equal(dr.claimText({ winner: { name: 'Hoot Hoot', rarity: 'uncommon', type: 'emote' }, duplicate: true, xpMinutes: 12 }).reward, 'Hoot Hoot');
+});
+
+test('claiming an event’s crate names its prize from Kick’s rewards list, and keeps what the event has given', async () => {
+  const earlier = [
+    listed('p2', { name: 'Full Moon', rarity: 'rare', type: 'badge', at: NOW - DAY }),
+    listed('p3', { name: 'Leaf', rarity: 'common', at: NOW - 2 * DAY }),
+    listed('p4', { name: 'Last Year', at: NOW - 365 * DAY }), // the same event's name, a year ago
+    listed('d1', { source: 'drops', label: 'A Game' }),
+  ];
+  let list = earlier;
+  const period = { starts_at: '2026-10-18T00:00:00Z', ends_at: '2026-10-26T00:00:00Z' };
+  const kick = fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate({ status: 'claimable', progress: 180, description: '  Claim your Trick or Treat!  ', active_period: period })], claim: prizeClaim, rewards: () => list });
+  const { reward, events, stored } = setup({ kick, settings: { dailyClaim: 'self' } });
+  reward.start();
+  await settle();
+  const before = reward.snapshot().extras[0];
+  assert.equal(before.description, 'Claim your Trick or Treat!');
+  assert.equal(before.days, 8, 'Oct 18 to Oct 26');
+  assert.deepEqual(before.prizes.map((p) => [p.name, p.type]), [['Full Moon', 'badge'], ['Leaf', 'emote']], 'only this event’s (this year’s), newest first');
+  list = [listed('p1', { at: NOW + 1000 }), ...earlier];
+  const reel = await reward.claim('ev-1');
+  assert.deepEqual([reel.winner.name, reel.winner.type, reel.winner.image], ['Hoot Hoot', 'emote', PRIZE.thumbnail_url]);
+  assert.equal(events[0].text, 'Trick or Treat: Hoot Hoot, uncommon emote, new to your collection');
+  assert.equal(events[0].reward, 'Hoot Hoot');
+  const after = reward.snapshot().extras[0];
+  assert.equal(after.won.winner.name, 'Hoot Hoot');
+  assert.deepEqual(after.prizes.map((p) => p.name), ['Hoot Hoot', 'Full Moon', 'Leaf'], 'once, though claimed here and listed by Kick');
+  assert.equal(reward.lastClaim('ev-1').winner.name, 'Hoot Hoot');
+  // Kick's list keeps only so much: what the event gave is kept here too.
+  list = [];
+  await reward.refresh({ full: true });
+  await settle();
+  assert.deepEqual(reward.snapshot().extras[0].prizes.map((p) => p.name), ['Hoot Hoot', 'Full Moon', 'Leaf']);
+  assert.equal(stored.value.won['Trick or Treat'].length, 4, 'last year’s too: the page shows only this year’s');
+});
+
+test('no event, no rewards list; a claimed prize Kick hasn’t listed yet still shows', async () => {
+  const kick = fakeKick({ rewards: () => [listed('p1')] });
+  const { reward } = setup({ kick });
+  reward.start();
+  await settle();
+  assert.equal(kick.calls.rewards, 0, 'only while an event runs');
+  const slow = fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate({ status: 'claimable', progress: 180 })], claim: prizeClaim, rewards: () => [] });
+  const s = setup({ kick: slow, settings: { dailyClaim: 'self' } });
+  s.reward.start();
+  await settle();
+  const reel = await s.reward.claim('ev-1');
+  assert.equal(reel.winner.name, undefined);
+  assert.equal(s.events[0].text, 'Trick or Treat: Uncommon reward, new to your collection');
+  assert.deepEqual(s.reward.snapshot().extras[0].prizes.map((p) => [p.id, p.at]), [['p1', NOW]]);
+});
+
+test('an event crate’s watch-time prize: shown as level progress, not a picture', async () => {
+  const xp = { id: 'wt', rarity: 'common', card_url: '', thumbnail_url: '', watch_time: { watch_time_minutes: 30, next_level_badge: { metadata: { level: 66 } } } };
+  const kick = fakeKick({ challenges: [challenge({ status: 'claimed' }), eventCrate({ status: 'claimable', progress: 180 })], claim: () => ({ data: { reveal_type: 'instant', roulette: [], winner: xp } }), rewards: () => [] });
+  const { reward, events } = setup({ kick, settings: { dailyClaim: 'self' } });
+  reward.start();
+  await settle();
+  await reward.claim('ev-1');
+  assert.equal(events[0].text, 'Trick or Treat: +30 min watch time to Level 66');
+  const won = reward.snapshot().extras[0].won;
+  assert.deepEqual([won.winner.xp, won.xpMinutes, won.levelTo], [30, 30, 66]);
+  assert.deepEqual(reward.snapshot().extras[0].prizes, [], 'nothing for the strip');
 });

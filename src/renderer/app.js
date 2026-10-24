@@ -1,4 +1,4 @@
-/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, revealDone, revealFor, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, fmtFinish, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
+/* global rowArt, channelNames, rewardChest, rewardCard, playReveal, endReveal, revealDone, revealFor, openTab, activityPane, activityActions, act, fitActivity, closeActivity, previewAttrs, updatesPane, updateChip, whatsNewModal, updateActions, initUpdates, renderHistory, loadHistory, historyActions, hist, icon, brandMark, progressRing, progressChart, heartbeatStrip, sparkBars, MIN, $, esc, fmtDur, fmtMin, fmtClock, fmtAgo, fmtCount, fmtEnds, fmtEta, fmtFinish, popupWall, streamHealth, streamNotice, setHTML, widthOf, img, applyFont */
 
 let state = null;
 const ui = {
@@ -13,6 +13,7 @@ const ui = {
   seenToasts: new Set(),
   firstState: true,
   rewardOpen: false, // the daily reward's card, under its chest
+  rewardTab: null, // the crate open on it (its tab): chosen as it opens
   revealing: false, // the reveal is playing: the card isn't redrawn under it
 };
 
@@ -1151,13 +1152,17 @@ function renderRewardPop() {
   const at = chest ? chest.left + chest.width / 2 : innerWidth - 60;
   // Pinned to the chest's right edge, which stays put when the chip shrinks back to a chest.
   const left = Math.round(Math.max(12, Math.min(innerWidth - w - 12, (chest?.right ?? innerWidth) + 64 - w)));
-  setHTML(root, `<div class="dr-pop" data-stop style="top:${Math.round((chest?.bottom ?? 54) + 10)}px;left:${left}px;--notch:${Math.round(at - left)}px">${rewardCard(dr)}</div>`);
+  setHTML(root, `<div class="dr-pop" data-stop style="top:${Math.round((chest?.bottom ?? 54) + 10)}px;left:${left}px;--notch:${Math.round(at - left)}px">${rewardCard(dr, { tab: ui.rewardTab })}</div>`);
 }
 
 function openReward(open = !ui.rewardOpen) {
   if (ui.rewardOpen === open) return;
   ui.rewardOpen = open;
-  if (open) window.pd.dailyReward.opened();
+  // It opens on a crate that's ready (the daily one first), and stays on the tab chosen after that.
+  if (open) {
+    ui.rewardTab = openTab(dailyReward());
+    window.pd.dailyReward.opened();
+  }
   // The docked stream is drawn over the page, so it steps aside like it does for a modal.
   if (!ui.modal) window.pd.suspendPlayer(open);
   render();
@@ -1168,7 +1173,7 @@ async function claimReward(card, id, tile) {
   const dr = dailyReward();
   if (ui.revealing || !dr) return;
   ui.revealing = true;
-  for (const b of card.querySelectorAll('.dr-claim, .dr-crate-claim')) b.setAttribute('disabled', '');
+  for (const b of card.querySelectorAll('.dr-claim')) b.setAttribute('disabled', '');
   const how = revealFor(dr, id);
   const r = await window.pd.dailyReward.claim(id);
   if (r?.winner) {
@@ -1508,6 +1513,12 @@ const actions = {
   'reward-kick': () => window.pd.openExternal('https://kick.com/?daily-reward=open'),
   // Kick's own page of every card, with the ones you own.
   'reward-collection': () => window.pd.openExternal('https://kick.com/collectibles'),
+  'reward-prizes': () => window.pd.openExternal('https://kick.com/drops/rewards'),
+  'reward-tab': (el) => {
+    if (ui.revealing) return;
+    ui.rewardTab = el.dataset.id;
+    render();
+  },
   'past-filter': (el) => {
     ui.pastFilter = el.dataset.id;
     render();
