@@ -2,7 +2,11 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.20 (current)
+## 0.1.21 (current)
+- Electron 44.9.3, past the certificate advisory that fails npm audit in CI
+- Event crates like Kick's Trick or Treat get their own animated section, and the reveal stays until you're done
+
+## 0.1.20
 - The finish time gets its own row in the tray and dashboard, so it no longer wraps
 
 ## 0.1.19
