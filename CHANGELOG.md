@@ -2,7 +2,10 @@
 
 Versions follow `major.minor.patch`. Each release's notes are written when it's published.
 
-## 0.1.19 (current)
+## 0.1.20 (current)
+- The finish time gets its own row in the tray and dashboard, so it no longer wraps
+
+## 0.1.19
 - ETAs say the day when it isn't today: the weekday in the next six days, the date after that
 
 ## 0.1.18
