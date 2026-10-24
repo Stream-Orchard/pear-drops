@@ -878,14 +878,22 @@ function renderSide() {
 
 // ------------------------------------------------------------------ player panel
 
+// The stream's <webview>s, in a layer of their own over the panel's slot (as Stream Multiview places
+// its streams): never inside anything that's hidden, which would stop them. Pop-ups sit over it.
+const playerViews = Object.assign(document.createElement('div'), { id: 'player-views', className: 'parked' });
+document.body.append(playerViews);
+
 const mirrorShowsChat = () => state.settings.playerMode !== 'full' && state.settings.showChat !== false;
 
 function renderPlayer() {
   const f = farm();
   const cur = f?.current;
   $('.layout').classList.toggle('player-collapsed', !ui.playerOpen);
-  // Light shows the player at 16:9 with the chat below it (see watcher.js applyBounds).
-  $('#player-slot').classList.toggle('light', state.settings.playerMode !== 'full');
+  // Light shows the player at 16:9 with the chat below it.
+  const light = state.settings.playerMode !== 'full';
+  $('#player-slot').classList.toggle('light', light);
+  playerViews.classList.toggle('light', light);
+  playerViews.classList.toggle('no-chat', state.settings.showChat === false);
   if (!cur) $('#player-mirror').hidden = true;
   if (!cur || !mirrorShowsChat()) $('#chat-mirror').hidden = true;
   const collapse = `<button class="btn sm icon-only ghost collapse-btn" data-action="toggle-player" data-tip="${ui.playerOpen ? 'Hide stream' : 'Show stream'}">${icon(ui.playerOpen ? 'chevronRight' : 'chevronLeft')}</button>`;
@@ -923,12 +931,22 @@ function followButton(cur) {
 let lastBounds = '';
 function syncPlayerBounds() {
   const slot = $('#player-slot');
-  const visible = ui.playerOpen && !!farm()?.current && !ui.modal && !$('#app').hidden;
+  const visible = ui.playerOpen && !!farm()?.current && !$('#app').hidden;
   let rect = null;
   if (visible) {
     const r = slot.getBoundingClientRect();
     rect = { x: r.left, y: r.top, width: r.width, height: r.height };
   }
+  // The stream's <webview>s sit over the slot. Out of sight (folded away, nothing playing) they're
+  // parked off-screen at a size of their own: hidden, or squashed to nothing, Kick's player could stop.
+  // Under a pop-up (Settings, the daily reward's card), the stream takes no clicks: they're the
+  // pop-up's, or close it, and a <webview> can take a click meant for what's over it.
+  const covered = !!ui.modal || ui.rewardOpen;
+  // When it last moved or was covered: the launch tests wait for Chromium to catch up before clicking.
+  if (playerViews.classList.contains('parked') !== !rect || playerViews.classList.contains('covered') !== covered) playerViews.dataset.changedAt = String(performance.now());
+  playerViews.classList.toggle('parked', !rect);
+  playerViews.classList.toggle('covered', covered);
+  if (rect) Object.assign(playerViews.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px` });
   const key = JSON.stringify(rect);
   if (key === lastBounds) return;
   lastBounds = key;
@@ -1163,8 +1181,6 @@ function openReward(open = !ui.rewardOpen) {
     ui.rewardTab = openTab(dailyReward());
     window.pd.dailyReward.opened();
   }
-  // The docked stream is drawn over the page, so it steps aside like it does for a modal.
-  if (!ui.modal) window.pd.suspendPlayer(open);
   render();
 }
 
@@ -1222,7 +1238,7 @@ function renderModal() {
       ${s.queueMode === 'smart' ? row('Switch streams for', 'How much sooner another drop must run out of live time before Smart leaves a stream that’s earning.', seg('setting-value', String(s.smartHopMinutes ?? 30), [['15', '15 min'], ['30', '30 min'], ['60', '1 h'], ['120', '2 h']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="smartHopMinutes"')) : ''}
       ${row('Put drops about to expire first', 'In Manual order, a drop that would run out of time where it sits jumps to the top, as long as its next reward can still be earned.', toggle('prioritizeExpiring', s.prioritizeExpiring))}
       ${row('Claim drops automatically', 'Claim each emote or badge the moment it unlocks.', toggle('autoClaim', s.autoClaim))}
-      ${row('Claim Kick’s daily reward', 'Before it resets claims it 15 minutes before midnight UTC if you haven’t, so no day is lost. Replay still shows its reel.', seg('setting-value', ['self', 'now'].includes(s.dailyClaim) ? s.dailyClaim : 'before-reset', [['self', 'Myself'], ['before-reset', 'Before it resets'], ['now', 'Right away']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="dailyClaim"'))}
+      ${row('Claim Kick’s daily rewards', 'The daily crate and any event’s, like Trick or Treat. Before it resets claims each 15 minutes before midnight UTC if you haven’t, so no day is lost.', seg('setting-value', ['self', 'now'].includes(s.dailyClaim) ? s.dailyClaim : 'before-reset', [['self', 'Myself'], ['before-reset', 'Before it resets'], ['now', 'Right away']]).replace(/data-action="setting-value"/g, 'data-action="setting-value" data-key="dailyClaim"'))}
       ${row('Include game drops', 'Also farm rewards that need a linked game account.', toggle('includeGameDrops', s.includeGameDrops))}`,
     recovery: `
       ${row('Recover a stalled stream after', 'With no progress for this long, reload the stream, then switch to another.', range('stallMinutes', 5, 60, 1, 'min'))}
@@ -1294,7 +1310,6 @@ function renderModal() {
 
 function openModal(name) {
   ui.modal = name;
-  window.pd.suspendPlayer(true);
   render();
 }
 
@@ -1303,7 +1318,6 @@ function closeModal() {
   if (ui.modal === 'whatsnew') window.pd.updates.seen();
   ui.modal = null;
   act.app = null;
-  window.pd.suspendPlayer(false);
   render();
 }
 
@@ -1805,6 +1819,32 @@ window.pd.onAlert((alert) => {
   startAlarm();
   toast({ title: 'Another Kick stream is taking your credit', body: `${alert.events} watch events got no credit. Close any other streams to continue progressing drops.`, kind: 'alert' });
 });
+/**
+ * The docked stream's <webview>s, as main.js asks (watcher.js): the player (or the whole channel
+ * page) and, in light mode, the chat. Made blank, on Kick's session; main.js gives each its preload
+ * as it's attached, then takes over its contents and loads the stream.
+ */
+let playerGen = null;
+function syncPlayerViews(spec) {
+  const slot = playerViews;
+  if (spec?.gen === playerGen) return;
+  for (const el of slot.querySelectorAll('webview')) el.remove();
+  playerGen = spec?.gen ?? null;
+  if (!spec) return;
+  for (const role of spec.chat ? ['player', 'chat'] : ['player']) {
+    const view = document.createElement('webview');
+    view.className = `player-view ${role}`;
+    view.setAttribute('partition', spec.partition);
+    // Its links open in the browser (main.js decides): without this, Kick's would do nothing.
+    view.setAttribute('allowpopups', '');
+    view.setAttribute('src', `about:blank#${role}`);
+    // Its contents can be named once its blank page is ready (and if it's still wanted).
+    view.addEventListener('dom-ready', () => view.isConnected && playerGen === spec.gen && window.pd.playerAttached(role, spec.gen, view.getWebContentsId()), { once: true });
+    slot.append(view);
+  }
+}
+window.pd.onPlayerSpec(syncPlayerViews);
+window.pd.playerSpec().then((spec) => playerGen === null && syncPlayerViews(spec));
 // Capture mode only: the player's and the chat's frames, drawn where the docked views would be.
 const mirrorUrls = {};
 window.pd.onPlayerFrame((role, jpeg) => {

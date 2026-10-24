@@ -200,13 +200,52 @@ test('icon-only buttons all have tooltips, shown by the app', async () => {
   await a.win.mouse.move(5, 500);
 });
 
+/**
+ * Where a click went, for CI's log when one goes astray: what the page heard (and when), what the
+ * stream's pages heard, and how often the page draws. Call it before the click, then print what it returns.
+ */
+async function clickTrace() {
+  await a.win.evaluate(() => {
+    window.__trace = { events: [], frames: 0, at: performance.now() };
+    for (const t of ['pointerdown', 'mousedown', 'click']) document.addEventListener(t, (e) => window.__trace.events.push(`${t}@${e.target.closest('[data-action]')?.dataset.action ?? e.target.tagName}@${Math.round(e.clientX)},${Math.round(e.clientY)}@${Math.round(performance.now() - window.__trace.at)}ms`), { capture: true });
+    const tick = () => {
+      window.__trace.frames += 1;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await a.app.evaluate(({ webContents }) => {
+    globalThis.__guestInput = [];
+    for (const w of webContents.getAllWebContents().filter((x) => x.getType() === 'webview')) {
+      w.on('input-event', (_e, i) => /mouse(Down|Up)|pointer/i.test(i.type) && globalThis.__guestInput.push(`${i.type}@${w.getURL().replace(/^https?:\/\//, '').slice(0, 30)}@${Math.round(i.x ?? -1)},${Math.round(i.y ?? -1)}`));
+    }
+  });
+  return async (label) => {
+    const page = await a.win.evaluate(() => {
+      const r = (q) => document.querySelector(q)?.getBoundingClientRect();
+      const box = (x) => (x ? [x.left, x.top, x.right, x.bottom].map(Math.round) : null);
+      return { ...window.__trace, ms: Math.round(performance.now() - window.__trace.at), views: document.querySelector('#player-views')?.className, chat: box(r('.player-view.chat')), modal: !!document.querySelector('.modal') };
+    });
+    console.log(`CLICK-TRACE ${label} ${JSON.stringify({ ...page, guest: await a.app.evaluate(() => globalThis.__guestInput) })}`);
+  };
+}
+
 test('settings toggles are saved', async () => {
-  await a.win.click('button.icon-only[data-action="settings"]');
-  await a.win.click('[data-action="setting-toggle"][data-key="includeGameDrops"]');
-  await until(a.win, () => document.querySelector('[data-key="includeGameDrops"]')?.classList.contains('on'), 'the toggle to turn on');
-  const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
-  assert.equal(saved.includeGameDrops, true);
-  await a.win.keyboard.press('Escape');
+  const trace = await clickTrace();
+  try {
+    await a.win.click('button.icon-only[data-action="settings"]');
+    await a.win.click('[data-action="setting-toggle"][data-key="includeGameDrops"]');
+    await until(a.win, () => document.querySelector('[data-key="includeGameDrops"]')?.classList.contains('on'), 'the toggle to turn on', 5000).catch(async (err) => {
+      await trace('missed');
+      throw err;
+    });
+    const saved = JSON.parse(fs.readFileSync(path.join(a.data, 'settings.json'), 'utf8'));
+    assert.equal(saved.includeGameDrops, true);
+  } finally {
+    // One miss mustn't leave Settings open over every test after it.
+    await a.win.keyboard.press('Escape');
+    await until(a.win, () => !document.querySelector('.modal'), 'Settings closed').catch(() => a.win.evaluate(() => document.querySelector('.modal-backdrop')?.click()));
+  }
 });
 
 test('Settings › App › Font switches between the system font and the bundled Inter, and is saved', async () => {
@@ -462,6 +501,102 @@ test('the player header follows and unfollows the channel', async () => {
   await a.win.click('#player-head .follow-btn');
   await until(a.win, (b) => document.querySelector('#player-head .follow-btn')?.classList.contains('following') === b, 'the button to flip back', 10000, before);
   await a.win.mouse.move(5, 500);
+});
+
+test('the stream plays in the page: the daily reward card and Settings open over it, without hiding it', async () => {
+  await until(a.win, () => document.querySelector('#player-views .player-view.player') && !document.querySelector('#player-views.parked'), 'the stream, in the page');
+  const placed = await a.win.evaluate(() => {
+    const r = (q) => document.querySelector(q).getBoundingClientRect();
+    const [slot, player, chat] = [r('#player-slot'), r('.player-view.player'), r('.player-view.chat')];
+    return { left: player.left - slot.left, width: player.width - slot.width, ratio: player.width / player.height, chatTop: chat.top - player.bottom, chatBottom: slot.bottom - chat.bottom };
+  });
+  assert.ok(Math.abs(placed.left) < 1 && Math.abs(placed.width) < 1, 'the panel’s width');
+  assert.ok(Math.abs(placed.ratio - 16 / 9) < 0.02, `16:9 (${placed.ratio})`);
+  assert.ok(Math.abs(placed.chatTop) < 1 && Math.abs(placed.chatBottom) < 1, 'the chat under it, to the bottom');
+  // The daily reward's card: over the stream, which stays where it is.
+  await a.win.click('#titlebar-actions .dr-chest');
+  await until(a.win, () => document.querySelector('.dr-pop .dr-card'), 'the card');
+  await a.win.waitForTimeout(300); // its opening animation
+  const over = await a.win.evaluate(() => {
+    const pop = document.querySelector('.dr-pop').getBoundingClientRect();
+    const view = document.querySelector('.player-view.player').getBoundingClientRect();
+    const x = Math.max(pop.left, view.left) + 10;
+    const y = Math.max(pop.top, view.top) + 10;
+    return { overlaps: x < Math.min(pop.right, view.right) && y < Math.min(pop.bottom, view.bottom), top: !!document.elementFromPoint(x, y)?.closest('.dr-pop'), parked: !!document.querySelector('#player-views.parked') };
+  });
+  assert.deepEqual(over, { overlaps: true, top: true, parked: false });
+  // Under it, the stream takes no clicks (a <webview> can take one meant for what's over it):
+  // a click on the stream outside the card closes the card, as a click anywhere else does.
+  assert.equal(await a.win.evaluate(() => getComputedStyle(document.querySelector('.player-view.chat')).pointerEvents), 'none');
+  const spot = await a.win.evaluate(() => {
+    const c = document.querySelector('.player-view.chat').getBoundingClientRect();
+    return [c.left + c.width / 2, c.bottom - 40];
+  });
+  await a.win.mouse.click(...spot);
+  await until(a.win, () => !document.querySelector('.dr-pop'), 'closed by a click on the stream');
+  assert.equal(await a.win.evaluate(() => getComputedStyle(document.querySelector('.player-view.chat')).pointerEvents), 'auto', 'the stream takes clicks again');
+  // Settings: the same.
+  await a.win.click('button.icon-only[data-action="settings"]');
+  await until(a.win, () => document.querySelector('.modal'), 'Settings');
+  assert.equal(await a.win.evaluate(() => !!document.querySelector('#player-views.parked')), false, 'the stream stays');
+  const modalOver = await a.win.evaluate(() => {
+    const v = document.querySelector('.player-view.player').getBoundingClientRect();
+    return !document.elementFromPoint(v.left + v.width / 2, v.top + v.height / 2)?.closest('webview');
+  });
+  assert.ok(modalOver, 'Settings’ backdrop is over the stream');
+  await a.win.keyboard.press('Escape');
+  await until(a.win, () => !document.querySelector('.modal'), 'closed');
+});
+
+test('folded away, the stream keeps playing off-screen, and comes back where it was', async () => {
+  const video = () => a.app.evaluate(() => global.pdDebug.watcher.status.video?.currentTime ?? null);
+  await a.win.click('[data-action="toggle-player"]');
+  await until(a.win, () => document.querySelector('#player-views.parked'), 'parked');
+  const size = await a.win.evaluate(() => {
+    const r = document.querySelector('.player-view.player').getBoundingClientRect();
+    return [r.width, r.height];
+  });
+  assert.deepEqual(size, [480, 270], 'a size of its own, so the player keeps going');
+  const t0 = await video();
+  await a.win.waitForTimeout(11_000);
+  assert.ok((await video()) > t0, 'still playing');
+  await a.win.click('[data-action="toggle-player"]');
+  await until(a.win, () => !document.querySelector('#player-views.parked'), 'back in the panel');
+  const back = await a.win.evaluate(() => {
+    const [s, v] = ['#player-slot', '#player-views'].map((q) => document.querySelector(q).getBoundingClientRect());
+    return Math.abs(s.left - v.left) + Math.abs(s.top - v.top) + Math.abs(s.width - v.width) + Math.abs(s.height - v.height);
+  });
+  assert.ok(back < 1, 'over the slot again');
+});
+
+test('only the stream’s own webviews: anything else the page tried is refused, and each gets Kick’s preload, sandboxed', async () => {
+  // A <webview> the app didn't ask for (a page bug, or a script injected somehow) never attaches.
+  await a.win.evaluate(() => {
+    const rogue = document.createElement('webview');
+    rogue.id = 'rogue';
+    rogue.setAttribute('src', 'https://example.com/');
+    document.body.append(rogue);
+  });
+  await a.win.waitForTimeout(800);
+  const views = await a.app.evaluate(({ webContents }) => webContents.getAllWebContents().filter((w) => w.getType() === 'webview').map((w) => w.getURL()));
+  assert.equal(views.length, 2, 'the player and its chat only');
+  assert.ok(views.every((u) => /kick\.com|^about:blank/.test(u)), views.join(', '));
+  await a.win.evaluate(() => document.querySelector('#rogue').remove());
+  const checks = await a.app.evaluate(({ BrowserWindow }) => {
+    const w = global.pdDebug.watcher;
+    const app = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().endsWith('index.html'));
+    const prefs = { preload: '/elsewhere.js', nodeIntegration: true, sandbox: false };
+    const ok = w.allowAttach(prefs, { src: 'about:blank#player', partition: w.spec.partition });
+    return {
+      ok,
+      prefs: { preload: prefs.preload.endsWith('watch.js'), nodeIntegration: prefs.nodeIntegration, sandbox: prefs.sandbox, throttled: prefs.backgroundThrottling },
+      otherPage: w.allowAttach({}, { src: 'https://example.com/', partition: w.spec.partition }),
+      otherSession: w.allowAttach({}, { src: 'about:blank#player', partition: 'persist:other' }),
+      notAWebview: w.attach('player', w.spec.gen, app.webContents.id),
+      oldSpec: w.attach('player', w.spec.gen - 1, w.view.webContents.id),
+    };
+  });
+  assert.deepEqual(checks, { ok: true, prefs: { preload: true, nodeIntegration: false, sandbox: true, throttled: false }, otherPage: false, otherSession: false, notAWebview: false, oldSpec: false });
 });
 
 test('links leave for the browser, but demo mode only records them: it never opens your real browser', async () => {

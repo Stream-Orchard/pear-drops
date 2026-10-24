@@ -18,6 +18,8 @@ function playwright() {
  * options: signedIn (skip the welcome screen), seed (believable history),
  * eventSeconds (stand-in player's watch event interval), hidden, settings.
  */
+const SETTLE_MS = 500;
+
 async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hidden = !process.env.PD_TEST_VISIBLE, mirror = false, settings, files = {}, env: extraEnv = {}, scale, size = { width: 1480, height: 940 } } = {}) {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-test-'));
   if (settings) fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify(settings));
@@ -62,6 +64,29 @@ async function launchApp({ signedIn = true, seed = true, eventSeconds = 120, hid
     }, size);
     await win.waitForTimeout(400);
     if (process.env.PD_DEBUG_SIZE) console.log('window', got);
+  }
+  // The stream is a <webview> under the page's pop-ups. Chromium sends a click to the page under it in
+  // a picture of the window a few frames old, so a click just after a pop-up opens (or the stream
+  // moves) can go to the stream: no person is that quick, a test is. Clicks wait until the stream
+  // has been still for half a second (the app marks when it last changed, on #player-views).
+  const settled = () =>
+    win
+      .evaluate(
+        (ms) =>
+          new Promise((done) => {
+            const quiet = () => performance.now() - Number(document.querySelector('#player-views')?.dataset.changedAt ?? -Infinity) >= ms;
+            const look = () => (quiet() ? done() : requestAnimationFrame(look));
+            look();
+          }),
+        SETTLE_MS,
+      )
+      .catch(() => {});
+  for (const target of [win, win.mouse]) {
+    const click = target.click.bind(target);
+    target.click = async (...args) => {
+      await settled();
+      return click(...args);
+    };
   }
   return {
     app,

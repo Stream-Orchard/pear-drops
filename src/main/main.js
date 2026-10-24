@@ -221,7 +221,17 @@ function createMainWindow() {
       preload: path.join(__dirname, '..', 'preload', 'app.js'),
       contextIsolation: true,
       sandbox: true,
+      // The docked stream and its chat are <webview>s in the page (watcher.js), so its pop-ups sit over them.
+      webviewTag: true,
+      // Tests: the window isn't on the screen, but draws all the same (as Stream Multiview's tests do).
+      // Chromium sends each click to the page under it in the last frame drawn: a window drawing
+      // rarely would send a click meant for a pop-up to the stream under it.
+      ...(HIDDEN ? { backgroundThrottling: false } : {}),
     },
+  });
+  // Only the stream's own <webview>s, as watcher.js sets them up.
+  mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    if (!watcher?.allowAttach(webPreferences, params)) event.preventDefault();
   });
   // The app's own page plays the stall alert (muted only in tests).
   mainWindow.webContents.setAudioMuted(HIDDEN);
@@ -725,7 +735,8 @@ function registerIpc() {
     return !!url;
   });
   mainIpc.handle('player:bounds', (_e, rect) => watcher.setBounds(rectArg(rect)));
-  mainIpc.handle('player:suspend', (_e, value) => watcher.setSuspended(!!value));
+  mainIpc.handle('player:spec', () => watcher.spec);
+  mainIpc.handle('player:attached', (_e, role, gen, id) => watcher.attach(String(role), Number(gen), Number(id)));
   mainIpc.handle('player:devtools', () => watcher.openDevTools());
   mainIpc.handle('open:external', (_e, url) => {
     if (typeof url !== 'string') return;

@@ -3210,6 +3210,43 @@ span.img-missing {
   top: calc(100cqw * 9 / 16);
   height: auto;
 }
+/* The stream's <webview>s (watcher.js): a layer of their own, placed over the player slot by
+   app.js, under the page's pop-ups, modals and toasts. */
+#player-views {
+  position: fixed;
+  z-index: 4;
+  container-type: inline-size;
+  background: #000;
+}
+.player-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  border: 0;
+  background: #0b0d10;
+}
+#player-views.light .player-view.player {
+  bottom: auto;
+  height: calc(100cqw * 9 / 16);
+}
+#player-views.light .player-view.chat {
+  top: calc(100cqw * 9 / 16);
+}
+#player-views.covered,
+#player-views.covered .player-view {
+  pointer-events: none;
+}
+#player-views.no-chat .player-view.chat {
+  visibility: hidden;
+}
+/* Out of sight, still playing: off-screen, at a size of its own. */
+#player-views.parked {
+  left: -20000px !important;
+  top: 0 !important;
+  width: 480px !important;
+  height: 640px !important;
+  visibility: hidden;
+}
 #player-empty {
   position: absolute;
   inset: 0;
